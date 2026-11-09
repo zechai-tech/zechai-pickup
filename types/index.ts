@@ -1,0 +1,100 @@
+export type OutletStatus = 'open' | 'closed';
+
+export interface Outlet {
+  id: string;
+  name: string;
+  distance: string;
+  statusText: string;
+  isOpen: boolean;
+  closingTime?: string;
+  openingTime?: string;
+  address?: string;
+}
+
+export interface MenuItemOption {
+  id: string;
+  name: string;
+  priceDelta: number;
+}
+
+export interface MenuItemSize {
+  id: string;
+  name: string;
+  volume: string;
+  price: number;
+}
+
+export interface MenuItem {
+  id: string;
+  name: string;
+  category: 'chai_coffee' | 'coolers' | 'chicken' | 'fries' | 'subs';
+  price: number;
+  description: string;
+  image: string;
+  isVeg: boolean;
+  isBestseller?: boolean;
+  hasCustomization?: boolean;
+  sizes?: MenuItemSize[];
+  sugarLevels?: ('No sugar' | 'Less' | 'Regular')[];
+  addons?: MenuItemOption[];
+}
+
+export interface CartItemAddon {
+  id: string;
+  name: string;
+  priceDelta: number;
+}
+
+export interface CartItem {
+  lineId: string;
+  itemId: string;
+  name: string;
+  image: string;
+  isVeg: boolean;
+  size?: string;
+  sugar?: 'No sugar' | 'Less' | 'Regular';
+  addons?: CartItemAddon[];
+  unitPrice: number;
+  qty: number;
+}
+
+export interface CustomerDetails {
+  name: string;
+  phone: string;
+  note?: string;
+}
+
+export type PaymentMethod = 'gpay' | 'phonepe' | 'paytm' | 'bhim' | 'upi_id' | 'card' | 'netbanking' | 'wallet';
+
+export type OrderStatus = 'placed' | 'accepted' | 'preparing' | 'ready' | 'picked_up';
+
+export interface OrderTimelineStep {
+  status: OrderStatus;
+  label: string;
+  timestamp: string; // e.g. "6:42 PM"
+  isCompleted: boolean;
+  isCurrent: boolean;
+}
+
+export interface Order {
+  id: string; // e.g. "ZC-2481"
+  code: string; // 4-digit e.g. "7309"
+  placedAt: number; // unix ms timestamp
+  estimatedReadyTime: string; // e.g. "~6:54 PM"
+  paidAmount: number;
+  paymentMethod: string;
+  status: OrderStatus;
+  outlet: Outlet;
+  items: CartItem[];
+  itemTotal: number;
+  gst: number;
+  grandTotal: number;
+  customer: CustomerDetails;
+  statusHistory: {
+    placedAt: number;
+    acceptedAt?: number;
+    preparingAt?: number;
+    readyAt?: number;
+    pickedUpAt?: number;
+  };
+}
