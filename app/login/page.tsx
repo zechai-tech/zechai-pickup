@@ -16,7 +16,51 @@ export default function StaffLoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [error, setError] = useState('');
+
+  // Auto-redirect if session already active on mount
+  React.useEffect(() => {
+    let isMounted = true;
+    const checkExistingSession = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (session?.user) {
+          const cleanEmail = session.user.email?.toLowerCase().trim() || '';
+          const res = await fetch(
+            `/api/admin/users/me?uid=${session.user.id}&email=${encodeURIComponent(cleanEmail)}`
+          );
+          const data = await res.json();
+
+          if (res.ok && data.user && data.user.is_active) {
+            setUser(data.user, session.access_token);
+            if (data.user.role === 'admin' || data.user.role === 'manager') {
+              router.replace('/admin/dashboard');
+              return;
+            } else {
+              router.replace('/staff/orders');
+              return;
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Session check on /login error:', err);
+      }
+
+      if (isMounted) {
+        setIsCheckingSession(false);
+      }
+    };
+
+    checkExistingSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [router, setUser]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,6 +113,17 @@ export default function StaffLoginPage() {
       setLoading(false);
     }
   };
+
+  if (isCheckingSession) {
+    return (
+      <div className="min-h-screen bg-cream flex flex-col justify-center items-center p-4">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange mx-auto mb-4" />
+          <p className="text-espresso/70 text-xs font-bold tracking-wide">Checking session...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-cream text-espresso flex flex-col justify-center items-center p-4">

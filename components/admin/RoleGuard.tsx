@@ -13,29 +13,35 @@ interface RoleGuardProps {
 
 export function RoleGuard({ allowedRoles, children }: RoleGuardProps) {
   const router = useRouter();
-  const { currentUser } = useAdminStore();
+  const { currentUser, isAuthInitialized } = useAdminStore();
 
   useEffect(() => {
+    // Only evaluate route protection AFTER async auth initialization completes
+    if (!isAuthInitialized) return;
+
     // If not logged in, go to login
     if (!currentUser) {
-      router.push('/admin/login');
+      router.replace('/admin/login');
       return;
     }
 
     // If role not allowed
     if (!allowedRoles.includes(currentUser.role)) {
       if (currentUser.role === 'staff' || currentUser.role === 'ordering_staff') {
-        router.push('/staff/orders');
+        router.replace('/staff/orders');
       } else {
-        router.push('/admin/dashboard');
+        router.replace('/admin/dashboard');
       }
     }
-  }, [currentUser, allowedRoles, router]);
+  }, [currentUser, isAuthInitialized, allowedRoles, router]);
 
-  if (!currentUser) {
+  if (!isAuthInitialized || !currentUser) {
     return (
       <div className="flex-1 min-h-[400px] flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-orange animate-spin" />
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 text-orange animate-spin mx-auto mb-2" />
+          <p className="text-espresso/60 text-xs font-semibold">Loading access...</p>
+        </div>
       </div>
     );
   }

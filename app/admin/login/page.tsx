@@ -16,7 +16,51 @@ export default function AdminLoginPage() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isCheckingSession, setIsCheckingSession] = useState(true);
   const [error, setError] = useState('');
+
+  // Auto-redirect if session already active on mount
+  React.useEffect(() => {
+    let isMounted = true;
+    const checkExistingSession = async () => {
+      try {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (session?.user) {
+          const cleanEmail = session.user.email?.toLowerCase().trim() || '';
+          const res = await fetch(
+            `/api/admin/users/me?uid=${session.user.id}&email=${encodeURIComponent(cleanEmail)}`
+          );
+          const data = await res.json();
+
+          if (res.ok && data.user && data.user.is_active) {
+            setUser(data.user, session.access_token);
+            if (data.user.role === 'admin' || data.user.role === 'manager') {
+              router.replace('/admin/dashboard');
+              return;
+            } else {
+              router.replace('/staff/orders');
+              return;
+            }
+          }
+        }
+      } catch (err) {
+        console.error('Session check on /admin/login error:', err);
+      }
+
+      if (isMounted) {
+        setIsCheckingSession(false);
+      }
+    };
+
+    checkExistingSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [router, setUser]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,6 +108,15 @@ export default function AdminLoginPage() {
       setLoading(false);
     }
   };
+
+  if (isCheckingSession) {
+    return (
+      <div className="text-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange mx-auto mb-4" />
+        <p className="text-espresso/70 text-xs font-bold tracking-wide">Checking session...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full max-w-[420px] bg-card rounded-[32px] border border-border shadow-2xl p-6 sm:p-8 relative overflow-hidden animate-in fade-in zoom-in-95 duration-200">

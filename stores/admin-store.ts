@@ -28,12 +28,14 @@ export function getUserScope(user: AppUser | null): UserScope {
 
 interface AdminState {
   currentUser: AppUser | null;
+  user: AppUser | null; // Compatibility alias
   sessionToken: string | null;
   selectedOutletId: string | null;
   selectedOutlet: Outlet | null;
   soundEnabled: boolean;
   syncTrigger: number;
   isSyncing: boolean;
+  isAuthInitialized: boolean;
 
   // Actions
   setUser: (user: AppUser | null, token?: string | null) => void;
@@ -42,6 +44,7 @@ interface AdminState {
   setSoundEnabled: (enabled: boolean) => void;
   setSyncing: (syncing: boolean) => void;
   triggerSync: () => void;
+  setAuthInitialized: (initialized: boolean) => void;
   logout: () => void;
 }
 
@@ -49,16 +52,19 @@ export const useAdminStore = create<AdminState>()(
   persist(
     (set, get) => ({
       currentUser: null,
+      user: null,
       sessionToken: null,
       selectedOutletId: null,
       selectedOutlet: null,
       soundEnabled: true,
       syncTrigger: 0,
       isSyncing: false,
+      isAuthInitialized: false,
 
       setUser: (user, token = null) => {
         set({
           currentUser: user,
+          user: user,
           sessionToken: token,
           // If manager or staff, strictly lock selectedOutletId to their outlet_id
           selectedOutletId: user?.role === 'admin' ? null : user?.outlet_id || null,
@@ -70,13 +76,16 @@ export const useAdminStore = create<AdminState>()(
       setSoundEnabled: (enabled) => set({ soundEnabled: enabled }),
       setSyncing: (syncing) => set({ isSyncing: syncing }),
       triggerSync: () => set((state) => ({ syncTrigger: state.syncTrigger + 1 })),
+      setAuthInitialized: (initialized) => set({ isAuthInitialized: initialized }),
 
       logout: () => {
         set({
           currentUser: null,
+          user: null,
           sessionToken: null,
           selectedOutletId: null,
           selectedOutlet: null,
+          isAuthInitialized: true,
         });
       },
     }),

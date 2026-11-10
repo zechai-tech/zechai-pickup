@@ -38,13 +38,6 @@ export default function StaffOrdersPage() {
   const soundRef = useRef(soundEnabled);
   soundRef.current = soundEnabled;
 
-  // Route protection
-  useEffect(() => {
-    if (!currentUser) {
-      router.push('/login');
-    }
-  }, [currentUser, router]);
-
   // Fetch orders for this outlet
   const fetchOrders = useCallback(async () => {
     if (!outletId) {
