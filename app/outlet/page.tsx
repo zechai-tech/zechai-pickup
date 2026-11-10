@@ -19,6 +19,9 @@ export default function OutletPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Prefetch menu route for instant transition on mobile
+    router.prefetch('/menu');
+
     getOutlets().then((data) => {
       setOutlets(data);
       setLoading(false);
@@ -30,7 +33,7 @@ export default function OutletPage() {
         }
       }
     });
-  }, [outlet, setOutlet]);
+  }, [outlet, setOutlet, router]);
 
   const handleProceed = () => {
     if (outlet && outlet.isOpen) {

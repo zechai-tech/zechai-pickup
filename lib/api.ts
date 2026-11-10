@@ -2,18 +2,26 @@ import { CartItem, CustomerDetails, MenuItem, Order, OrderStatus, Outlet } from 
 import { supabase } from './supabase';
 import { generateOrderId, generatePickupCode } from './utils';
 
+// In-memory caches to prevent redundant Supabase queries during user navigation
+let cachedOutlets: Outlet[] | null = null;
+const cachedMenus: Record<string, MenuItem[]> = {};
+
 export async function getOutlets(): Promise<Outlet[]> {
+  if (cachedOutlets && cachedOutlets.length > 0) {
+    return cachedOutlets;
+  }
+
   try {
     const { data, error } = await supabase
       .from('outlets')
-      .select('*')
+      .select('id, name, address, is_active, opening_time, closing_time')
       .order('name');
 
     if (error || !data || data.length === 0) {
       return [];
     }
 
-    return data.map((o: any) => ({
+    const outlets = data.map((o: any) => ({
       id: o.id,
       name: o.name,
       address: o.address || 'Kerala',
@@ -24,6 +32,9 @@ export async function getOutlets(): Promise<Outlet[]> {
       openingTime: o.opening_time || '15:00',
       closingTime: o.closing_time || '00:00',
     }));
+
+    cachedOutlets = outlets;
+    return outlets;
   } catch (err) {
     console.error('Error fetching outlets from Supabase:', err);
     return [];
@@ -31,10 +42,14 @@ export async function getOutlets(): Promise<Outlet[]> {
 }
 
 export async function getOutletById(id: string): Promise<Outlet | null> {
+  const outlets = await getOutlets();
+  const match = outlets.find((o) => o.id === id);
+  if (match) return match;
+
   try {
     const { data, error } = await supabase
       .from('outlets')
-      .select('*')
+      .select('id, name, address, is_active, opening_time, closing_time')
       .eq('id', id)
       .single();
 
@@ -58,10 +73,15 @@ export async function getOutletById(id: string): Promise<Outlet | null> {
 }
 
 export async function getMenu(outletId?: string): Promise<MenuItem[]> {
+  const cacheKey = outletId || 'all';
+  if (cachedMenus[cacheKey] && cachedMenus[cacheKey].length > 0) {
+    return cachedMenus[cacheKey];
+  }
+
   try {
     let query = supabase
       .from('menu_items')
-      .select('*')
+      .select('id, name, description, price, category, image_url, is_veg, is_bestseller, is_available, outlet_id, sort_order')
       .eq('is_available', true)
       .order('sort_order', { ascending: true });
 
@@ -74,7 +94,7 @@ export async function getMenu(outletId?: string): Promise<MenuItem[]> {
       return [];
     }
 
-    return data.map((item: any) => ({
+    const items = data.map((item: any) => ({
       id: item.id,
       name: item.name,
       category: item.category || 'Chai & Coffee',
@@ -88,6 +108,9 @@ export async function getMenu(outletId?: string): Promise<MenuItem[]> {
       is_bestseller: item.is_bestseller ?? false,
       outlet_id: item.outlet_id,
     }));
+
+    cachedMenus[cacheKey] = items;
+    return items;
   } catch (err) {
     console.error('Error fetching menu items:', err);
     return [];
@@ -95,10 +118,16 @@ export async function getMenu(outletId?: string): Promise<MenuItem[]> {
 }
 
 export async function getMenuItemById(id: string): Promise<MenuItem | null> {
+  // Search in memory caches first
+  for (const menuList of Object.values(cachedMenus)) {
+    const found = menuList.find((i) => i.id === id);
+    if (found) return found;
+  }
+
   try {
     const { data, error } = await supabase
       .from('menu_items')
-      .select('*')
+      .select('id, name, description, price, category, image_url, is_veg, is_bestseller, is_available, outlet_id')
       .eq('id', id)
       .single();
 
@@ -124,39 +153,10 @@ export async function getMenuItemById(id: string): Promise<MenuItem | null> {
   }
 }
 
-export interface CreateOrderPayload {
-  outlet: Outlet;
-  items: CartItem[];
-  customer: CustomerDetails;
-  paymentMethod: string;
-  itemTotal: number;
-  gst: number;
-  grandTotal: number;
-}
-
-export async function createOrder(payload: CreateOrderPayload): Promise<Order> {
-  const now = Date.now();
-  const orderId = generateOrderId();
-  const code = generatePickupCode();
-
-  const newOrder: Order = {
-    id: orderId,
-    code,
-    placedAt: now,
-    estimatedReadyTime: 'Ready in 15-20 min',
-    paidAmount: payload.grandTotal,
-    paymentMethod: payload.paymentMethod,
-    status: 'placed',
-    outlet: payload.outlet,
-    items: payload.items,
-    itemTotal: payload.itemTotal,
-    gst: 0,
-    grandTotal: payload.grandTotal,
-    customer: payload.customer,
-    statusHistory: {
-      placedAt: now,
-    },
-  };
-
-  return newOrder;
+// Function to clear cache if needed (e.g. after outlet changes)
+export function clearApiCache() {
+  cachedOutlets = null;
+  for (const k of Object.keys(cachedMenus)) {
+    delete cachedMenus[k];
+  }
 }

@@ -24,7 +24,7 @@ body {
   padding: 0;
 }
 
-/* Prevent tap/touch issues on mobile */
+/* Prevent tap/touch issues and guarantee clicks on all interactive elements */
 * {
   -webkit-tap-highlight-color: transparent;
   box-sizing: border-box;
@@ -32,7 +32,13 @@ body {
 
 button,
 a,
-[role="button"] {
+input,
+select,
+textarea,
+[role="button"],
+[onclick] {
+  pointer-events: auto !important;
+  cursor: pointer;
   touch-action: manipulation;
 }
 

@@ -4,10 +4,8 @@ import React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/Button';
 import { useZechaStore } from '@/lib/store';
 import { useToast } from '@/components/ui/Toast';
-import { ArrowRight } from 'lucide-react';
 
 export default function WelcomePage() {
   const router = useRouter();
@@ -16,142 +14,114 @@ export default function WelcomePage() {
 
   const handleTrackClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    if (activeOrder) {
-      router.push('/track');
+    const storedCode =
+      localStorage.getItem('activeOrderCode') ||
+      sessionStorage.getItem('activeOrderCode') ||
+      activeOrder?.code;
+
+    if (storedCode) {
+      router.push(`/track-order?code=${storedCode}`);
     } else {
       showToast('No active order. Please place an order first.', 'info');
     }
   };
 
   return (
-    <div className="min-h-[100dvh] h-full flex flex-col justify-between p-6 pb-8 page-transition bg-cream overflow-hidden relative w-full max-w-full">
-      {/* Pattern overlay at top */}
-      <div
-        className="absolute inset-0 top-0 h-[45%] pointer-events-none opacity-25 overflow-hidden"
-        style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '45%', overflow: 'hidden' }}
-      >
-        <Image
-          src="/assets/pattern.jpg"
-          alt="Zécha pattern"
-          fill
-          sizes="390px"
-          className="object-cover"
-          priority
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-transparent via-cream/60 to-cream" />
-      </div>
-
-      {/* Hero Visual Collage */}
-      <div className="relative pt-6 pb-2 flex items-center justify-center">
+    <div className="min-h-[100dvh] h-full flex flex-col items-center justify-between px-6 py-6 sm:py-8 bg-[#FDFBEA] page-transition overflow-y-auto overflow-x-hidden scrollbar-none w-full max-w-full">
+      {/* Top section: hero collage (scaled so button is never cut off) */}
+      <div className="flex-1 w-full flex items-center justify-center py-2 relative min-h-[180px] max-h-[260px]">
         {/* Soft circle backdrop */}
-        <div
-          className="w-[260px] h-[260px] rounded-full bg-[#F4E7CC]/80 absolute -z-0 blur-[0.5px]"
-          style={{ width: 260, height: 260 }}
-        />
+        <div className="w-[200px] h-[200px] sm:w-[230px] sm:h-[230px] rounded-full bg-[#F4E7CC]/80 absolute -z-0 blur-[0.5px]" />
 
         {/* Collage elements */}
-        <div
-          className="relative z-10 w-[300px] h-[270px]"
-          style={{ width: 300, height: 270, position: 'relative' }}
-        >
+        <div className="relative z-10 w-[260px] h-[210px] sm:w-[280px] sm:h-[230px]">
           {/* Iced Tea glasses (center) */}
-          <div
-            className="absolute left-1/2 -translate-x-1/2 top-1 w-[190px] h-[210px]"
-            style={{ width: 190, height: 210, position: 'absolute' }}
-          >
+          <div className="absolute left-1/2 -translate-x-1/2 top-0 w-[150px] h-[170px] sm:w-[170px] sm:h-[190px]">
             <Image
               src="/assets/iced.png"
               alt="Zécha Iced Coolers"
               fill
-              sizes="190px"
-              className="object-contain drop-shadow-lg"
+              sizes="170px"
+              className="object-contain drop-shadow-md"
               priority
             />
           </div>
 
           {/* Fried Chicken (bottom left) */}
-          <div
-            className="absolute -left-2 bottom-3 w-[115px] h-[105px] transform -rotate-6"
-            style={{ width: 115, height: 105, position: 'absolute' }}
-          >
+          <div className="absolute left-1 bottom-1 w-[90px] h-[85px] sm:w-[100px] sm:h-[95px] transform -rotate-6">
             <Image
               src="/assets/chicken.png"
               alt="Crispy Fried Chicken"
               fill
-              sizes="115px"
-              className="object-contain drop-shadow-xl"
+              sizes="100px"
+              className="object-contain drop-shadow-lg"
               priority
             />
           </div>
 
           {/* Loaded Fries Bucket (bottom right) */}
-          <div
-            className="absolute -right-2 bottom-1 w-[120px] h-[145px]"
-            style={{ width: 120, height: 145, position: 'absolute' }}
-          >
+          <div className="absolute right-1 bottom-0 w-[95px] h-[115px] sm:w-[105px] sm:h-[125px]">
             <Image
               src="/assets/loaded-cup.png"
               alt="Loaded Fries Cup"
               fill
-              sizes="120px"
-              className="object-contain drop-shadow-xl"
+              sizes="105px"
+              className="object-contain drop-shadow-lg"
               priority
             />
           </div>
         </div>
       </div>
 
-      {/* Brand & Content Section */}
-      <div className="relative z-10 flex flex-col items-center text-center mt-2 px-2">
+      {/* Bottom section: logo, tagline, badges, CTA button */}
+      <div className="w-full max-w-xs flex flex-col items-center gap-3 pb-3 shrink-0">
         {/* Brand Logo */}
-        <div
-          className="relative w-[190px] h-[72px] mb-4"
-          style={{ width: 190, height: 72, position: 'relative' }}
-        >
+        <div className="relative w-[160px] h-[58px] sm:w-[180px] sm:h-[64px]">
           <Image
             src="/assets/logo-orange.png"
             alt="Zécha! One cup every day"
             fill
-            sizes="190px"
+            sizes="180px"
             className="object-contain"
             priority
           />
         </div>
 
         {/* Tagline */}
-        <p className="text-[16px] leading-[1.4] text-espresso/85 font-medium max-w-[310px] mb-6">
+        <p className="text-center text-xs sm:text-sm text-[#75604F] font-medium leading-relaxed max-w-[280px]">
           Skip the queue. Order ahead, pay online and collect it hot the moment it is ready.
         </p>
 
-        {/* Feature chips */}
-        <div className="flex flex-wrap items-center justify-center gap-2 max-w-[320px] mb-8">
-          <span className="px-3.5 py-1.5 rounded-full bg-sand text-espresso font-semibold text-xs tracking-wide">
+        {/* Badges */}
+        <div className="flex flex-wrap justify-center gap-1.5 my-0.5">
+          <span className="px-3 py-1 rounded-full border border-[#EADFC7] text-xs font-semibold text-[#2B1A12] bg-[#FFFEF7]">
             Ready in 15-20 min
           </span>
-          <span className="px-3.5 py-1.5 rounded-full bg-sand text-espresso font-semibold text-xs tracking-wide">
+          <span className="px-3 py-1 rounded-full border border-[#EADFC7] text-xs font-semibold text-[#2B1A12] bg-[#FFFEF7]">
             Pay via UPI
           </span>
-          <span className="px-3.5 py-1.5 rounded-full bg-sand text-espresso font-semibold text-xs tracking-wide">
+          <span className="px-3 py-1 rounded-full border border-[#EADFC7] text-xs font-semibold text-[#2B1A12] bg-[#FFFEF7]">
             Live order status
           </span>
         </div>
-      </div>
 
-      {/* Bottom Actions */}
-      <div className="relative z-10 w-full space-y-4 safe-bottom pb-[max(16px,env(safe-area-inset-bottom))]">
-        <Link href="/outlet" className="block w-full">
-          <Button className="w-full text-[17px] font-bold group shadow-orange">
-            <span>Start your order</span>
-            <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
-          </Button>
+        {/* CTA Button — always 100% visible */}
+        <Link href="/outlet" className="w-full pt-1">
+          <button className="w-full py-3.5 sm:py-4 bg-[#CE5535] text-white font-bold rounded-2xl text-base sm:text-lg hover:bg-[#A8401F] transition-colors shadow-orange active:scale-[0.98]">
+            Order now →
+          </button>
         </Link>
 
-        <div className="text-center">
+        {/* Track order link */}
+        <div className="text-center pt-0.5">
           <button
             onClick={handleTrackClick}
-            className="text-sm font-semibold text-espresso hover:text-orange transition-colors py-1 cursor-pointer"
+            className="text-xs sm:text-sm font-semibold text-[#75604F] hover:text-[#CE5535] transition-colors py-1 cursor-pointer"
           >
-            Already ordered? <span className="text-orange underline decoration-orange/40 underline-offset-4">Track my order</span>
+            Already ordered?{' '}
+            <span className="text-[#CE5535] underline decoration-[#CE5535]/40 underline-offset-4">
+              Track my order
+            </span>
           </button>
         </div>
       </div>

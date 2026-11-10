@@ -147,7 +147,7 @@ export default function CartPage() {
       // Step 4: Ensure Razorpay SDK is loaded
       await loadRazorpayScript();
       const razorpayKey =
-        process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_TyVNQcm7PK4njO';
+        process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_TyW3SbL5Pf7xZ5';
 
       // Step 5: Open Razorpay Checkout
       const options = {

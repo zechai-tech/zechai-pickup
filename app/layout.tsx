@@ -7,9 +7,9 @@ import { PhoneFrame } from '@/components/ui/PhoneFrame';
 
 const archivo = Archivo({
   subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
   variable: '--font-archivo',
   display: 'swap',
-  axes: ['wdth'],
 });
 
 export const metadata: Metadata = {
