@@ -1,12 +1,12 @@
 import { Pool } from 'pg';
 
 // Direct Postgres connection for server-side operations
+const connectionString =
+  process.env.DATABASE_URL ||
+  'postgresql://postgres.pdgtdcabbfvhomkpoajw:zecoejaldWbc@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres';
+
 const pool = new Pool({
-  host: 'aws-0-ap-southeast-1.pooler.supabase.com',
-  port: 5432,
-  user: 'postgres.pdgtdcabbfvhomkpoajw',
-  password: 'zecoejaldWbc',
-  database: 'postgres',
+  connectionString,
   ssl: { rejectUnauthorized: false },
   max: 10,
   idleTimeoutMillis: 30000,
