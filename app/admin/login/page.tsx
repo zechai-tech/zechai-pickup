@@ -48,7 +48,7 @@ export default function AdminLoginPage() {
 
       // 4. Role-based routing
       if (data.user.role === 'staff' || data.user.role === 'ordering_staff') {
-        router.push('/admin/orders');
+        router.push('/orders');
       } else {
         router.push('/admin/dashboard');
       }
@@ -58,11 +58,6 @@ export default function AdminLoginPage() {
     } finally {
       setLoading(false);
     }
-  };
-
-  const handleFillDemoAdmin = () => {
-    setEmail('adminzechai@gmail.com');
-    setPassword('admin@zechai');
   };
 
   return (
@@ -104,7 +99,6 @@ export default function AdminLoginPage() {
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder="adminzechai@gmail.com"
             required
             className="w-full h-12 px-4 rounded-2xl bg-sand/30 border border-border text-sm font-semibold text-espresso focus:outline-none focus:border-orange focus:ring-2 focus:ring-orange/15 transition-all"
           />
@@ -119,7 +113,6 @@ export default function AdminLoginPage() {
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
             required
             className="w-full h-12 px-4 rounded-2xl bg-sand/30 border border-border text-sm font-semibold text-espresso focus:outline-none focus:border-orange focus:ring-2 focus:ring-orange/15 transition-all"
           />
@@ -135,21 +128,7 @@ export default function AdminLoginPage() {
         </Button>
       </form>
 
-      {/* Quick Fill Demo Helper */}
-      <div className="mt-6 pt-5 border-t border-border/70 text-center">
-        <p className="text-[11px] text-espresso/60 font-medium mb-2">
-          Default seed credentials:
-        </p>
-        <button
-          type="button"
-          onClick={handleFillDemoAdmin}
-          className="px-3 py-1.5 rounded-full bg-sand/60 hover:bg-sand border border-border text-xs font-bold text-espresso transition-colors active:scale-95"
-        >
-          Fill Demo Admin (adminzechai@gmail.com)
-        </button>
-      </div>
-
-      <div className="mt-4 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-espresso/50">
+      <div className="mt-6 flex items-center justify-center gap-1.5 text-[11px] font-semibold text-espresso/50">
         <ShieldCheck className="w-3.5 h-3.5 text-brandGreen" />
         <span>Supabase Auth Protected</span>
       </div>

@@ -79,9 +79,9 @@ export async function DELETE(req: NextRequest) {
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'ID is required' }, { status: 400 });
 
-    // Soft delete / deactivate
-    await query('UPDATE public.outlets SET is_active = false WHERE id = $1', [id]);
-    return NextResponse.json({ success: true });
+    // Hard delete from database
+    await query('DELETE FROM public.outlets WHERE id = $1', [id]);
+    return NextResponse.json({ success: true, message: 'Outlet deleted successfully' });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

@@ -9,10 +9,10 @@ interface PhoneFrameProps {
 
 export function PhoneFrame({ children }: PhoneFrameProps) {
   const pathname = usePathname();
-  const isAdmin = pathname?.startsWith('/admin');
+  const isPortal = pathname?.startsWith('/admin') || pathname === '/login' || pathname === '/orders';
 
-  // Admin panel is fully responsive for desktop, tablet, and mobile
-  if (isAdmin) {
+  // Admin panel, staff portal login and orders screen are responsive
+  if (isPortal) {
     return <div className="min-h-screen bg-cream text-espresso w-full flex flex-col">{children}</div>;
   }
 

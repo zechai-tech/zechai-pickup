@@ -1,16 +1,28 @@
 'use client';
 
-import React, { useState } from 'react';
-import { usePathname } from 'next/navigation';
+import React, { useState, useEffect } from 'react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useAdminStore } from '@/stores/admin-store';
 import { Sidebar } from '@/components/admin/Sidebar';
 import { TopBar } from '@/components/admin/TopBar';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { currentUser } = useAdminStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Clean layout for login page without topbar/sidebar
   const isLoginPage = pathname === '/admin/login';
+
+  // If a non-admin / non-manager tries to access /admin/* routes, redirect to /orders
+  useEffect(() => {
+    if (!isLoginPage && currentUser) {
+      if (currentUser.role !== 'admin' && currentUser.role !== 'manager') {
+        router.push('/orders');
+      }
+    }
+  }, [currentUser, isLoginPage, router]);
 
   if (isLoginPage) {
     return (
@@ -18,6 +30,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         {children}
       </div>
     );
+  }
+
+  // If logged in as staff, block render while redirecting
+  if (currentUser && currentUser.role !== 'admin' && currentUser.role !== 'manager') {
+    return null;
   }
 
   return (

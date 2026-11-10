@@ -128,6 +128,15 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
     }
 
+    // Handle quick status toggle (only is_active provided)
+    if (is_active !== undefined && name === undefined && role === undefined) {
+      const res = await query(
+        'UPDATE public.users SET is_active = $1 WHERE id = $2 RETURNING id, name, email, role, outlet_id, is_active, created_at',
+        [is_active, id]
+      );
+      return NextResponse.json({ success: true, user: res.rows[0] });
+    }
+
     // If name changed, regenerate email & password per spec
     let emailUpdateSql = '';
     const params: unknown[] = [id];
@@ -184,7 +193,7 @@ export async function PUT(req: NextRequest) {
   }
 }
 
-// DELETE /api/admin/users - soft delete (deactivate)
+// DELETE /api/admin/users - delete user from public.users and auth.users
 export async function DELETE(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
@@ -194,10 +203,19 @@ export async function DELETE(req: NextRequest) {
       return NextResponse.json({ error: 'User ID required' }, { status: 400 });
     }
 
-    await query('UPDATE public.users SET is_active = false WHERE id = $1', [id]);
-    return NextResponse.json({ success: true, message: 'User deactivated' });
+    // 1. Delete auth account in auth.users
+    try {
+      await query('DELETE FROM auth.users WHERE id = $1', [id]);
+    } catch (authErr) {
+      console.warn('Could not delete auth.users record directly:', authErr);
+    }
+
+    // 2. Delete public user profile
+    await query('DELETE FROM public.users WHERE id = $1', [id]);
+
+    return NextResponse.json({ success: true, message: 'User deleted successfully' });
   } catch (error: any) {
-    console.error('Error deactivating user:', error);
+    console.error('Error deleting user:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

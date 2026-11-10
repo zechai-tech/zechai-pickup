@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { useAdminStore } from '@/stores/admin-store';
 import { RoleGuard } from '@/components/admin/RoleGuard';
-import { formatPrice } from '@/lib/utils';
+import { Outlet, Order } from '@/types/supabase';
+import { formatPrice, cn } from '@/lib/utils';
 import {
   Store,
   ShoppingBag,
@@ -15,70 +16,95 @@ import {
   ArrowRight,
   Flame,
   CheckCircle2,
+  CalendarCheck,
+  Receipt,
 } from 'lucide-react';
 
 export default function AdminDashboardPage() {
   const { currentUser } = useAdminStore();
   const isAdmin = currentUser?.role === 'admin';
 
-  const [metrics, setMetrics] = useState({
-    totalOutlets: 0,
-    ordersToday: 0,
-    revenueToday: 0,
-    pendingOrders: 0,
-    preparingOrders: 0,
-  });
+  const [outlets, setOutlets] = useState<Outlet[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [selectedOutletId, setSelectedOutletId] = useState<string>('all');
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function fetchStats() {
+    async function loadData() {
       try {
-        const outletParam = !isAdmin && currentUser?.outlet_id ? `?outlet_id=${currentUser.outlet_id}` : '';
+        setLoading(true);
 
-        // Fetch outlets count (for admin)
-        let outletsCount = 1;
-        if (isAdmin) {
-          const resOutlets = await fetch('/api/admin/outlets');
-          const dataOutlets = await resOutlets.json();
-          outletsCount = dataOutlets.outlets?.length || 1;
-        }
+        // Fetch outlets
+        const resOutlets = await fetch('/api/admin/outlets');
+        const dataOutlets = await resOutlets.json();
+        const outletList: Outlet[] = dataOutlets.outlets || [];
+        setOutlets(outletList);
 
-        // Fetch orders
-        const resOrders = await fetch(`/api/admin/orders${outletParam}`);
+        // Fetch all orders
+        const resOrders = await fetch('/api/admin/orders');
         const dataOrders = await resOrders.json();
-        const ordersList: any[] = dataOrders.orders || [];
+        const orderList: Order[] = dataOrders.orders || [];
+        setOrders(orderList);
 
-        // Calculate today's stats
-        const todayStr = new Date().toISOString().slice(0, 10);
-        const todayOrders = ordersList.filter(
-          (o) => new Date(o.created_at).toISOString().slice(0, 10) === todayStr
-        );
-
-        const revenue = todayOrders
-          .filter((o) => o.status !== 'cancelled')
-          .reduce((sum, o) => sum + Number(o.total || 0), 0);
-
-        const pending = ordersList.filter((o) => o.status === 'pending').length;
-        const preparing = ordersList.filter((o) => o.status === 'preparing' || o.status === 'accepted').length;
-
-        setMetrics({
-          totalOutlets: outletsCount,
-          ordersToday: todayOrders.length,
-          revenueToday: revenue,
-          pendingOrders: pending,
-          preparingOrders: preparing,
-        });
+        // If manager, default to their assigned outlet
+        if (!isAdmin && currentUser?.outlet_id) {
+          setSelectedOutletId(currentUser.outlet_id);
+        }
       } catch (e) {
-        console.error('Error fetching dashboard metrics:', e);
+        console.error('Error fetching dashboard data:', e);
       } finally {
         setLoading(false);
       }
     }
 
     if (currentUser) {
-      fetchStats();
+      loadData();
     }
   }, [currentUser, isAdmin]);
+
+  // Filter orders by selected outlet
+  const filteredOrders = useMemo(() => {
+    if (selectedOutletId === 'all') {
+      return orders;
+    }
+    return orders.filter((o) => o.outlet_id === selectedOutletId);
+  }, [orders, selectedOutletId]);
+
+  // Metrics computation
+  const metrics = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayOrders = filteredOrders.filter(
+      (o) => new Date(o.created_at).toISOString().slice(0, 10) === todayStr
+    );
+
+    const revenueToday = todayOrders
+      .filter((o) => o.status !== 'cancelled')
+      .reduce((sum, o) => sum + Number(o.total || 0), 0);
+
+    const totalRevenue = filteredOrders
+      .filter((o) => o.status !== 'cancelled')
+      .reduce((sum, o) => sum + Number(o.total || 0), 0);
+
+    const pendingOrders = filteredOrders.filter((o) => o.status === 'pending').length;
+    const preparingOrders = filteredOrders.filter(
+      (o) => o.status === 'preparing' || o.status === 'accepted'
+    );
+
+    return {
+      ordersToday: todayOrders.length,
+      revenueToday,
+      totalOrders: filteredOrders.length,
+      totalRevenue,
+      pendingOrders,
+      preparingOrders: preparingOrders.length,
+    };
+  }, [filteredOrders]);
+
+  const selectedOutletName = useMemo(() => {
+    if (selectedOutletId === 'all') return 'All Outlets';
+    const found = outlets.find((o) => o.id === selectedOutletId);
+    return found ? found.name : 'Selected Outlet';
+  }, [outlets, selectedOutletId]);
 
   return (
     <RoleGuard allowedRoles={['admin', 'manager']}>
@@ -93,14 +119,66 @@ export default function AdminDashboardPage() {
               Welcome back, {currentUser?.name}!
             </h1>
             <p className="text-xs sm:text-sm text-cream/75 leading-relaxed">
-              Here is your daily operational summary for Zécha! pickup orders. Monitor live queues, manage menu inventory, and keep staff coordinated.
+              Real-time operational summary for Zécha! pickup orders. Monitor live queues, manage menu inventory, and keep staff coordinated.
             </p>
           </div>
         </div>
 
-        {/* Stats Metric Cards Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {/* Orders Today */}
+        {/* Outlet Selector (Pills / Chips) */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-espresso/70 uppercase tracking-wider">
+              Filter by Branch
+            </span>
+            <span className="text-[11px] font-semibold text-espresso/50">
+              Viewing: <strong className="text-espresso">{selectedOutletName}</strong>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+            {/* All Outlets Pill (Default) */}
+            <button
+              onClick={() => setSelectedOutletId('all')}
+              className={cn(
+                'px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all duration-150',
+                selectedOutletId === 'all'
+                  ? 'bg-orange text-white shadow-orange-sm'
+                  : 'bg-sand text-espresso hover:bg-sand/80'
+              )}
+            >
+              All Outlets
+            </button>
+
+            {/* Individual Outlet Pills */}
+            {outlets.map((outlet) => {
+              const isSelected = selectedOutletId === outlet.id;
+              return (
+                <button
+                  key={outlet.id}
+                  onClick={() => setSelectedOutletId(outlet.id)}
+                  className={cn(
+                    'px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all duration-150 flex items-center gap-1.5',
+                    isSelected
+                      ? 'bg-orange text-white shadow-orange-sm'
+                      : 'bg-sand text-espresso hover:bg-sand/80'
+                  )}
+                >
+                  <span
+                    className={cn(
+                      'w-1.5 h-1.5 rounded-full',
+                      outlet.is_active ? 'bg-brandGreen' : 'bg-brandRed'
+                    )}
+                  />
+                  <span>{outlet.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Stats Metric Cards Grid (4 Cards: Orders Today, Revenue Today, Total Orders, Total Revenue) */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* 1. Orders Today */}
           <div className="bg-card rounded-2xl border border-border p-5 shadow-xs flex items-center justify-between">
             <div>
               <span className="text-xs font-bold text-espresso/60 uppercase tracking-wider block">
@@ -110,7 +188,8 @@ export default function AdminDashboardPage() {
                 {metrics.ordersToday}
               </span>
               <span className="text-[11px] text-brandGreen font-bold flex items-center gap-1 mt-1">
-                <span>Active queue running</span>
+                <CalendarCheck className="w-3.5 h-3.5" />
+                <span>Today's pickup queue</span>
               </span>
             </div>
             <div className="w-12 h-12 rounded-2xl bg-orange/15 text-orange flex items-center justify-center">
@@ -118,7 +197,7 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
-          {/* Revenue Today */}
+          {/* 2. Revenue Today */}
           <div className="bg-card rounded-2xl border border-border p-5 shadow-xs flex items-center justify-between">
             <div>
               <span className="text-xs font-bold text-espresso/60 uppercase tracking-wider block">
@@ -129,7 +208,7 @@ export default function AdminDashboardPage() {
               </span>
               <span className="text-[11px] text-brandGreen font-bold flex items-center gap-1 mt-1">
                 <TrendingUp className="w-3.5 h-3.5" />
-                <span>Prepaid via UPI & Gateway</span>
+                <span>Prepaid orders today</span>
               </span>
             </div>
             <div className="w-12 h-12 rounded-2xl bg-mustard/20 text-[#8B6400] flex items-center justify-center">
@@ -137,59 +216,61 @@ export default function AdminDashboardPage() {
             </div>
           </div>
 
-          {/* Total Outlets (Admin only) or Active Prep Queue (Manager) */}
-          {isAdmin ? (
-            <div className="bg-card rounded-2xl border border-border p-5 shadow-xs flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-espresso/60 uppercase tracking-wider block">
-                  Total Outlets
-                </span>
-                <span className="font-display text-3xl font-black text-espresso mt-1 block">
-                  {metrics.totalOutlets}
-                </span>
-                <Link
-                  href="/admin/outlets"
-                  className="text-[11px] text-orange font-bold flex items-center gap-1 mt-1 hover:underline"
-                >
-                  <span>Manage store locations →</span>
-                </Link>
-              </div>
-              <div className="w-12 h-12 rounded-2xl bg-sand text-espresso flex items-center justify-center">
-                <Store className="w-6 h-6 stroke-[2]" />
-              </div>
+          {/* 3. Total Orders */}
+          <div className="bg-card rounded-2xl border border-border p-5 shadow-xs flex items-center justify-between">
+            <div>
+              <span className="text-xs font-bold text-espresso/60 uppercase tracking-wider block">
+                Total Orders
+              </span>
+              <span className="font-display text-3xl font-black text-espresso mt-1 block">
+                {metrics.totalOrders}
+              </span>
+              <span className="text-[11px] text-espresso/60 font-semibold flex items-center gap-1 mt-1">
+                <Receipt className="w-3.5 h-3.5 text-espresso/40" />
+                <span>All-time order count</span>
+              </span>
             </div>
-          ) : (
-            <div className="bg-card rounded-2xl border border-border p-5 shadow-xs flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-espresso/60 uppercase tracking-wider block">
-                  Kitchen In-Flight
-                </span>
-                <span className="font-display text-3xl font-black text-espresso mt-1 block">
-                  {metrics.preparingOrders}
-                </span>
-                <span className="text-[11px] text-orange-dark font-bold flex items-center gap-1 mt-1">
-                  <Flame className="w-3.5 h-3.5" />
-                  <span>Currently brewing/frying</span>
-                </span>
-              </div>
-              <div className="w-12 h-12 rounded-2xl bg-orange-soft text-orange-dark flex items-center justify-center">
-                <Flame className="w-6 h-6 stroke-[2]" />
-              </div>
+            <div className="w-12 h-12 rounded-2xl bg-sand text-espresso flex items-center justify-center">
+              <UtensilsCrossed className="w-6 h-6 stroke-[2]" />
             </div>
-          )}
+          </div>
+
+          {/* 4. Total Revenue */}
+          <div className="bg-card rounded-2xl border border-border p-5 shadow-xs flex items-center justify-between">
+            <div>
+              <span className="text-xs font-bold text-espresso/60 uppercase tracking-wider block">
+                Total Revenue
+              </span>
+              <span className="font-display text-3xl font-black text-espresso mt-1 block">
+                {formatPrice(metrics.totalRevenue)}
+              </span>
+              <span className="text-[11px] text-brandGreen font-bold flex items-center gap-1 mt-1">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                <span>All-time settled revenue</span>
+              </span>
+            </div>
+            <div className="w-12 h-12 rounded-2xl bg-[#EBF7EE] text-brandGreen flex items-center justify-center">
+              <TrendingUp className="w-6 h-6 stroke-[2]" />
+            </div>
+          </div>
         </div>
 
-        {/* Live Queue Notice */}
+        {/* Live Queue Notice (Filtered by Selected Outlet) */}
         <div className="bg-card rounded-2xl border border-border p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
             <div className="w-10 h-10 rounded-xl bg-mustard/20 text-[#8B6400] flex items-center justify-center shrink-0">
               <Clock className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="font-display font-black text-base text-espresso">
-                Live Kitchen Dispatch Queue
-              </h3>
-              <p className="text-xs text-espresso/70">
+              <div className="flex items-center gap-2">
+                <h3 className="font-display font-black text-base text-espresso">
+                  Live Kitchen Dispatch Queue
+                </h3>
+                <span className="text-[10px] bg-sand px-2 py-0.5 rounded-full font-bold text-espresso/80">
+                  {selectedOutletName}
+                </span>
+              </div>
+              <p className="text-xs text-espresso/70 mt-0.5">
                 {metrics.pendingOrders} pending orders awaiting acceptance · {metrics.preparingOrders} in preparation
               </p>
             </div>

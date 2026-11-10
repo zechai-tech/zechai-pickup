@@ -5,7 +5,7 @@ import { RoleGuard } from '@/components/admin/RoleGuard';
 import { Outlet } from '@/types/supabase';
 import { OutletForm } from '@/components/admin/OutletForm';
 import { Button } from '@/components/ui/Button';
-import { Store, Plus, Edit2, PowerOff, MapPin, Clock } from 'lucide-react';
+import { Store, Plus, Edit2, Power, Trash2, MapPin, Clock, AlertTriangle, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function AdminOutletsPage() {
@@ -13,6 +13,10 @@ export default function AdminOutletsPage() {
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [outletToEdit, setOutletToEdit] = useState<Outlet | null>(null);
+
+  // Delete confirmation modal state
+  const [outletToDelete, setOutletToDelete] = useState<Outlet | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fetchOutlets = useCallback(async () => {
     try {
@@ -30,16 +34,43 @@ export default function AdminOutletsPage() {
     fetchOutlets();
   }, [fetchOutlets]);
 
-  const handleDeactivate = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to deactivate ${name}? Customers won't be able to order from this outlet.`)) return;
-
+  // Activate / Deactivate Toggle
+  const handleToggleActive = async (outlet: Outlet) => {
     try {
-      const res = await fetch(`/api/admin/outlets?id=${id}`, { method: 'DELETE' });
+      const nextActive = !outlet.is_active;
+      const res = await fetch('/api/admin/outlets', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: outlet.id,
+          is_active: nextActive,
+        }),
+      });
       if (res.ok) {
         fetchOutlets();
       }
     } catch (e) {
-      console.error('Error deactivating outlet:', e);
+      console.error('Error toggling outlet status:', e);
+    }
+  };
+
+  // Confirm and execute outlet deletion
+  const handleConfirmDelete = async () => {
+    if (!outletToDelete) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/admin/outlets?id=${outletToDelete.id}`, { method: 'DELETE' });
+      if (res.ok) {
+        setOutletToDelete(null);
+        fetchOutlets();
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Failed to delete outlet');
+      }
+    } catch (e) {
+      console.error('Error deleting outlet:', e);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -143,6 +174,7 @@ export default function AdminOutletsPage() {
                         )}
                       </td>
                       <td className="py-3.5 px-5 text-right space-x-1.5">
+                        {/* 1. Edit */}
                         <button
                           onClick={() => handleOpenEdit(o)}
                           className="p-2 rounded-xl hover:bg-sand/60 text-espresso/70 hover:text-espresso transition-colors"
@@ -150,15 +182,29 @@ export default function AdminOutletsPage() {
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
-                        {o.is_active && (
-                          <button
-                            onClick={() => handleDeactivate(o.id, o.name)}
-                            className="p-2 rounded-xl hover:bg-[#FDF0F0] text-espresso/50 hover:text-brandRed transition-colors"
-                            title="Deactivate outlet"
-                          >
-                            <PowerOff className="w-4 h-4" />
-                          </button>
-                        )}
+
+                        {/* 2. Activate/Deactivate Toggle */}
+                        <button
+                          onClick={() => handleToggleActive(o)}
+                          className={cn(
+                            'p-2 rounded-xl transition-colors',
+                            o.is_active
+                              ? 'text-brandGreen hover:bg-[#EBF7EE]'
+                              : 'text-brandRed hover:bg-[#FDF0F0]'
+                          )}
+                          title={o.is_active ? 'Click to deactivate outlet' : 'Click to activate outlet'}
+                        >
+                          <Power className="w-4 h-4" />
+                        </button>
+
+                        {/* 3. Delete Button */}
+                        <button
+                          onClick={() => setOutletToDelete(o)}
+                          className="p-2 rounded-xl hover:bg-[#FDF0F0] text-espresso/50 hover:text-brandRed transition-colors"
+                          title="Delete outlet"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -201,14 +247,26 @@ export default function AdminOutletsPage() {
                       >
                         Edit
                       </button>
-                      {o.is_active && (
-                        <button
-                          onClick={() => handleDeactivate(o.id, o.name)}
-                          className="px-3 py-1.5 rounded-lg border border-border text-xs font-bold text-brandRed hover:bg-[#FDF0F0]"
-                        >
-                          Deactivate
-                        </button>
-                      )}
+                      <button
+                        onClick={() => handleToggleActive(o)}
+                        className={cn(
+                          'px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-colors',
+                          o.is_active
+                            ? 'border-brandGreen/30 text-brandGreen hover:bg-[#EBF7EE]'
+                            : 'border-brandRed/30 text-brandRed hover:bg-[#FDF0F0]'
+                        )}
+                        title={o.is_active ? 'Deactivate' : 'Activate'}
+                      >
+                        <Power className="w-3.5 h-3.5 inline mr-1" />
+                        <span>{o.is_active ? 'Disable' : 'Enable'}</span>
+                      </button>
+                      <button
+                        onClick={() => setOutletToDelete(o)}
+                        className="p-1.5 rounded-lg border border-border text-espresso/50 hover:text-brandRed hover:bg-[#FDF0F0] transition-colors"
+                        title="Delete outlet"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -224,6 +282,51 @@ export default function AdminOutletsPage() {
           onSuccess={fetchOutlets}
           outletToEdit={outletToEdit}
         />
+
+        {/* Delete Confirmation Modal */}
+        {outletToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-espresso/60 backdrop-blur-xs animate-in fade-in duration-150">
+            <div className="w-full max-w-md bg-card rounded-[28px] border border-border shadow-2xl p-6 relative overflow-hidden animate-in zoom-in-95 duration-150">
+              <div className="flex items-center justify-between pb-3 border-b border-border/70 mb-4">
+                <div className="flex items-center gap-2 text-brandRed font-bold text-base">
+                  <div className="w-9 h-9 rounded-xl bg-[#FDF0F0] flex items-center justify-center text-brandRed">
+                    <AlertTriangle className="w-5 h-5" />
+                  </div>
+                  <span>Delete Outlet</span>
+                </div>
+                <button
+                  onClick={() => setOutletToDelete(null)}
+                  className="p-1.5 rounded-full hover:bg-sand/60 text-espresso/60 hover:text-espresso transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <p className="text-sm text-espresso/80 leading-relaxed mb-6 font-medium">
+                Are you sure you want to delete <strong className="text-espresso font-bold">{outletToDelete.name}</strong>? This action cannot be undone.
+              </p>
+
+              <div className="flex items-center justify-end gap-3 pt-3 border-t border-border/60">
+                <button
+                  type="button"
+                  onClick={() => setOutletToDelete(null)}
+                  disabled={isDeleting}
+                  className="px-5 py-2.5 rounded-full bg-sand text-espresso font-bold text-xs hover:bg-sand/80 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmDelete}
+                  disabled={isDeleting}
+                  className="px-5 py-2.5 rounded-full bg-brandRed text-white font-bold text-xs hover:bg-[#9B1515] transition-colors shadow-sm disabled:opacity-50"
+                >
+                  {isDeleting ? 'Deleting...' : 'Delete Outlet'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </RoleGuard>
   );
