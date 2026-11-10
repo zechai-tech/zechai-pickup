@@ -9,7 +9,11 @@ interface PhoneFrameProps {
 
 export function PhoneFrame({ children }: PhoneFrameProps) {
   const pathname = usePathname();
-  const isPortal = pathname?.startsWith('/admin') || pathname === '/login' || pathname === '/orders';
+  const isPortal =
+    pathname?.startsWith('/admin') ||
+    pathname === '/login' ||
+    pathname?.startsWith('/staff') ||
+    pathname === '/orders';
 
   // Admin panel, staff portal login and orders screen are responsive
   if (isPortal) {

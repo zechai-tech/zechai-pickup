@@ -15,11 +15,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   // Clean layout for login page without topbar/sidebar
   const isLoginPage = pathname === '/admin/login';
 
-  // If a non-admin / non-manager tries to access /admin/* routes, redirect to /orders
+  // If a non-admin / non-manager tries to access /admin/* routes, redirect to /staff/orders
   useEffect(() => {
     if (!isLoginPage && currentUser) {
       if (currentUser.role !== 'admin' && currentUser.role !== 'manager') {
-        router.push('/orders');
+        router.push('/staff/orders');
       }
     }
   }, [currentUser, isLoginPage, router]);

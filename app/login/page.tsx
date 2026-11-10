@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
 import { useAdminStore } from '@/stores/admin-store';
 import { Button } from '@/components/ui/Button';
-import { Lock, Mail, AlertCircle, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Lock, Mail, AlertCircle, ArrowRight, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 
 export default function StaffLoginPage() {
   const router = useRouter();
@@ -14,6 +14,7 @@ export default function StaffLoginPage() {
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -35,12 +36,21 @@ export default function StaffLoginPage() {
         throw new Error(authError.message || 'Invalid email or password');
       }
 
-      // 2. Fetch user profile from public.users
-      const res = await fetch(`/api/admin/users/me?email=${encodeURIComponent(cleanEmail)}`);
+      const authUid = authData.user?.id;
+
+      // 2. Fetch user profile from public.users by auth UID
+      const res = await fetch(`/api/admin/users/me?uid=${authUid}&email=${encodeURIComponent(cleanEmail)}`);
       const data = await res.json();
 
       if (!res.ok || !data.user) {
+        await supabase.auth.signOut();
         throw new Error(data.error || 'User profile not found in Zécha system');
+      }
+
+      // Check if deactivated
+      if (!data.user.is_active) {
+        await supabase.auth.signOut();
+        throw new Error('Your account has been deactivated. Contact your manager.');
       }
 
       // 3. Store user in Zustand
@@ -50,7 +60,7 @@ export default function StaffLoginPage() {
       if (data.user.role === 'admin' || data.user.role === 'manager') {
         router.push('/admin/dashboard');
       } else {
-        router.push('/orders');
+        router.push('/staff/orders');
       }
     } catch (err: any) {
       console.error('Staff login error:', err);
@@ -110,13 +120,23 @@ export default function StaffLoginPage() {
               <Lock className="w-3.5 h-3.5 text-orange" />
               <span>Password</span>
             </label>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full h-12 px-4 rounded-2xl bg-sand/30 border border-border text-sm font-semibold text-espresso focus:outline-none focus:border-orange focus:ring-2 focus:ring-orange/15 transition-all"
-            />
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                className="w-full h-12 pl-4 pr-11 rounded-2xl bg-sand/30 border border-border text-sm font-semibold text-espresso focus:outline-none focus:border-orange focus:ring-2 focus:ring-orange/15 transition-all"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#75604F] hover:text-espresso transition-colors cursor-pointer"
+                title={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
           </div>
 
           <Button

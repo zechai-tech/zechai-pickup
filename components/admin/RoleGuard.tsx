@@ -25,7 +25,7 @@ export function RoleGuard({ allowedRoles, children }: RoleGuardProps) {
     // If role not allowed
     if (!allowedRoles.includes(currentUser.role)) {
       if (currentUser.role === 'staff' || currentUser.role === 'ordering_staff') {
-        router.push('/admin/orders');
+        router.push('/staff/orders');
       } else {
         router.push('/admin/dashboard');
       }

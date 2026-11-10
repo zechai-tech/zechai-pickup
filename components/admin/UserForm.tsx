@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { AppUser, Outlet, UserRole } from '@/types/supabase';
 import { Button } from '@/components/ui/Button';
-import { X, UserPlus, Key, Mail, ShieldAlert } from 'lucide-react';
+import { X, UserPlus, Key, Mail, ShieldAlert, Eye, EyeOff } from 'lucide-react';
 
 interface UserFormProps {
   isOpen: boolean;
@@ -23,6 +23,9 @@ export function UserForm({
   currentUserRole,
 }: UserFormProps) {
   const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isCustomPassword, setIsCustomPassword] = useState(false);
   const [role, setRole] = useState<UserRole>('staff');
   const [outletId, setOutletId] = useState<string>('');
   const [loading, setLoading] = useState(false);
@@ -33,20 +36,37 @@ export function UserForm({
       setName(userToEdit.name);
       setRole(userToEdit.role);
       setOutletId(userToEdit.outlet_id || '');
+      setPassword('');
+      setIsCustomPassword(false);
     } else {
       setName('');
+      setPassword('');
+      setIsCustomPassword(false);
       setRole('staff');
       setOutletId(outlets.length > 0 ? outlets[0].id : '');
     }
     setError('');
+    setShowPassword(false);
   }, [userToEdit, outlets, isOpen]);
 
   // Live auto-generated email & password per specification:
-  // email: {name.toLowerCase().replaceAll(' ','')}zechai@gmail.com
-  // password: {name.toLowerCase().replaceAll(' ','')}@zechai
   const cleanName = name.toLowerCase().replace(/\s+/g, '');
   const autoEmail = cleanName ? `${cleanName}zechai@gmail.com` : 'enter name first...';
-  const autoPassword = cleanName ? `${cleanName}@zechai` : 'enter name first...';
+  const autoPasswordPattern = cleanName ? `${cleanName}@zechai` : '{name}@zechai';
+
+  // Auto-populate password field if admin hasn't customized it
+  const handleNameChange = (newName: string) => {
+    setName(newName);
+    if (!isCustomPassword && !userToEdit) {
+      const cName = newName.toLowerCase().replace(/\s+/g, '');
+      setPassword(cName ? `${cName}@zechai` : '');
+    }
+  };
+
+  const handlePasswordChange = (newPwd: string) => {
+    setPassword(newPwd);
+    setIsCustomPassword(true);
+  };
 
   if (!isOpen) return null;
 
@@ -56,6 +76,11 @@ export function UserForm({
 
     if (!name.trim()) {
       setError('Name is required');
+      return;
+    }
+
+    if (!userToEdit && !password.trim()) {
+      setError('Password is required');
       return;
     }
 
@@ -69,12 +94,17 @@ export function UserForm({
     try {
       const url = '/api/admin/users';
       const method = userToEdit ? 'PUT' : 'POST';
-      const body = {
+      const body: any = {
         id: userToEdit?.id,
         name: name.trim(),
         role,
         outlet_id: role === 'admin' ? null : outletId,
       };
+
+      if (!userToEdit) {
+        body.password = password.trim();
+        body.email = `${cleanName}zechai@gmail.com`;
+      }
 
       const res = await fetch(url, {
         method,
@@ -114,7 +144,7 @@ export function UserForm({
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-sand/60 hover:bg-sand flex items-center justify-center text-espresso"
+            className="w-8 h-8 rounded-full bg-sand/60 hover:bg-sand flex items-center justify-center text-espresso transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -136,7 +166,7 @@ export function UserForm({
             <input
               type="text"
               value={name}
-              onChange={(e) => setName(e.target.value)}
+              onChange={(e) => handleNameChange(e.target.value)}
               placeholder="e.g. Rahul Kumar"
               required
               className="w-full h-11 px-3.5 rounded-xl bg-sand/30 border border-border text-sm font-semibold text-espresso focus:outline-none focus:border-orange"
@@ -147,7 +177,7 @@ export function UserForm({
           <div>
             <label className="block text-xs font-bold text-espresso uppercase tracking-wider mb-1 flex items-center gap-1.5">
               <Mail className="w-3.5 h-3.5 text-orange" />
-              <span>Auto-Generated Email (Login ID)</span>
+              <span>Email Address (Login ID)</span>
             </label>
             <input
               type="text"
@@ -160,22 +190,41 @@ export function UserForm({
             </span>
           </div>
 
-          {/* Auto-generated Password (Read only, live updating) */}
-          <div>
-            <label className="block text-xs font-bold text-espresso uppercase tracking-wider mb-1 flex items-center gap-1.5">
-              <Key className="w-3.5 h-3.5 text-orange" />
-              <span>Auto-Generated Password</span>
-            </label>
-            <input
-              type="text"
-              value={autoPassword}
-              readOnly
-              className="w-full h-11 px-3.5 rounded-xl bg-sand/60 border border-border text-xs font-bold text-espresso/80 cursor-not-allowed select-all"
-            />
-            <span className="text-[10px] text-espresso/50 mt-0.5 block">
-              Format: {'{name}'}@zechai
-            </span>
-          </div>
+          {/* Password Field (when creating new user) */}
+          {!userToEdit ? (
+            <div>
+              <label className="block text-xs font-bold text-espresso uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                <Key className="w-3.5 h-3.5 text-orange" />
+                <span>Initial Password *</span>
+              </label>
+              <div className="relative">
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={password}
+                  onChange={(e) => handlePasswordChange(e.target.value)}
+                  required
+                  placeholder="Set login password"
+                  className="w-full h-11 pl-3.5 pr-11 rounded-xl bg-sand/30 border border-border text-sm font-semibold text-espresso focus:outline-none focus:border-orange"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#75604F] hover:text-espresso transition-colors cursor-pointer"
+                  title={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <span className="text-[11px] text-[#75604F] mt-1 block font-medium">
+                Default pattern: {autoPasswordPattern}
+              </span>
+            </div>
+          ) : (
+            <div className="p-3 rounded-xl bg-sand/30 border border-border text-xs text-espresso/70">
+              <span className="font-bold text-espresso block mb-0.5">Password Management</span>
+              Use the Key icon on the user row in the list to reset this user's password.
+            </div>
+          )}
 
           {/* Role Dropdown */}
           <div>
@@ -221,7 +270,7 @@ export function UserForm({
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2.5 rounded-full border border-border font-bold text-xs text-espresso hover:bg-sand/40"
+              className="px-4 py-2.5 rounded-full border border-border font-bold text-xs text-espresso hover:bg-sand/40 transition-colors"
             >
               Cancel
             </button>

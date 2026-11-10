@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { createAuthUser } from '@/lib/supabase-admin';
 import bcrypt from 'bcryptjs';
 
 // GET /api/admin/users - list users (admin sees all, or filter by outlet_id)
@@ -7,7 +8,7 @@ export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const outletId = searchParams.get('outlet_id');
-    const role = searchParams.get('role'); // caller's role
+    const role = searchParams.get('role');
 
     let sql = `
       SELECT u.id, u.name, u.email, u.role, u.outlet_id, u.is_active, u.created_at,
@@ -32,11 +33,11 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/admin/users - create user in auth.users + public.users
+// POST /api/admin/users - create user in Supabase Auth first, then in public.users
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { name, role, outlet_id } = body;
+    const { name, role, outlet_id, password: customPassword, email: customEmail } = body;
 
     if (!name || !role) {
       return NextResponse.json({ error: 'Name and role are required' }, { status: 400 });
@@ -46,64 +47,38 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Outlet is required for non-admin users' }, { status: 400 });
     }
 
-    // Auto-generate email and password per spec:
-    // email: {name.toLowerCase().replaceAll(' ','')}zechai@gmail.com
-    // password: {name.toLowerCase().replaceAll(' ','')}@zechai
     const cleanName = name.toLowerCase().replace(/\s+/g, '');
-    const email = `${cleanName}zechai@gmail.com`;
-    const plainPassword = `${cleanName}@zechai`;
-    const passwordHash = await bcrypt.hash(plainPassword, 10);
+    const email = customEmail ? customEmail.trim().toLowerCase() : `${cleanName}zechai@gmail.com`;
+    const plainPassword = customPassword && customPassword.trim() ? customPassword.trim() : `${cleanName}@zechai`;
 
-    // 1. Check if user already exists
+    // 1. Check if user already exists in public.users
     const existing = await query('SELECT id FROM public.users WHERE email = $1', [email]);
     if (existing.rows.length > 0) {
       return NextResponse.json(
-        { error: `User with email ${email} already exists.` },
+        { error: `User with email ${email} already exists in database.` },
         { status: 400 }
       );
     }
 
-    // 2. Create in auth.users so Supabase Auth sign-in works
-    // Generate UUID
-    const idRes = await query('SELECT gen_random_uuid() as id');
-    const userId = idRes.rows[0].id;
+    // 2. FIRST create Supabase Auth account using Supabase Admin API
+    const { id: authUserId, error: authError } = await createAuthUser(email, plainPassword);
 
-    // Insert into auth.users (encrypted_password handled via bcrypt)
-    try {
-      await query(
-        `
-        INSERT INTO auth.users (
-          id, instance_id, aud, role, email, encrypted_password,
-          email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
-          created_at, updated_at
-        )
-        VALUES (
-          $1, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
-          $2, crypt($3, gen_salt('bf')), now(),
-          '{"provider":"email","providers":["email"]}',
-          json_build_object('name', $4, 'role', $5),
-          now(), now()
-        )
-        `,
-        [userId, email, plainPassword, name, role]
-      );
-    } catch (authErr: any) {
-      console.warn('auth.users insert notice:', authErr.message);
-      // If auth.users already had the email, update password
-      await query(
-        `UPDATE auth.users SET encrypted_password = crypt($1, gen_salt('bf')), email_confirmed_at = now() WHERE email = $2`,
-        [plainPassword, email]
+    if (authError || !authUserId) {
+      return NextResponse.json(
+        { error: authError || 'Failed to create Supabase Auth account.' },
+        { status: 400 }
       );
     }
 
-    // 3. Insert into public.users
+    // 3. THEN insert into public.users using authUserId as the id
+    const passwordHash = await bcrypt.hash(plainPassword, 10);
     const userRes = await query(
       `
       INSERT INTO public.users (id, name, email, password_hash, role, outlet_id, is_active)
       VALUES ($1, $2, $3, $4, $5, $6, true)
       RETURNING id, name, email, role, outlet_id, is_active, created_at
       `,
-      [userId, name, email, passwordHash, role, outlet_id || null]
+      [authUserId, name.trim(), email, passwordHash, role, outlet_id || null]
     );
 
     return NextResponse.json({
@@ -137,45 +112,36 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ success: true, user: res.rows[0] });
     }
 
-    // If name changed, regenerate email & password per spec
-    let emailUpdateSql = '';
-    const params: unknown[] = [id];
-    let newEmail = '';
-    let newPlainPassword = '';
+    const fields: string[] = [];
+    const params: unknown[] = [];
+    let idx = 1;
 
-    if (name) {
-      const cleanName = name.toLowerCase().replace(/\s+/g, '');
-      newEmail = `${cleanName}zechai@gmail.com`;
-      newPlainPassword = `${cleanName}@zechai`;
-      const newHash = await bcrypt.hash(newPlainPassword, 10);
-
-      params.push(name, newEmail, newHash);
-      emailUpdateSql = `, name = $2, email = $3, password_hash = $4`;
-
-      // Update auth.users password and email
-      try {
-        await query(
-          `UPDATE auth.users SET email = $1, encrypted_password = crypt($2, gen_salt('bf')) WHERE id = $3`,
-          [newEmail, newPlainPassword, id]
-        );
-      } catch (e) {
-        console.warn('Could not update auth.users email:', e);
-      }
+    if (name !== undefined) {
+      fields.push(`name = $${idx++}`);
+      params.push(name.trim());
+    }
+    if (role !== undefined) {
+      fields.push(`role = $${idx++}`);
+      params.push(role);
+    }
+    if (outlet_id !== undefined) {
+      fields.push(`outlet_id = $${idx++}`);
+      params.push(outlet_id || null);
+    }
+    if (is_active !== undefined) {
+      fields.push(`is_active = $${idx++}`);
+      params.push(is_active);
     }
 
-    let roleParamIndex = params.length + 1;
-    let outletParamIndex = params.length + 2;
-    let activeParamIndex = params.length + 3;
+    if (fields.length === 0) {
+      return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
+    }
 
-    params.push(role, outlet_id || null, is_active !== undefined ? is_active : true);
-
+    params.push(id);
     const updateSql = `
       UPDATE public.users
-      SET role = $${roleParamIndex},
-          outlet_id = $${outletParamIndex},
-          is_active = $${activeParamIndex}
-          ${emailUpdateSql}
-      WHERE id = $1
+      SET ${fields.join(', ')}
+      WHERE id = $${idx}
       RETURNING id, name, email, role, outlet_id, is_active, created_at
     `;
 
@@ -184,8 +150,6 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({
       success: true,
       user: res.rows[0],
-      newEmail: newEmail || undefined,
-      newPassword: newPlainPassword || undefined,
     });
   } catch (error: any) {
     console.error('Error updating user:', error);
