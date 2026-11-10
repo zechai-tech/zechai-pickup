@@ -17,6 +17,7 @@ import { useToast } from '@/components/ui/Toast';
 import { VegBadge } from '@/components/ui/VegBadge';
 import { Stepper } from '@/components/ui/Stepper';
 import { CartFloatingBar } from '@/components/menu/CartFloatingBar';
+import { ActiveOrderBanner } from '@/components/ui/ActiveOrderBanner';
 import { CATEGORIES } from '@/lib/mock-data';
 import { cn, formatPrice } from '@/lib/utils';
 
@@ -89,6 +90,9 @@ export default function MenuPage() {
 
   return (
     <div className="min-h-[100dvh] h-full flex flex-col bg-cream page-transition overflow-hidden relative w-full max-w-full">
+      {/* Active Order Banner if placed recently */}
+      <ActiveOrderBanner />
+
       {/* Top App Header (Fixed / Sticky at top) */}
       <header className="shrink-0 z-30 bg-cream/95 backdrop-blur-md px-4 pt-3 pb-2 border-b border-border/50 sticky top-0 w-full">
         <div className="flex items-center justify-between">

@@ -8,6 +8,7 @@ import { getOutlets } from '@/lib/api';
 import { Outlet } from '@/types';
 import { useZechaStore } from '@/lib/store';
 import { Button } from '@/components/ui/Button';
+import { ActiveOrderBanner } from '@/components/ui/ActiveOrderBanner';
 import { cn } from '@/lib/utils';
 
 export default function OutletPage() {
@@ -39,6 +40,9 @@ export default function OutletPage() {
 
   return (
     <div className="min-h-[100dvh] h-full flex flex-col overflow-hidden bg-cream relative w-full max-w-full">
+      {/* Active Order Banner if placed recently */}
+      <ActiveOrderBanner />
+
       {/* Fixed Header */}
       <header className="shrink-0 px-5 pt-3 pb-2.5 flex items-center justify-between border-b border-border/40 bg-cream/95 backdrop-blur-xs z-10">
         <div className="relative w-28 h-8">

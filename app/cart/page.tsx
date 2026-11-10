@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -39,17 +39,18 @@ export default function CartPage() {
   const [phone, setPhone] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const isNavigatingToSuccessRef = useRef(false);
 
   // Validate 10-digit Indian phone number
   const cleanPhone = phone.replace(/\D/g, '');
   const isPhoneValid = /^\d{10}$/.test(cleanPhone);
 
-  // Route guard: if empty cart, redirect to /menu
+  // Route guard: if empty cart and not placing order, redirect to /menu
   useEffect(() => {
-    if (cart.length === 0) {
+    if (cart.length === 0 && !submitting && !isNavigatingToSuccessRef.current) {
       router.push('/menu');
     }
-  }, [cart.length, router]);
+  }, [cart.length, submitting, router]);
 
   // Lock body scroll when phone modal is open (Fix 7)
   useEffect(() => {
@@ -84,7 +85,10 @@ export default function CartPage() {
   };
 
   const handlePlaceOrder = async () => {
-    if (!isPhoneValid) return;
+    if (!isPhoneValid) {
+      setErrorMsg('Please enter a valid 10-digit phone number');
+      return;
+    }
     setErrorMsg('');
     setSubmitting(true);
 
@@ -92,133 +96,120 @@ export default function CartPage() {
       // 1. Save customer info to store
       setCustomer({ phone: cleanPhone, note: kitchenNote });
 
-      // Generate 4-digit pickup code
+      // Step 1: Generate 4-digit pickup code FIRST
       const pickupCode = Math.floor(1000 + Math.random() * 9000).toString();
+      const selectedOutletName = outlet?.name || 'Zécha! Thamarassery';
+      const selectedOutletId = outlet?.id || '2d784d85-8afb-4524-bdd7-1d4a31f8b8d5';
 
-      // 2. Prepare Order Payload for Supabase with status 'pending_payment'
-      const newOrder = {
-        outlet_id: outlet?.id || '2d784d85-8afb-4524-bdd7-1d4a31f8b8d5',
-        customer_name: customer.name || 'Customer',
-        customer_phone: cleanPhone,
-        items: cart.map((item) => ({
-          id: item.itemId,
-          name: item.name,
-          price: item.unitPrice,
-          quantity: item.qty,
-          qty: item.qty,
-        })),
-        total: grandTotal,
-        status: 'pending_payment',
-        pickup_code: pickupCode,
-        kitchen_note: kitchenNote.trim() || null,
-        created_at: new Date().toISOString(),
-      };
-
-      // 3. Insert into Supabase orders table
-      const { data: createdOrder, error: dbError } = await (supabase
+      // Step 2: Insert order into Supabase with status 'pending_payment'
+      const { data: order, error: insertError } = await (supabase
         .from('orders') as any)
-        .insert(newOrder)
+        .insert({
+          outlet_id: selectedOutletId,
+          customer_name: customer.name || 'Customer',
+          customer_phone: cleanPhone,
+          items: cart.map((item) => ({
+            id: item.itemId,
+            name: item.name,
+            price: item.unitPrice,
+            quantity: item.qty,
+            qty: item.qty,
+            ...(item.image ? { image: item.image } : {}),
+          })),
+          total: grandTotal,
+          status: 'pending_payment',
+          pickup_code: pickupCode,
+          kitchen_note: kitchenNote.trim() || null,
+        })
         .select()
         .single();
 
-      if (dbError) {
-        console.error('Supabase order creation error:', dbError);
-        throw new Error(dbError.message || 'Failed to create order in system');
+      if (insertError) {
+        console.error('Order insert error:', insertError);
+        setErrorMsg('Failed to create order. Please try again.');
+        setSubmitting(false);
+        return;
       }
 
-      const orderId = createdOrder?.id;
+      const orderId = order.id;
 
-      // 4. Create Razorpay order via Backend API (/api/create-order)
-      let razorpayOrderId = '';
-      try {
-        const orderRes = await fetch('/api/create-order', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            amount: Math.round(grandTotal * 100),
-            currency: 'INR',
-            receipt: `rcpt_${pickupCode}`,
-          }),
-        });
+      // Step 3: CRITICAL: Save to sessionStorage BEFORE opening Razorpay
+      sessionStorage.setItem(
+        'pendingOrder',
+        JSON.stringify({
+          orderId: order.id,
+          pickupCode: pickupCode,
+          outletName: selectedOutletName,
+          total: grandTotal,
+        })
+      );
 
-        if (orderRes.ok) {
-          const orderData = await orderRes.json();
-          razorpayOrderId = orderData.order_id;
-        } else {
-          const errData = await orderRes.json().catch(() => ({}));
-          console.warn('Backend Razorpay order creation notice:', errData);
-        }
-      } catch (apiErr) {
-        console.warn('Could not connect to /api/create-order:', apiErr);
-      }
-
-      // 5. Ensure Razorpay checkout script is loaded
-      const scriptLoaded = await loadRazorpayScript();
+      // Step 4: Ensure Razorpay SDK is loaded
+      await loadRazorpayScript();
       const razorpayKey =
         process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_TyVNQcm7PK4njO';
 
-      // Function to finalize confirmed order
-      const finalizeSuccess = async (paymentId: string) => {
-        try {
-          await (supabase.from('orders') as any)
-            .update({
-              status: 'confirmed',
-              payment_id: paymentId,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', orderId);
-        } catch (e) {
-          console.error('Error confirming order in Supabase:', e);
-        }
-        clearCart();
-        const outletName = encodeURIComponent(outlet?.name || 'Zécha! Thamarassery');
-        router.push(`/order-success?code=${pickupCode}&outlet=${outletName}`);
-      };
-
-      if (!scriptLoaded || typeof (window as any).Razorpay === 'undefined') {
-        throw new Error('Razorpay SDK failed to load. Please check your internet connection.');
-      }
-
-      // 6. Initialize Razorpay Checkout
+      // Step 5: Open Razorpay Checkout
       const options = {
         key: razorpayKey,
-        amount: Math.round(grandTotal * 100), // paise
+        amount: Math.round(grandTotal * 100), // paise — Math.round to avoid decimals
         currency: 'INR',
         name: 'Zécha!',
         description: `Order #${pickupCode}`,
-        order_id: razorpayOrderId || undefined,
         image: '/assets/logo-orange.png',
         handler: async function (response: any) {
-          // If order_id was used, verify signature on backend (/api/verify-payment)
-          if (response.razorpay_order_id && response.razorpay_signature) {
-            try {
-              const verifyRes = await fetch('/api/verify-payment', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  razorpay_order_id: response.razorpay_order_id,
-                  razorpay_payment_id: response.razorpay_payment_id,
-                  razorpay_signature: response.razorpay_signature,
-                }),
-              });
+          // Payment SUCCESS
+          isNavigatingToSuccessRef.current = true;
+          try {
+            const { error: updateError } = await (supabase.from('orders') as any)
+              .update({
+                status: 'confirmed',
+                payment_id: response.razorpay_payment_id,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', orderId);
 
-              if (!verifyRes.ok) {
-                const verifyErr = await verifyRes.json();
-                console.error('Payment verification failed:', verifyErr);
-                setErrorMsg('Payment verification failed: invalid signature.');
-                await (supabase.from('orders') as any)
-                  .update({ status: 'payment_failed' })
-                  .eq('id', orderId);
-                setSubmitting(false);
-                return;
-              }
-            } catch (vErr) {
-              console.warn('Signature verification endpoint check:', vErr);
+            if (updateError) {
+              console.error('Order update error:', updateError);
             }
-          }
 
-          // Payment SUCCESS: update order to confirmed and redirect
-          await finalizeSuccess(response.razorpay_payment_id);
+            // Save active order details in localStorage for persistent banner tracking
+            localStorage.setItem('activeOrderCode', pickupCode);
+            localStorage.setItem('activeOrderTime', Date.now().toString());
+            localStorage.setItem('activeOrderOutlet', selectedOutletName);
+
+            // Clear cart from Zustand store
+            clearCart();
+
+            // Clear pending order state
+            sessionStorage.removeItem('pendingOrder');
+
+            // FORCE navigation — use window.location instead of router.push
+            window.location.href = `/order-success?code=${pickupCode}&outlet=${encodeURIComponent(
+              selectedOutletName
+            )}&total=${grandTotal}`;
+          } catch (err) {
+            console.error('Post-payment error:', err);
+            // Even if Supabase update fails, still go to success — payment was received
+            window.location.href = `/order-success?code=${pickupCode}&outlet=${encodeURIComponent(
+              selectedOutletName
+            )}&total=${grandTotal}`;
+          }
+        },
+        modal: {
+          ondismiss: async function () {
+            // User closed Razorpay without paying
+            await (supabase.from('orders') as any)
+              .update({
+                status: 'payment_failed',
+              })
+              .eq('id', orderId);
+            sessionStorage.removeItem('pendingOrder');
+            setSubmitting(false);
+            setErrorMsg('Payment cancelled');
+          },
+          confirm_close: true, // Ask user before closing
+          escape: false, // Don't allow escape key to close
         },
         prefill: {
           contact: cleanPhone,
@@ -226,36 +217,25 @@ export default function CartPage() {
         theme: {
           color: '#CE5535',
         },
-        modal: {
-          ondismiss: async function () {
-            // Payment DISMISSED: mark order as payment_failed
-            await (supabase.from('orders') as any)
-              .update({ status: 'payment_failed' })
-              .eq('id', orderId);
-            setSubmitting(false);
-          },
-        },
       };
 
-      try {
-        const rzp = new (window as any).Razorpay(options);
-        rzp.on('payment.failed', async function (resp: any) {
-          console.warn('Payment failed:', resp.error);
-          await (supabase.from('orders') as any)
-            .update({ status: 'payment_failed' })
-            .eq('id', orderId);
-          setErrorMsg(resp.error?.description || 'Payment was unsuccessful. Please try again.');
-          setSubmitting(false);
-        });
-        rzp.open();
-      } catch (err: any) {
-        console.error('Razorpay checkout initialization error:', err);
-        setErrorMsg('Failed to open payment gateway. Please try again.');
+      const rzp = new (window as any).Razorpay(options);
+
+      rzp.on('payment.failed', async function (response: any) {
+        await (supabase.from('orders') as any)
+          .update({
+            status: 'payment_failed',
+          })
+          .eq('id', orderId);
+        sessionStorage.removeItem('pendingOrder');
         setSubmitting(false);
-      }
-    } catch (err: any) {
-      console.error('Order checkout error:', err);
-      setErrorMsg(err.message || 'Something went wrong while placing order.');
+        setErrorMsg('Payment failed. Please try again.');
+      });
+
+      rzp.open();
+    } catch (err) {
+      console.error('Payment flow error:', err);
+      setErrorMsg('Something went wrong. Please try again.');
       setSubmitting(false);
     }
   };
