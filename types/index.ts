@@ -3,9 +3,10 @@ export type OutletStatus = 'open' | 'closed';
 export interface Outlet {
   id: string;
   name: string;
-  distance: string;
-  statusText: string;
+  distance?: string;
+  statusText?: string;
   isOpen: boolean;
+  is_active?: boolean;
   closingTime?: string;
   openingTime?: string;
   address?: string;
@@ -27,16 +28,22 @@ export interface MenuItemSize {
 export interface MenuItem {
   id: string;
   name: string;
-  category: 'chai_coffee' | 'coolers' | 'chicken' | 'fries' | 'subs';
+  category: string;
   price: number;
   description: string;
   image: string;
+  image_url?: string;
   isVeg: boolean;
+  is_veg?: boolean;
   isBestseller?: boolean;
+  is_bestseller?: boolean;
   hasCustomization?: boolean;
   sizes?: MenuItemSize[];
   sugarLevels?: ('No sugar' | 'Less' | 'Regular')[];
   addons?: MenuItemOption[];
+  is_available?: boolean;
+  outlet_id?: string;
+  sort_order?: number;
 }
 
 export interface CartItemAddon {

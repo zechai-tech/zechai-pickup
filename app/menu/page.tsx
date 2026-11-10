@@ -17,18 +17,17 @@ import { useToast } from '@/components/ui/Toast';
 import { VegBadge } from '@/components/ui/VegBadge';
 import { Stepper } from '@/components/ui/Stepper';
 import { CartFloatingBar } from '@/components/menu/CartFloatingBar';
-import { CATEGORIES } from '@/lib/mock-data';
 import { cn, formatPrice } from '@/lib/utils';
 
 export default function MenuPage() {
   const router = useRouter();
-  const { outlet, cart, addToCart, updateCartQty } = useZechaStore();
+  const { outlet, cart, addItem, updateCartQty } = useZechaStore();
   const { showToast } = useToast();
 
   const [items, setItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string>('chai_coffee');
+  const [selectedCategory, setSelectedCategory] = useState<string>('All');
 
   useEffect(() => {
     // If no outlet selected, redirect to /outlet
@@ -43,30 +42,38 @@ export default function MenuPage() {
     });
   }, [outlet, router]);
 
-  // Compute quantity in cart for a base itemId
+  // Compute quantity in cart for an itemId
   const getItemQtyInCart = (itemId: string): number => {
     return cart
-      .filter((i) => i.itemId === itemId)
+      .filter((i) => i.itemId === itemId || i.lineId === itemId)
       .reduce((sum, i) => sum + i.qty, 0);
   };
 
   const getItemLineId = (itemId: string): string | undefined => {
-    const item = cart.find((i) => i.itemId === itemId);
+    const item = cart.find((i) => i.itemId === itemId || i.lineId === itemId);
     return item?.lineId;
   };
 
-  const handleSimpleAdd = (item: MenuItem) => {
-    addToCart({
-      lineId: `${item.id}-default`,
-      itemId: item.id,
+  const handleAddToCart = (item: MenuItem) => {
+    addItem({
+      id: item.id,
       name: item.name,
+      price: item.price,
       image: item.image,
       isVeg: item.isVeg,
-      unitPrice: item.price,
-      qty: 1,
     });
     showToast(`Added ${item.name} to cart`, 'success');
   };
+
+  // Categories list
+  const categories = useMemo(() => {
+    const cats = new Set<string>();
+    cats.add('All');
+    items.forEach((item) => {
+      if (item.category) cats.add(item.category);
+    });
+    return Array.from(cats);
+  }, [items]);
 
   // Filter items by search query and category
   const filteredItems = useMemo(() => {
@@ -77,14 +84,19 @@ export default function MenuPage() {
         (item) =>
           item.name.toLowerCase().includes(q) ||
           item.description.toLowerCase().includes(q) ||
-          item.category.toLowerCase().includes(q)
+          (item.category && item.category.toLowerCase().includes(q))
+      );
+    } else if (selectedCategory !== 'All') {
+      result = result.filter(
+        (item) => item.category?.toLowerCase() === selectedCategory.toLowerCase()
       );
     }
     return result;
-  }, [items, searchQuery]);
+  }, [items, searchQuery, selectedCategory]);
 
+  // Bestsellers list
   const bestsellers = useMemo(() => {
-    return items.filter((item) => item.isBestseller);
+    return items.filter((item) => item.is_bestseller || item.isBestseller);
   }, [items]);
 
   return (
@@ -110,7 +122,7 @@ export default function MenuPage() {
               PICKUP FROM
             </span>
             <div className="flex items-center gap-1 text-[15px] font-extrabold text-espresso group-hover:text-orange transition-colors">
-              <span className="truncate max-w-[200px]">{outlet?.name || 'Select Outlet'}</span>
+              <span className="truncate max-w-[200px]">{outlet?.name || 'Zécha! Thamarassery'}</span>
               <ChevronDown className="w-4 h-4 stroke-[2.5]" />
             </div>
           </Link>
@@ -143,12 +155,12 @@ export default function MenuPage() {
 
         {/* Category Horizontal Chips */}
         <div className="flex items-center gap-2 overflow-x-auto pt-2.5 pb-1 scrollbar-none -mx-4 px-4">
-          {CATEGORIES.map((cat) => {
-            const isActive = selectedCategory === cat.id;
+          {categories.map((cat) => {
+            const isActive = selectedCategory === cat;
             return (
               <button
-                key={cat.id}
-                onClick={() => setSelectedCategory(cat.id)}
+                key={cat}
+                onClick={() => setSelectedCategory(cat)}
                 className={cn(
                   'h-8 px-3.5 rounded-full text-xs font-bold whitespace-nowrap transition-all duration-150 active:scale-95 flex-shrink-0',
                   isActive
@@ -156,7 +168,7 @@ export default function MenuPage() {
                     : 'bg-sand text-espresso hover:bg-[#ebd8b7]'
                 )}
               >
-                {cat.label}
+                {cat}
               </button>
             );
           })}
@@ -175,22 +187,26 @@ export default function MenuPage() {
           </div>
         ) : (
           <>
-            {/* Bestsellers Section (visible when not actively searching) */}
-            {!searchQuery && (
+            {/* Bestsellers Section (horizontally scrollable cards per Change 3) */}
+            {!searchQuery && bestsellers.length > 0 && (
               <div>
-                <h2 className="font-display text-lg font-black text-espresso mb-2.5">
-                  Bestsellers
-                </h2>
+                <div className="flex items-center justify-between mb-2">
+                  <h2 className="font-display text-lg font-black text-espresso">
+                    Bestsellers
+                  </h2>
+                  <span className="text-[11px] font-bold text-espresso/50 uppercase tracking-wider">
+                    Most Popular
+                  </span>
+                </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  {bestsellers.slice(0, 2).map((item) => {
+                <div className="flex items-center gap-3 overflow-x-auto snap-x snap-mandatory pb-2 -mx-4 px-4 scrollbar-none">
+                  {bestsellers.map((item) => {
                     const qtyInCart = getItemQtyInCart(item.id);
-                    const lineId = getItemLineId(item.id);
 
                     return (
                       <div
                         key={item.id}
-                        className="bg-card rounded-card border border-border overflow-hidden flex flex-col justify-between p-2.5 shadow-sm hover:border-orange/40 transition-all"
+                        className="w-[160px] flex-shrink-0 snap-start bg-card rounded-card border border-border overflow-hidden flex flex-col justify-between p-2.5 shadow-sm hover:border-orange/40 transition-all"
                       >
                         {/* Image container with Badge */}
                         <div className="relative w-full h-24 rounded-xl overflow-hidden bg-sand/40">
@@ -203,11 +219,11 @@ export default function MenuPage() {
                           {/* Badge */}
                           <div className="absolute top-2 left-2">
                             {qtyInCart > 0 ? (
-                              <span className="bg-espresso text-cream text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-sm">
+                              <span className="bg-espresso text-cream text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-sm">
                                 IN CART
                               </span>
                             ) : (
-                              <span className="bg-mustard text-espresso text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-sm">
+                              <span className="bg-mustard text-espresso text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full shadow-sm">
                                 BESTSELLER
                               </span>
                             )}
@@ -225,31 +241,14 @@ export default function MenuPage() {
                               {formatPrice(item.price)}
                             </span>
 
-                            {/* Add button or Stepper */}
-                            {item.hasCustomization ? (
-                              <button
-                                onClick={() => router.push(`/item/${item.id}`)}
-                                className="w-7 h-7 rounded-full bg-orange text-cream flex items-center justify-center hover:bg-orange-dark active:scale-90 transition-all shadow-orange-sm"
-                                aria-label={`Customise ${item.name}`}
-                              >
-                                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                              </button>
-                            ) : qtyInCart > 0 && lineId ? (
-                              <Stepper
-                                size="sm"
-                                value={qtyInCart}
-                                onIncrement={() => updateCartQty(lineId, 1)}
-                                onDecrement={() => updateCartQty(lineId, -1)}
-                              />
-                            ) : (
-                              <button
-                                onClick={() => handleSimpleAdd(item)}
-                                className="w-7 h-7 rounded-full bg-orange text-cream flex items-center justify-center hover:bg-orange-dark active:scale-90 transition-all shadow-orange-sm"
-                                aria-label={`Add ${item.name}`}
-                              >
-                                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                              </button>
-                            )}
+                            {/* Direct Add Button */}
+                            <button
+                              onClick={() => handleAddToCart(item)}
+                              className="w-7 h-7 rounded-full bg-orange text-cream flex items-center justify-center hover:bg-orange-dark active:scale-90 transition-all shadow-orange-sm"
+                              aria-label={`Add ${item.name}`}
+                            >
+                              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -263,19 +262,22 @@ export default function MenuPage() {
             <div>
               <div className="flex items-center justify-between mb-2.5">
                 <h2 className="font-display text-lg font-black text-espresso">
-                  {searchQuery
-                    ? `Results for "${searchQuery}"`
-                    : CATEGORIES.find((c) => c.id === selectedCategory)?.label || 'Menu'}
+                  {searchQuery ? `Results for "${searchQuery}"` : selectedCategory}
                 </h2>
                 <span className="text-xs text-espresso/60 font-semibold">
-                  {filteredItems.filter((i) => searchQuery || i.category === selectedCategory).length} items
+                  {filteredItems.length} items
                 </span>
               </div>
 
-              <div className="space-y-2.5">
-                {filteredItems
-                  .filter((item) => searchQuery || item.category === selectedCategory)
-                  .map((item) => {
+              {filteredItems.length === 0 ? (
+                <div className="bg-card rounded-2xl border border-border p-8 text-center">
+                  <p className="text-xs text-espresso/60 font-semibold">
+                    No items available in this category.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {filteredItems.map((item) => {
                     const qtyInCart = getItemQtyInCart(item.id);
                     const lineId = getItemLineId(item.id);
 
@@ -285,14 +287,7 @@ export default function MenuPage() {
                         className="bg-card rounded-card border border-border p-3 flex items-center justify-between gap-3 shadow-xs hover:border-orange/30 transition-all"
                       >
                         {/* Thumbnail */}
-                        <div
-                          onClick={() => {
-                            if (item.hasCustomization) {
-                              router.push(`/item/${item.id}`);
-                            }
-                          }}
-                          className="relative w-18 h-18 w-16 h-16 rounded-2xl overflow-hidden bg-sand/40 flex-shrink-0 cursor-pointer"
-                        >
+                        <div className="relative w-16 h-16 rounded-2xl overflow-hidden bg-sand/40 flex-shrink-0">
                           <Image
                             src={item.image}
                             alt={item.name}
@@ -302,23 +297,18 @@ export default function MenuPage() {
                         </div>
 
                         {/* Details */}
-                        <div
-                          onClick={() => {
-                            if (item.hasCustomization) {
-                              router.push(`/item/${item.id}`);
-                            }
-                          }}
-                          className="flex-1 min-w-0 pr-1 cursor-pointer"
-                        >
+                        <div className="flex-1 min-w-0 pr-1">
                           <div className="flex items-center gap-1.5 mb-0.5">
                             <VegBadge isVeg={item.isVeg} size="sm" />
                             <h3 className="font-bold text-sm text-espresso truncate">
                               {item.name}
                             </h3>
                           </div>
-                          <p className="text-xs text-espresso/60 line-clamp-1 mb-1 font-normal">
-                            {item.description}
-                          </p>
+                          {item.description && (
+                            <p className="text-xs text-espresso/60 line-clamp-1 mb-1 font-normal">
+                              {item.description}
+                            </p>
+                          )}
                           <span className="font-extrabold text-[14px] text-espresso">
                             {formatPrice(item.price)}
                           </span>
@@ -326,14 +316,7 @@ export default function MenuPage() {
 
                         {/* Action: ADD or Stepper */}
                         <div className="flex-shrink-0">
-                          {item.hasCustomization ? (
-                            <button
-                              onClick={() => router.push(`/item/${item.id}`)}
-                              className="px-3.5 py-1.5 rounded-full border border-border bg-sand/60 hover:bg-sand text-xs font-black text-orange active:scale-95 transition-all shadow-xs"
-                            >
-                              ADD
-                            </button>
-                          ) : qtyInCart > 0 && lineId ? (
+                          {qtyInCart > 0 && lineId ? (
                             <Stepper
                               size="sm"
                               value={qtyInCart}
@@ -342,7 +325,7 @@ export default function MenuPage() {
                             />
                           ) : (
                             <button
-                              onClick={() => handleSimpleAdd(item)}
+                              onClick={() => handleAddToCart(item)}
                               className="px-3.5 py-1.5 rounded-full border border-border bg-sand/60 hover:bg-sand text-xs font-black text-orange active:scale-95 transition-all shadow-xs"
                             >
                               ADD
@@ -352,7 +335,8 @@ export default function MenuPage() {
                       </div>
                     );
                   })}
-              </div>
+                </div>
+              )}
             </div>
           </>
         )}

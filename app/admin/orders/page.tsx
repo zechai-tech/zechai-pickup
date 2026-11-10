@@ -132,13 +132,21 @@ export default function AdminOrdersPage() {
         prev.map((o) => (o.id === orderId ? { ...o, status: nextStatus } : o))
       );
 
-      const res = await fetch('/api/admin/orders', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: orderId, status: nextStatus }),
-      });
+      // Direct update to Supabase
+      const { error: supabaseError } = await (supabase
+        .from('orders') as any)
+        .update({ status: nextStatus, updated_at: new Date().toISOString() })
+        .eq('id', orderId);
 
-      if (!res.ok) throw new Error('Failed to update status');
+      if (supabaseError) {
+        // Fallback to server API endpoint
+        const res = await fetch('/api/admin/orders', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: orderId, status: nextStatus }),
+        });
+        if (!res.ok) throw new Error('Failed to update status in database');
+      }
 
       showToast(`Order status updated to ${nextStatus}`, 'info');
       fetchOrders();

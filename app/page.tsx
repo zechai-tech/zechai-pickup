@@ -100,7 +100,7 @@ export default function WelcomePage() {
         {/* Feature chips */}
         <div className="flex flex-wrap items-center justify-center gap-2 max-w-[320px] mb-8">
           <span className="px-3.5 py-1.5 rounded-full bg-sand text-espresso font-semibold text-xs tracking-wide">
-            Ready in ~10 min
+            Ready in 15-20 min
           </span>
           <span className="px-3.5 py-1.5 rounded-full bg-sand text-espresso font-semibold text-xs tracking-wide">
             Pay via UPI

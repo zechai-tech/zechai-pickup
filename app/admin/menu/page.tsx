@@ -18,6 +18,7 @@ import {
   XCircle,
   Store,
   Sparkles,
+  Star,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -92,6 +93,26 @@ export default function AdminMenuPage() {
       }
     } catch (e) {
       console.error('Error toggling availability:', e);
+    }
+  };
+
+  // Quick toggle bestseller
+  const handleToggleBestseller = async (item: MenuItem) => {
+    try {
+      const nextBestseller = !item.is_bestseller;
+      const res = await fetch('/api/admin/menu', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...item,
+          is_bestseller: nextBestseller,
+        }),
+      });
+      if (res.ok) {
+        fetchMenuItems();
+      }
+    } catch (e) {
+      console.error('Error toggling bestseller:', e);
     }
   };
 
@@ -275,6 +296,18 @@ export default function AdminMenuPage() {
 
                       <div className="flex items-center gap-1">
                         <button
+                          onClick={() => handleToggleBestseller(item)}
+                          className={cn(
+                            'p-1.5 rounded-lg transition-colors',
+                            item.is_bestseller
+                              ? 'bg-mustard/30 text-[#8B6400]'
+                              : 'hover:bg-sand/60 text-espresso/40 hover:text-mustard'
+                          )}
+                          title={item.is_bestseller ? 'Remove from Bestsellers' : 'Mark as Bestseller'}
+                        >
+                          <Star className={cn('w-3.5 h-3.5', item.is_bestseller ? 'fill-mustard text-[#8B6400]' : '')} />
+                        </button>
+                        <button
                           onClick={() => handleOpenEdit(item)}
                           className="p-1.5 rounded-lg hover:bg-sand/60 text-espresso/70 hover:text-espresso transition-colors"
                           title="Edit item"
@@ -337,6 +370,18 @@ export default function AdminMenuPage() {
                       {item.is_available ? 'Available' : 'Sold Out'}
                     </button>
                     <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => handleToggleBestseller(item)}
+                        className={cn(
+                          'p-1 rounded transition-colors',
+                          item.is_bestseller
+                            ? 'bg-mustard/30 text-[#8B6400]'
+                            : 'bg-sand/40 text-espresso/40'
+                        )}
+                        title="Toggle Bestseller"
+                      >
+                        <Star className={cn('w-3 h-3', item.is_bestseller ? 'fill-mustard text-[#8B6400]' : '')} />
+                      </button>
                       <button
                         onClick={() => handleOpenEdit(item)}
                         className="p-1 rounded bg-sand/40 text-espresso"

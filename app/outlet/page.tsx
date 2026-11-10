@@ -127,7 +127,7 @@ export default function OutletPage() {
                         {item.name}
                       </h2>
                       <p className="text-xs font-medium text-espresso/70 mt-0.5 flex items-center gap-1.5">
-                        <span>{item.distance}</span>
+                        <span>{item.address || item.distance || 'Kerala'}</span>
                         <span>·</span>
                         {isClosed ? (
                           <span className="text-brandRed font-semibold">{item.statusText}</span>
@@ -175,7 +175,7 @@ export default function OutletPage() {
                   Pickup now
                 </div>
                 <div className="text-xs font-medium text-cream/70 mt-0.5">
-                  Ready in ~12 min
+                  Ready in 15-20 min
                 </div>
               </div>
             </div>

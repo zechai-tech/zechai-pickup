@@ -21,6 +21,7 @@ interface ZechaState {
   // Actions
   setOutlet: (outlet: Outlet) => void;
   addToCart: (item: CartItem) => void;
+  addItem: (item: { id: string; name: string; price: number; image?: string; isVeg?: boolean }) => void;
   updateCartQty: (lineId: string, delta: number) => void;
   removeFromCart: (lineId: string) => void;
   clearCart: () => void;
@@ -47,10 +48,36 @@ export const useZechaStore = create<ZechaState>()(
 
       setOutlet: (outlet: Outlet) => set({ outlet }),
 
+      addItem: (item) => {
+        const { cart } = get();
+        const existing = cart.find((i) => i.itemId === item.id || i.lineId === item.id);
+        if (existing) {
+          const updated = cart.map((i) =>
+            i.lineId === existing.lineId ? { ...i, qty: i.qty + 1 } : i
+          );
+          set({ cart: updated });
+        } else {
+          set({
+            cart: [
+              ...cart,
+              {
+                lineId: item.id,
+                itemId: item.id,
+                name: item.name,
+                image: item.image || '/assets/chai.jpg',
+                isVeg: item.isVeg ?? true,
+                unitPrice: item.price,
+                qty: 1,
+              },
+            ],
+          });
+        }
+      },
+
       addToCart: (newItem: CartItem) => {
         const { cart } = get();
         // Check if exact same lineId already exists
-        const existingIndex = cart.findIndex((i) => i.lineId === newItem.lineId);
+        const existingIndex = cart.findIndex((i) => i.lineId === newItem.lineId || i.itemId === newItem.itemId);
         if (existingIndex > -1) {
           const updated = [...cart];
           updated[existingIndex].qty += newItem.qty;
@@ -140,8 +167,8 @@ export const useZechaStore = create<ZechaState>()(
 // Derived helper functions
 export function getCartSummary(cart: CartItem[]) {
   const count = cart.reduce((acc, item) => acc + item.qty, 0);
-  const itemTotal = cart.reduce((acc, item) => acc + item.unitPrice * item.qty, 0);
-  const gst = Math.round(itemTotal * 0.05);
-  const grandTotal = itemTotal + gst;
+  const itemTotal = cart.reduce((acc, item) => acc + Number(item.unitPrice || 0) * item.qty, 0);
+  const gst = 0; // Tax display removed per Change 6
+  const grandTotal = itemTotal;
   return { count, itemTotal, gst, grandTotal };
 }

@@ -44,7 +44,11 @@ export type OrderStatus =
   | 'preparing'
   | 'ready'
   | 'picked_up'
-  | 'cancelled';
+  | 'cancelled'
+  | 'pending_payment'
+  | 'confirmed'
+  | 'completed'
+  | 'payment_failed';
 
 export interface OrderItem {
   id?: string;
@@ -52,7 +56,8 @@ export interface OrderItem {
   name: string;
   price?: number;
   unitPrice?: number;
-  qty: number;
+  qty?: number;
+  quantity?: number;
   size?: string;
   sugar?: string;
   addons?: Array<{ id: string; name: string; priceDelta: number }>;
@@ -68,6 +73,7 @@ export interface Order {
   status: OrderStatus;
   pickup_code: string;
   payment_id: string | null;
+  kitchen_note?: string | null;
   created_at: string;
   updated_at: string;
   outlet?: Outlet | null;
@@ -93,12 +99,32 @@ export type Database = {
       };
       orders: {
         Row: Order;
-        Insert: Omit<Order, 'id' | 'created_at' | 'updated_at' | 'outlet'> & {
+        Insert: {
           id?: string;
+          outlet_id: string;
+          customer_name?: string;
+          customer_phone?: string;
+          items?: any;
+          total: number;
+          status?: OrderStatus | string;
+          pickup_code?: string;
+          payment_id?: string | null;
+          kitchen_note?: string | null;
           created_at?: string;
           updated_at?: string;
         };
-        Update: Partial<Omit<Order, 'id' | 'created_at' | 'outlet'>>;
+        Update: {
+          outlet_id?: string;
+          customer_name?: string;
+          customer_phone?: string;
+          items?: any;
+          total?: number;
+          status?: OrderStatus | string;
+          pickup_code?: string;
+          payment_id?: string | null;
+          kitchen_note?: string | null;
+          updated_at?: string;
+        };
       };
     };
   };

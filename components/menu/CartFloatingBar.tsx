@@ -19,22 +19,17 @@ export function CartFloatingBar() {
         className="flex items-center justify-between p-3 px-4 rounded-[22px] bg-espresso text-cream shadow-float border border-espresso/20 active:scale-[0.98] transition-all duration-150"
       >
         <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-[#CE5535] flex items-center justify-center flex-shrink-0 shadow-sm">
+          <div className="w-10 h-10 rounded-2xl bg-orange flex items-center justify-center flex-shrink-0 shadow-sm">
             <ShoppingBag className="w-5 h-5 text-cream stroke-[2]" />
           </div>
-          <div>
-            <span className="text-xs text-cream/70 font-medium block">
-              {count} {count === 1 ? 'item' : 'items'}
-            </span>
-            <span className="font-extrabold text-[17px] text-cream tabular-nums">
-              {formatPrice(grandTotal)}
-            </span>
+          <div className="font-extrabold text-sm text-cream tabular-nums">
+            {count} {count === 1 ? 'item' : 'items'} · {formatPrice(grandTotal)}
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 font-bold text-sm bg-cream/10 hover:bg-cream/20 py-2.5 px-4 rounded-full transition-colors">
+        <div className="flex items-center gap-1.5 font-bold text-xs bg-cream/15 hover:bg-cream/25 py-2.5 px-4 rounded-full text-cream transition-colors">
           <span>View cart</span>
-          <ArrowRight className="w-4 h-4" />
+          <ArrowRight className="w-3.5 h-3.5" />
         </div>
       </Link>
     </div>
