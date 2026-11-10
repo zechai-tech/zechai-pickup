@@ -6,6 +6,7 @@ export interface UserScope {
   role: UserRole;
   outlet_id: string | null;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   isManager: boolean;
   isStaff: boolean;
 }
@@ -13,7 +14,8 @@ export interface UserScope {
 export function getUserScope(user: AppUser | null): UserScope {
   const role: UserRole = user?.role || 'staff';
   const outlet_id = user?.outlet_id || null;
-  const isAdmin = role === 'admin';
+  const isSuperAdmin = role === 'super_admin' || role === 'admin';
+  const isAdmin = role === 'admin' || role === 'super_admin';
   const isManager = role === 'manager';
   const isStaff = role === 'staff' || role === 'ordering_staff';
 
@@ -21,6 +23,7 @@ export function getUserScope(user: AppUser | null): UserScope {
     role,
     outlet_id,
     isAdmin,
+    isSuperAdmin,
     isManager,
     isStaff,
   };
@@ -67,7 +70,7 @@ export const useAdminStore = create<AdminState>()(
           user: user,
           sessionToken: token,
           // If manager or staff, strictly lock selectedOutletId to their outlet_id
-          selectedOutletId: user?.role === 'admin' ? null : user?.outlet_id || null,
+          selectedOutletId: (user?.role === 'admin' || user?.role === 'super_admin') ? null : user?.outlet_id || null,
         });
       },
 

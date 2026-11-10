@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { useZechaStore, getCartSummary } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
+import { useToast } from '@/components/ui/Toast';
 import { Stepper } from '@/components/ui/Stepper';
 import { Button } from '@/components/ui/Button';
 import { formatPrice } from '@/lib/utils';
@@ -33,6 +34,7 @@ export default function CartPage() {
   } = useZechaStore();
 
   const { count, grandTotal } = getCartSummary(cart);
+  const { showToast } = useToast();
 
   const [kitchenNote, setKitchenNote] = useState(customer.note || '');
   const [isPhoneModalOpen, setIsPhoneModalOpen] = useState(false);
@@ -66,6 +68,22 @@ export default function CartPage() {
 
   const handleProceedToPayClick = () => {
     setIsPhoneModalOpen(true);
+  };
+
+  // Dynamically load Cashfree checkout script if not ready
+  const loadCashfreeScript = (): Promise<boolean> => {
+    return new Promise((resolve) => {
+      if (typeof window !== 'undefined' && (window as any).Cashfree) {
+        resolve(true);
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = 'https://sdk.cashfree.com/js/v3/cashfree.js';
+      script.async = true;
+      script.onload = () => resolve(true);
+      script.onerror = () => resolve(false);
+      document.body.appendChild(script);
+    });
   };
 
   // Dynamically load Razorpay checkout script
@@ -133,7 +151,7 @@ export default function CartPage() {
 
       const orderId = order.id;
 
-      // Step 3: CRITICAL: Save to sessionStorage BEFORE opening Razorpay
+      // Step 3: CRITICAL: Save to sessionStorage BEFORE opening gateway
       sessionStorage.setItem(
         'pendingOrder',
         JSON.stringify({
@@ -144,95 +162,192 @@ export default function CartPage() {
         })
       );
 
-      // Step 4: Ensure Razorpay SDK is loaded
-      await loadRazorpayScript();
-      const razorpayKey =
-        process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || 'rzp_test_TyW3SbL5Pf7xZ5';
+      // Step 4: Fetch which payment gateway is active from app_settings
+      const { data: settings } = await (supabase.from('app_settings') as any)
+        .select('value')
+        .eq('key', 'payment_gateway')
+        .single();
 
-      // Step 5: Open Razorpay Checkout
-      const options = {
-        key: razorpayKey,
-        amount: Math.round(grandTotal * 100), // paise — Math.round to avoid decimals
-        currency: 'INR',
-        name: 'Zécha!',
-        description: `Order #${pickupCode}`,
-        image: '/assets/logo-orange.png',
-        handler: async function (response: any) {
-          // Payment SUCCESS
-          isNavigatingToSuccessRef.current = true;
-          try {
-            const { error: updateError } = await (supabase.from('orders') as any)
-              .update({
-                status: 'confirmed',
-                payment_id: response.razorpay_payment_id,
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', orderId);
+      const gwConfig = settings?.value;
+      const activeGW = gwConfig?.active;
 
-            if (updateError) {
-              console.error('Order update error:', updateError);
-            }
+      if (activeGW === 'cashfree') {
+        // ==========================================
+        // CASHFREE FLOW
+        // ==========================================
+        await loadCashfreeScript();
 
-            // Save active order details in localStorage for persistent banner tracking
-            localStorage.setItem('activeOrderCode', pickupCode);
-            localStorage.setItem('activeOrderTime', Date.now().toString());
-            localStorage.setItem('activeOrderOutlet', selectedOutletName);
+        const cfResponse = await fetch('/api/create-cashfree-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: `zc_${order.id.replace(/-/g, '').slice(0, 16)}_${Date.now()}`,
+            orderAmount: grandTotal,
+            customerPhone: cleanPhone,
+            customerName: customer.name || 'Customer',
+          }),
+        });
 
-            // Clear cart from Zustand store
-            clearCart();
+        const cfOrder = await cfResponse.json();
 
-            // Clear pending order state
-            sessionStorage.removeItem('pendingOrder');
+        if (!cfOrder.payment_session_id) {
+          showToast('Payment initialization failed.', 'error');
+          setErrorMsg(cfOrder.error || 'Payment initialization failed.');
+          await (supabase.from('orders') as any)
+            .update({ status: 'payment_failed' })
+            .eq('id', order.id);
+          setSubmitting(false);
+          return;
+        }
 
-            // FORCE navigation — use window.location instead of router.push
-            window.location.href = `/order-success?code=${pickupCode}&outlet=${encodeURIComponent(
-              selectedOutletName
-            )}&total=${grandTotal}`;
-          } catch (err) {
-            console.error('Post-payment error:', err);
-            // Even if Supabase update fails, still go to success — payment was received
-            window.location.href = `/order-success?code=${pickupCode}&outlet=${encodeURIComponent(
-              selectedOutletName
-            )}&total=${grandTotal}`;
-          }
-        },
-        modal: {
-          ondismiss: async function () {
-            // User closed Razorpay without paying
-            await (supabase.from('orders') as any)
-              .update({
-                status: 'payment_failed',
-              })
-              .eq('id', orderId);
-            sessionStorage.removeItem('pendingOrder');
-            setSubmitting(false);
-            setErrorMsg('Payment cancelled');
-          },
-          confirm_close: true, // Ask user before closing
-          escape: false, // Don't allow escape key to close
-        },
-        prefill: {
-          contact: cleanPhone,
-        },
-        theme: {
-          color: '#CE5535',
-        },
-      };
+        const cashfree = (window as any).Cashfree({
+          mode: gwConfig?.cashfree?.mode === 'production' ? 'production' : 'sandbox',
+        });
 
-      const rzp = new (window as any).Razorpay(options);
-
-      rzp.on('payment.failed', async function (response: any) {
-        await (supabase.from('orders') as any)
-          .update({
-            status: 'payment_failed',
+        cashfree
+          .checkout({
+            paymentSessionId: cfOrder.payment_session_id,
+            redirectTarget: '_self',
           })
-          .eq('id', orderId);
-        sessionStorage.removeItem('pendingOrder');
-        setSubmitting(false);
-        setErrorMsg('Payment failed. Please try again.');
-      });
+          .then(async (result: any) => {
+            if (result.paymentDetails) {
+              isNavigatingToSuccessRef.current = true;
+              await (supabase.from('orders') as any)
+                .update({
+                  status: 'confirmed',
+                  payment_id: result.paymentDetails.cf_payment_id || 'cf_payment',
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', order.id);
 
-      rzp.open();
+              localStorage.setItem('activeOrderCode', pickupCode);
+              localStorage.setItem('activeOrderTime', Date.now().toString());
+              localStorage.setItem('activeOrderOutlet', selectedOutletName);
+
+              clearCart();
+              sessionStorage.removeItem('pendingOrder');
+              window.location.href = `/order-success?code=${pickupCode}&outlet=${encodeURIComponent(
+                selectedOutletName
+              )}&total=${grandTotal}`;
+            }
+            if (result.error) {
+              await (supabase.from('orders') as any)
+                .update({ status: 'payment_failed' })
+                .eq('id', order.id);
+              sessionStorage.removeItem('pendingOrder');
+              showToast('Payment failed.', 'error');
+              setErrorMsg('Payment failed.');
+              setSubmitting(false);
+            }
+          })
+          .catch(async (err: any) => {
+            console.error('Cashfree checkout error:', err);
+            await (supabase.from('orders') as any)
+              .update({ status: 'payment_failed' })
+              .eq('id', order.id);
+            sessionStorage.removeItem('pendingOrder');
+            showToast('Payment failed.', 'error');
+            setErrorMsg('Payment failed.');
+            setSubmitting(false);
+          });
+      } else if (activeGW === 'razorpay') {
+        // ==========================================
+        // RAZORPAY FLOW
+        // ==========================================
+        await loadRazorpayScript();
+        const razorpayKey =
+          gwConfig?.razorpay?.key_id ||
+          process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ||
+          'rzp_test_TyW3SbL5Pf7xZ5';
+
+        const options = {
+          key: razorpayKey,
+          amount: Math.round(grandTotal * 100), // paise — Math.round to avoid decimals
+          currency: 'INR',
+          name: 'Zécha!',
+          description: `Order #${pickupCode}`,
+          image: '/assets/logo-orange.png',
+          handler: async function (response: any) {
+            // Payment SUCCESS
+            isNavigatingToSuccessRef.current = true;
+            try {
+              const { error: updateError } = await (supabase.from('orders') as any)
+                .update({
+                  status: 'confirmed',
+                  payment_id: response.razorpay_payment_id,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', orderId);
+
+              if (updateError) {
+                console.error('Order update error:', updateError);
+              }
+
+              // Save active order details in localStorage for persistent banner tracking
+              localStorage.setItem('activeOrderCode', pickupCode);
+              localStorage.setItem('activeOrderTime', Date.now().toString());
+              localStorage.setItem('activeOrderOutlet', selectedOutletName);
+
+              // Clear cart from Zustand store
+              clearCart();
+
+              // Clear pending order state
+              sessionStorage.removeItem('pendingOrder');
+
+              // FORCE navigation — use window.location instead of router.push
+              window.location.href = `/order-success?code=${pickupCode}&outlet=${encodeURIComponent(
+                selectedOutletName
+              )}&total=${grandTotal}`;
+            } catch (err) {
+              console.error('Post-payment error:', err);
+              window.location.href = `/order-success?code=${pickupCode}&outlet=${encodeURIComponent(
+                selectedOutletName
+              )}&total=${grandTotal}`;
+            }
+          },
+          modal: {
+            ondismiss: async function () {
+              // User closed Razorpay without paying
+              await (supabase.from('orders') as any)
+                .update({
+                  status: 'payment_failed',
+                })
+                .eq('id', orderId);
+              sessionStorage.removeItem('pendingOrder');
+              setSubmitting(false);
+              setErrorMsg('Payment cancelled');
+            },
+            confirm_close: true,
+            escape: false,
+          },
+          prefill: {
+            contact: cleanPhone,
+          },
+          theme: {
+            color: '#CE5535',
+          },
+        };
+
+        const rzp = new (window as any).Razorpay(options);
+
+        rzp.on('payment.failed', async function () {
+          await (supabase.from('orders') as any)
+            .update({
+              status: 'payment_failed',
+            })
+            .eq('id', orderId);
+          sessionStorage.removeItem('pendingOrder');
+          setSubmitting(false);
+          showToast('Payment failed. Please try again.', 'error');
+          setErrorMsg('Payment failed. Please try again.');
+        });
+
+        rzp.open();
+      } else {
+        showToast('Payment not configured. Please contact support.', 'error');
+        setErrorMsg('Payment not configured. Please contact support.');
+        setSubmitting(false);
+      }
     } catch (err) {
       console.error('Payment flow error:', err);
       setErrorMsg('Something went wrong. Please try again.');

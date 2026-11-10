@@ -26,7 +26,11 @@ export function RoleGuard({ allowedRoles, children }: RoleGuardProps) {
     }
 
     // If role not allowed
-    if (!allowedRoles.includes(currentUser.role)) {
+    const isRoleAllowed =
+      allowedRoles.includes(currentUser.role) ||
+      (allowedRoles.includes('admin') && currentUser.role === 'super_admin');
+
+    if (!isRoleAllowed) {
       if (currentUser.role === 'staff' || currentUser.role === 'ordering_staff') {
         router.replace('/staff/orders');
       } else {
@@ -46,7 +50,11 @@ export function RoleGuard({ allowedRoles, children }: RoleGuardProps) {
     );
   }
 
-  if (!allowedRoles.includes(currentUser.role)) {
+  const isRoleAllowed =
+    allowedRoles.includes(currentUser.role) ||
+    (allowedRoles.includes('admin') && currentUser.role === 'super_admin');
+
+  if (!isRoleAllowed) {
     return null;
   }
 

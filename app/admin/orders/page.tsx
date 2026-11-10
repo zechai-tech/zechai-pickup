@@ -24,7 +24,7 @@ type FilterTab = 'all' | 'pending' | 'active' | 'completed';
 
 export default function AdminOrdersPage() {
   const { currentUser, selectedOutletId, setSelectedOutletId, soundEnabled, syncTrigger } = useAdminStore();
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
   const { showToast } = useToast();
 
   const [outlets, setOutlets] = useState<Outlet[]>([]);

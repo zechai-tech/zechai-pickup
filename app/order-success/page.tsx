@@ -8,9 +8,42 @@ import { Button } from '@/components/ui/Button';
 
 function OrderSuccessContent() {
   const searchParams = useSearchParams();
-  const code = searchParams.get('code') || '----';
-  const outlet = searchParams.get('outlet') || 'Zécha! Thamarassery';
-  const total = searchParams.get('total') || '';
+  const [code, setCode] = React.useState(searchParams.get('code') || '');
+  const [outlet, setOutlet] = React.useState(searchParams.get('outlet') || 'Zécha! Thamarassery');
+  const [total, setTotal] = React.useState(searchParams.get('total') || '');
+
+  React.useEffect(() => {
+    const paramCode = searchParams.get('code');
+    const paramOutlet = searchParams.get('outlet');
+    const paramTotal = searchParams.get('total');
+
+    if (paramCode) {
+      setCode(paramCode);
+      if (paramOutlet) setOutlet(paramOutlet);
+      if (paramTotal) setTotal(paramTotal);
+      return;
+    }
+
+    // Check sessionStorage
+    const pending = sessionStorage.getItem('pendingOrder');
+    if (pending) {
+      try {
+        const parsed = JSON.parse(pending);
+        if (parsed.pickupCode) setCode(parsed.pickupCode);
+        if (parsed.outletName) setOutlet(parsed.outletName);
+        if (parsed.total) setTotal(parsed.total.toString());
+        return;
+      } catch (e) {}
+    }
+
+    // Check localStorage
+    const storedCode = localStorage.getItem('activeOrderCode');
+    const storedOutlet = localStorage.getItem('activeOrderOutlet');
+    if (storedCode) setCode(storedCode);
+    if (storedOutlet) setOutlet(storedOutlet);
+  }, [searchParams]);
+
+  const displayCode = code || '----';
 
   return (
     <div className="min-h-[100dvh] h-full flex flex-col justify-between bg-[#FDFBEA] p-4 pb-8 page-transition overflow-y-auto overflow-x-hidden scrollbar-none w-full max-w-full">
@@ -35,7 +68,7 @@ function OrderSuccessContent() {
             Your pickup code
           </span>
           <div className="font-display font-black text-5xl text-[#CE5535] tracking-widest my-1 select-all">
-            {code}
+            {displayCode}
           </div>
         </div>
 
@@ -63,7 +96,7 @@ function OrderSuccessContent() {
       {/* 5 & 6: Action Buttons */}
       <div className="shrink-0 w-full max-w-[320px] mx-auto space-y-2.5 pt-1 safe-bottom px-1">
         {/* Track my order button (Primary orange) */}
-        <Link href={`/track-order?code=${code}`} className="block w-full">
+        <Link href={`/track-order?code=${displayCode}`} className="block w-full">
           <Button className="w-full h-12 text-base font-bold bg-[#CE5535] hover:bg-[#A8401F] text-white shadow-orange group rounded-2xl">
             <span>Track my order</span>
             <ArrowRight className="w-4 h-4 ml-1.5 group-hover:translate-x-1 transition-transform" />

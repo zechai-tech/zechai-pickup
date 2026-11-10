@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils';
 
 export default function AdminMenuPage() {
   const { currentUser, selectedOutletId, setSelectedOutletId, syncTrigger } = useAdminStore();
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
 
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [items, setItems] = useState<MenuItem[]>([]);

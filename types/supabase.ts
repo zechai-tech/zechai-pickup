@@ -1,4 +1,4 @@
-export type UserRole = 'admin' | 'manager' | 'staff' | 'ordering_staff';
+export type UserRole = 'super_admin' | 'admin' | 'manager' | 'staff' | 'ordering_staff';
 
 export interface Outlet {
   id: string;
@@ -124,6 +124,29 @@ export type Database = {
           payment_id?: string | null;
           kitchen_note?: string | null;
           updated_at?: string;
+        };
+      };
+      app_settings: {
+        Row: {
+          id: string;
+          key: string;
+          value: any;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          id?: string;
+          key: string;
+          value: any;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: {
+          id?: string;
+          key?: string;
+          value?: any;
+          updated_at?: string;
+          updated_by?: string | null;
         };
       };
     };

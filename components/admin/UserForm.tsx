@@ -27,7 +27,7 @@ export function UserForm({
 }: UserFormProps) {
   const { currentUser } = useAdminStore();
   const activeRole: UserRole = currentUser?.role || currentUserRole || 'staff';
-  const isAdmin = activeRole === 'admin';
+  const isAdmin = activeRole === 'admin' || activeRole === 'super_admin';
   const isManager = activeRole === 'manager';
   const managerOutletId = currentUser?.outlet_id || defaultOutletId || '';
   const managerOutletName =
@@ -99,12 +99,12 @@ export function UserForm({
     }
 
     const effectiveOutletId = isAdmin
-      ? role === 'admin'
+      ? (role === 'admin' || role === 'super_admin')
         ? null
         : outletId
       : managerOutletId;
 
-    if (role !== 'admin' && !effectiveOutletId) {
+    if (role !== 'admin' && role !== 'super_admin' && !effectiveOutletId) {
       setError('Assigned outlet is required for this role');
       return;
     }

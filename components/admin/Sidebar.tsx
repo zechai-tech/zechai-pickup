@@ -13,6 +13,7 @@ import {
   Store,
   X,
   ExternalLink,
+  CreditCard,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -30,7 +31,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
     setMounted(true);
   }, []);
 
-  const isAdmin = mounted && currentUser?.role === 'admin';
+  const isAdmin = mounted && (currentUser?.role === 'admin' || currentUser?.role === 'super_admin');
+  const isSuperAdmin = mounted && (currentUser?.role === 'super_admin' || currentUser?.role === 'admin');
 
   const navItems = [
     {
@@ -119,6 +121,33 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
               </Link>
             );
           })}
+
+          {/* Settings Section (super_admin only) */}
+          {isSuperAdmin && (
+            <div className="pt-4 mt-4 border-t border-border/70 space-y-1.5">
+              <p className="px-3.5 pb-1 text-[11px] font-black tracking-wider uppercase text-espresso/45">
+                Settings
+              </p>
+              <Link
+                href="/admin/settings/payments"
+                onClick={onClose}
+                className={cn(
+                  'flex items-center gap-3 px-3.5 py-3 rounded-2xl text-sm font-bold transition-all duration-150',
+                  pathname === '/admin/settings/payments'
+                    ? 'bg-espresso text-cream shadow-sm'
+                    : 'text-espresso/80 hover:bg-sand/60 hover:text-espresso'
+                )}
+              >
+                <CreditCard
+                  className={cn(
+                    'w-5 h-5 transition-colors',
+                    pathname === '/admin/settings/payments' ? 'text-mustard' : 'text-espresso/60'
+                  )}
+                />
+                <span>Payments</span>
+              </Link>
+            </div>
+          )}
         </nav>
       </div>
 

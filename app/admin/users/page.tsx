@@ -26,7 +26,7 @@ import { cn } from '@/lib/utils';
 
 export default function AdminUsersPage() {
   const { currentUser, syncTrigger } = useAdminStore();
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
 
   const [users, setUsers] = useState<AppUser[]>([]);
   const [outlets, setOutlets] = useState<Outlet[]>([]);
@@ -90,7 +90,7 @@ export default function AdminUsersPage() {
   const visibleUsers: AppUser[] = useMemo(() => {
     return users.filter((u: AppUser) => {
       if (isAdmin) return true;
-      return u.outlet_id === currentUser?.outlet_id && u.role !== 'admin';
+      return u.outlet_id === currentUser?.outlet_id && u.role !== 'admin' && u.role !== 'super_admin';
     });
   }, [users, isAdmin, currentUser?.outlet_id]);
 
@@ -213,6 +213,7 @@ export default function AdminUsersPage() {
   };
 
   const roleBadges: Record<string, string> = {
+    super_admin: 'bg-[#FBEDE3] text-orange-dark border-orange/40 font-bold',
     admin: 'bg-orange/15 text-orange-dark border-orange/30',
     manager: 'bg-mustard/20 text-[#7D5A00] border-mustard/40',
     staff: 'bg-[#EBF7EE] text-brandGreen border-brandGreen/30',
@@ -349,7 +350,7 @@ export default function AdminUsersPage() {
                         </td>
                         <td className="py-3.5 px-4">
                           <span className="text-xs font-semibold text-espresso">
-                            {u.outlet_name || (u.role === 'admin' ? 'All Outlets (Global)' : 'Unassigned')}
+                            {u.outlet_name || (u.role === 'admin' || u.role === 'super_admin' ? 'All Outlets (Global)' : 'Unassigned')}
                           </span>
                         </td>
                         <td className="py-3.5 px-4">
@@ -459,7 +460,7 @@ export default function AdminUsersPage() {
                     <div className="flex items-center justify-between text-xs pt-2 border-t border-border/60">
                       <div className="flex items-center gap-2">
                         <span className="text-espresso/70 font-medium">
-                          {u.outlet_name || (u.role === 'admin' ? 'Global Access' : 'No Outlet')}
+                          {u.outlet_name || (u.role === 'admin' || u.role === 'super_admin' ? 'Global Access' : 'No Outlet')}
                         </span>
                         {u.is_active ? (
                           <span className="text-[10px] font-bold text-brandGreen">· Active</span>
