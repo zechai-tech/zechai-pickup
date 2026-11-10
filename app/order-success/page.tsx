@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/Button';
 function OrderSuccessContent() {
   const searchParams = useSearchParams();
   const code = searchParams.get('code') || '----';
+  const outletParam = searchParams.get('outlet');
 
   const { outlet, clearCart } = useZechaStore();
   const [order, setOrder] = useState<Order | null>(null);
@@ -50,6 +51,7 @@ function OrderSuccessContent() {
   }, [code, clearCart]);
 
   const outletName =
+    outletParam ||
     order?.outlet?.name ||
     outlet?.name ||
     'Zécha! Thamarassery';
@@ -134,7 +136,7 @@ function OrderSuccessContent() {
       <div className="shrink-0 p-4 bg-cream/95 backdrop-blur-md border-t border-border z-30 pb-[max(16px,env(safe-area-inset-bottom))] w-full">
         <NextLink href="/outlet" className="block w-full">
           <Button className="w-full text-base font-bold shadow-orange group">
-            <span>Order more</span>
+            <span>Back to menu</span>
             <ArrowRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
           </Button>
         </NextLink>

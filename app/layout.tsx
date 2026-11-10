@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { Archivo } from 'next/font/google';
+import Script from 'next/script';
 import './globals.css';
 import { ToastProvider } from '@/components/ui/Toast';
 import { PhoneFrame } from '@/components/ui/PhoneFrame';
@@ -31,6 +32,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={archivo.variable}>
+      <head>
+        <Script
+          src="https://checkout.razorpay.com/v1/checkout.js"
+          strategy="beforeInteractive"
+        />
+      </head>
       <body className="antialiased min-h-screen">
         <ToastProvider>
           <PhoneFrame>{children}</PhoneFrame>
