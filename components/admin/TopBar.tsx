@@ -1,10 +1,10 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAdminStore } from '@/stores/admin-store';
 import { supabase } from '@/lib/supabase';
-import { LogOut, Menu, Bell, BellOff, UserCircle } from 'lucide-react';
+import { LogOut, Menu, Bell, BellOff, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface TopBarProps {
@@ -13,7 +13,32 @@ interface TopBarProps {
 
 export function TopBar({ onToggleMobileMenu }: TopBarProps) {
   const router = useRouter();
-  const { currentUser, logout, soundEnabled, setSoundEnabled } = useAdminStore();
+  const {
+    currentUser,
+    logout,
+    soundEnabled,
+    setSoundEnabled,
+    triggerSync,
+    isSyncing,
+    setSyncing,
+  } = useAdminStore();
+
+  const [syncToast, setSyncToast] = useState(false);
+
+  const handleSyncClick = async () => {
+    if (isSyncing) return;
+    setSyncing(true);
+    triggerSync();
+
+    // Allow components to trigger re-fetches
+    setTimeout(() => {
+      setSyncing(false);
+      setSyncToast(true);
+      setTimeout(() => {
+        setSyncToast(false);
+      }, 2000);
+    }, 600);
+  };
 
   const handleLogout = async () => {
     try {
@@ -33,7 +58,15 @@ export function TopBar({ onToggleMobileMenu }: TopBarProps) {
   };
 
   return (
-    <header className="h-16 bg-card border-b border-border px-4 md:px-6 flex items-center justify-between sticky top-0 z-30 shadow-xs">
+    <header className="h-16 bg-card border-b border-border px-4 md:px-6 flex items-center justify-between sticky top-0 z-30 shadow-xs relative">
+      {/* Sync Success Toast */}
+      {syncToast && (
+        <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-50 bg-[#2F7A3E] text-white px-3.5 py-1.5 rounded-full text-xs font-bold shadow-md flex items-center gap-1.5 animate-in fade-in slide-in-from-top-2 duration-150">
+          <CheckCircle2 className="w-3.5 h-3.5" />
+          <span>Data synced</span>
+        </div>
+      )}
+
       {/* Left side: Mobile menu toggle + breadcrumb / brand */}
       <div className="flex items-center gap-3">
         {onToggleMobileMenu && (
@@ -55,13 +88,26 @@ export function TopBar({ onToggleMobileMenu }: TopBarProps) {
         </div>
       </div>
 
-      {/* Right side: User profile, Sound toggle, Logout */}
-      <div className="flex items-center gap-2.5 sm:gap-4">
+      {/* Right side: Sync button, Sound toggle, User profile, Logout */}
+      <div className="flex items-center gap-2 sm:gap-3">
+        {/* Sync button (Left of Alerts) */}
+        <button
+          onClick={handleSyncClick}
+          disabled={isSyncing}
+          className={cn(
+            'px-3 py-2 rounded-full border border-border bg-card text-espresso hover:bg-orange-soft hover:text-orange-dark hover:border-orange/30 text-xs font-semibold flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-75'
+          )}
+          title="Refresh & sync data from Supabase"
+        >
+          <RefreshCw className={cn('w-3.5 h-3.5 text-orange', isSyncing && 'animate-spin')} />
+          <span>Sync</span>
+        </button>
+
         {/* Sound toggle button */}
         <button
           onClick={() => setSoundEnabled(!soundEnabled)}
           className={cn(
-            'p-2 rounded-full border transition-all flex items-center gap-1.5 text-xs font-semibold',
+            'px-3 py-2 rounded-full border transition-all flex items-center gap-1.5 text-xs font-semibold',
             soundEnabled
               ? 'bg-sand/60 border-border text-espresso hover:bg-sand'
               : 'bg-card border-border/60 text-espresso/40'
@@ -101,7 +147,7 @@ export function TopBar({ onToggleMobileMenu }: TopBarProps) {
         {/* Logout button */}
         <button
           onClick={handleLogout}
-          className="p-2 sm:px-3 sm:py-1.5 rounded-xl border border-border bg-card hover:bg-sand/40 text-espresso/80 hover:text-brandRed text-xs font-bold flex items-center gap-1.5 transition-colors"
+          className="p-2 sm:px-3 sm:py-2 rounded-full border border-border bg-card hover:bg-[#FDF0F0] text-espresso/80 hover:text-brandRed text-xs font-bold flex items-center gap-1.5 transition-colors"
           title="Sign out"
         >
           <LogOut className="w-4 h-4" />

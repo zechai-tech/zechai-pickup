@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { AppUser, Outlet, UserRole } from '@/types/supabase';
+import { useAdminStore } from '@/stores/admin-store';
 import { Button } from '@/components/ui/Button';
 import { X, UserPlus, Key, Mail, ShieldAlert, Eye, EyeOff } from 'lucide-react';
 
@@ -11,7 +12,8 @@ interface UserFormProps {
   onSuccess: () => void;
   userToEdit?: AppUser | null;
   outlets: Outlet[];
-  currentUserRole: UserRole;
+  currentUserRole?: UserRole;
+  defaultOutletId?: string | null;
 }
 
 export function UserForm({
@@ -21,7 +23,19 @@ export function UserForm({
   userToEdit,
   outlets,
   currentUserRole,
+  defaultOutletId,
 }: UserFormProps) {
+  const { currentUser } = useAdminStore();
+  const activeRole: UserRole = currentUser?.role || currentUserRole || 'staff';
+  const isAdmin = activeRole === 'admin';
+  const isManager = activeRole === 'manager';
+  const managerOutletId = currentUser?.outlet_id || defaultOutletId || '';
+  const managerOutletName =
+    currentUser?.outlet?.name ||
+    currentUser?.outlet_name ||
+    outlets.find((o) => o.id === managerOutletId)?.name ||
+    'Assigned Outlet';
+
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -35,7 +49,7 @@ export function UserForm({
     if (userToEdit) {
       setName(userToEdit.name);
       setRole(userToEdit.role);
-      setOutletId(userToEdit.outlet_id || '');
+      setOutletId(userToEdit.outlet_id || managerOutletId || '');
       setPassword('');
       setIsCustomPassword(false);
     } else {
@@ -43,11 +57,11 @@ export function UserForm({
       setPassword('');
       setIsCustomPassword(false);
       setRole('staff');
-      setOutletId(outlets.length > 0 ? outlets[0].id : '');
+      setOutletId(managerOutletId || (outlets.length > 0 ? outlets[0].id : ''));
     }
     setError('');
     setShowPassword(false);
-  }, [userToEdit, outlets, isOpen]);
+  }, [userToEdit, outlets, isOpen, managerOutletId]);
 
   // Live auto-generated email & password per specification:
   const cleanName = name.toLowerCase().replace(/\s+/g, '');
@@ -84,8 +98,14 @@ export function UserForm({
       return;
     }
 
-    if (role !== 'admin' && !outletId) {
-      setError('Outlet is required for this role');
+    const effectiveOutletId = isAdmin
+      ? role === 'admin'
+        ? null
+        : outletId
+      : managerOutletId;
+
+    if (role !== 'admin' && !effectiveOutletId) {
+      setError('Assigned outlet is required for this role');
       return;
     }
 
@@ -98,7 +118,9 @@ export function UserForm({
         id: userToEdit?.id,
         name: name.trim(),
         role,
-        outlet_id: role === 'admin' ? null : outletId,
+        outlet_id: effectiveOutletId,
+        caller_role: activeRole,
+        caller_outlet_id: managerOutletId,
       };
 
       if (!userToEdit) {
@@ -236,32 +258,46 @@ export function UserForm({
               onChange={(e) => setRole(e.target.value as UserRole)}
               className="w-full h-11 px-3.5 rounded-xl bg-sand/30 border border-border text-xs font-bold text-espresso focus:outline-none focus:border-orange"
             >
-              {currentUserRole === 'admin' && <option value="admin">Admin</option>}
-              <option value="manager">Manager</option>
+              {isAdmin && <option value="admin">Admin</option>}
+              {isAdmin && <option value="manager">Manager</option>}
               <option value="staff">Staff</option>
               <option value="ordering_staff">Ordering Staff</option>
             </select>
           </div>
 
-          {/* Outlet Dropdown (required for non-admin) */}
-          {role !== 'admin' && (
+          {/* Outlet Selector (Admin can select any outlet; Manager is locked to their outlet) */}
+          {isAdmin ? (
+            role !== 'admin' && (
+              <div>
+                <label className="block text-xs font-bold text-espresso uppercase tracking-wider mb-1">
+                  Assigned Outlet *
+                </label>
+                <select
+                  value={outletId}
+                  onChange={(e) => setOutletId(e.target.value)}
+                  required
+                  className="w-full h-11 px-3.5 rounded-xl bg-sand/30 border border-border text-xs font-bold text-espresso focus:outline-none focus:border-orange"
+                >
+                  <option value="">Select an outlet</option>
+                  {outlets.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )
+          ) : (
             <div>
               <label className="block text-xs font-bold text-espresso uppercase tracking-wider mb-1">
-                Assigned Outlet *
+                Assigned Outlet
               </label>
-              <select
-                value={outletId}
-                onChange={(e) => setOutletId(e.target.value)}
-                required
-                className="w-full h-11 px-3.5 rounded-xl bg-sand/30 border border-border text-xs font-bold text-espresso focus:outline-none focus:border-orange"
-              >
-                <option value="">Select an outlet</option>
-                {outlets.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                  </option>
-                ))}
-              </select>
+              <div className="w-full h-11 px-3.5 rounded-xl bg-sand/60 border border-border text-xs font-bold text-espresso/80 flex items-center cursor-not-allowed">
+                Outlet: {managerOutletName}
+              </div>
+              <span className="text-[10px] text-espresso/50 mt-0.5 block">
+                Managers can only assign team members to their own outlet.
+              </span>
             </div>
           )}
 

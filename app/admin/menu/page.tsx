@@ -22,7 +22,7 @@ import {
 import { cn } from '@/lib/utils';
 
 export default function AdminMenuPage() {
-  const { currentUser, selectedOutletId, setSelectedOutletId } = useAdminStore();
+  const { currentUser, selectedOutletId, setSelectedOutletId, syncTrigger } = useAdminStore();
   const isAdmin = currentUser?.role === 'admin';
 
   const [outlets, setOutlets] = useState<Outlet[]>([]);
@@ -73,7 +73,7 @@ export default function AdminMenuPage() {
     if (activeOutletId) {
       fetchMenuItems();
     }
-  }, [activeOutletId, fetchMenuItems]);
+  }, [activeOutletId, fetchMenuItems, syncTrigger]);
 
   // Quick toggle availability
   const handleToggleAvailability = async (item: MenuItem) => {
@@ -123,9 +123,16 @@ export default function AdminMenuPage() {
         {/* Top Header & Outlet Selector */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-border/70">
           <div>
-            <h1 className="font-display font-black text-2xl text-espresso tracking-tight">
-              Menu & Catalog Management
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="font-display font-black text-2xl text-espresso tracking-tight">
+                Menu & Catalog Management
+              </h1>
+              {!isAdmin && (
+                <span className="text-[11px] font-bold bg-sand px-2.5 py-0.5 rounded-full text-espresso/80">
+                  {currentUser?.outlet?.name || currentUser?.outlet_name || 'Assigned Branch'}
+                </span>
+              )}
+            </div>
             <p className="text-xs text-espresso/60 mt-0.5">
               Configure dishes, prices, photos, and instant out-of-stock toggles
             </p>

@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils';
 type FilterTab = 'all' | 'pending' | 'active' | 'completed';
 
 export default function AdminOrdersPage() {
-  const { currentUser, selectedOutletId, setSelectedOutletId, soundEnabled } = useAdminStore();
+  const { currentUser, selectedOutletId, setSelectedOutletId, soundEnabled, syncTrigger } = useAdminStore();
   const isAdmin = currentUser?.role === 'admin';
   const { showToast } = useToast();
 
@@ -73,7 +73,7 @@ export default function AdminOrdersPage() {
 
   useEffect(() => {
     fetchOrders();
-  }, [fetchOrders]);
+  }, [fetchOrders, syncTrigger]);
 
   // REAL-TIME SUPABASE SUBSCRIPTION
   useEffect(() => {
@@ -173,6 +173,11 @@ export default function AdminOrdersPage() {
               <h1 className="font-display font-black text-2xl text-espresso tracking-tight">
                 Live Kitchen Dispatch
               </h1>
+              {!isAdmin && (
+                <span className="text-[11px] font-bold bg-sand px-2.5 py-0.5 rounded-full text-espresso/80">
+                  {currentUser?.outlet?.name || currentUser?.outlet_name || 'Assigned Branch'}
+                </span>
+              )}
               <span className="w-2.5 h-2.5 rounded-full bg-brandGreen animate-pulse" title="Realtime active" />
             </div>
             <p className="text-xs text-espresso/60 mt-0.5">

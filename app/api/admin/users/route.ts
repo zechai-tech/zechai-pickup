@@ -18,8 +18,8 @@ export async function GET(req: NextRequest) {
     `;
     const params: unknown[] = [];
 
-    if (outletId && role !== 'admin') {
-      sql += ` WHERE u.outlet_id = $1`;
+    if (outletId) {
+      sql += ` WHERE u.outlet_id = $1 AND u.role != 'admin'`;
       params.push(outletId);
     }
 
@@ -37,13 +37,33 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { name, role, outlet_id, password: customPassword, email: customEmail } = body;
+    const {
+      name,
+      role,
+      outlet_id,
+      password: customPassword,
+      email: customEmail,
+      caller_role,
+      caller_outlet_id,
+    } = body;
 
     if (!name || !role) {
       return NextResponse.json({ error: 'Name and role are required' }, { status: 400 });
     }
 
-    if (role !== 'admin' && !outlet_id) {
+    // Manager restrictions
+    if (caller_role === 'manager') {
+      if (role === 'admin' || role === 'manager') {
+        return NextResponse.json(
+          { error: 'Managers can only create staff or ordering staff accounts.' },
+          { status: 403 }
+        );
+      }
+    }
+
+    const assignedOutletId = caller_role === 'manager' ? caller_outlet_id : outlet_id;
+
+    if (role !== 'admin' && !assignedOutletId) {
       return NextResponse.json({ error: 'Outlet is required for non-admin users' }, { status: 400 });
     }
 
@@ -162,6 +182,11 @@ export async function DELETE(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
+    const callerRole = searchParams.get('caller_role');
+
+    if (callerRole === 'manager') {
+      return NextResponse.json({ error: 'Managers are not permitted to delete users.' }, { status: 403 });
+    }
 
     if (!id) {
       return NextResponse.json({ error: 'User ID required' }, { status: 400 });

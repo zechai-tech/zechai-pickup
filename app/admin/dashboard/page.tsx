@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import Link from 'next/link';
-import { useAdminStore } from '@/stores/admin-store';
+import { useAdminStore, getUserScope } from '@/stores/admin-store';
 import { RoleGuard } from '@/components/admin/RoleGuard';
 import { Outlet, Order } from '@/types/supabase';
 import { formatPrice, cn } from '@/lib/utils';
@@ -14,61 +14,63 @@ import {
   Users,
   Clock,
   ArrowRight,
-  Flame,
-  CheckCircle2,
   CalendarCheck,
   Receipt,
+  CheckCircle2,
 } from 'lucide-react';
 
 export default function AdminDashboardPage() {
-  const { currentUser } = useAdminStore();
-  const isAdmin = currentUser?.role === 'admin';
+  const { currentUser, syncTrigger } = useAdminStore();
+  const { isAdmin, isManager } = getUserScope(currentUser);
 
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOutletId, setSelectedOutletId] = useState<string>('all');
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function loadData() {
-      try {
-        setLoading(true);
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
 
-        // Fetch outlets
+      // Admin fetches all outlets; manager only fetches/uses their own outlet
+      if (isAdmin) {
         const resOutlets = await fetch('/api/admin/outlets');
         const dataOutlets = await resOutlets.json();
-        const outletList: Outlet[] = dataOutlets.outlets || [];
-        setOutlets(outletList);
-
-        // Fetch all orders
-        const resOrders = await fetch('/api/admin/orders');
-        const dataOrders = await resOrders.json();
-        const orderList: Order[] = dataOrders.orders || [];
-        setOrders(orderList);
-
-        // If manager, default to their assigned outlet
-        if (!isAdmin && currentUser?.outlet_id) {
-          setSelectedOutletId(currentUser.outlet_id);
-        }
-      } catch (e) {
-        console.error('Error fetching dashboard data:', e);
-      } finally {
-        setLoading(false);
+        setOutlets(dataOutlets.outlets || []);
       }
-    }
 
+      // Query orders with scope
+      const outletParam = isManager && currentUser?.outlet_id ? `?outlet_id=${currentUser.outlet_id}` : '';
+      const resOrders = await fetch(`/api/admin/orders${outletParam}`);
+      const dataOrders = await resOrders.json();
+      setOrders(dataOrders.orders || []);
+
+      if (isManager && currentUser?.outlet_id) {
+        setSelectedOutletId(currentUser.outlet_id);
+      }
+    } catch (e) {
+      console.error('Error fetching dashboard data:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, [currentUser?.outlet_id, isAdmin, isManager]);
+
+  useEffect(() => {
     if (currentUser) {
       loadData();
     }
-  }, [currentUser, isAdmin]);
+  }, [currentUser, loadData, syncTrigger]);
 
-  // Filter orders by selected outlet
+  // Filter orders (admin can select 'all' or specific outlet; manager is always locked to their outlet)
   const filteredOrders = useMemo(() => {
+    if (isManager && currentUser?.outlet_id) {
+      return orders.filter((o) => o.outlet_id === currentUser.outlet_id);
+    }
     if (selectedOutletId === 'all') {
       return orders;
     }
     return orders.filter((o) => o.outlet_id === selectedOutletId);
-  }, [orders, selectedOutletId]);
+  }, [orders, selectedOutletId, isManager, currentUser?.outlet_id]);
 
   // Metrics computation
   const metrics = useMemo(() => {
@@ -101,10 +103,13 @@ export default function AdminDashboardPage() {
   }, [filteredOrders]);
 
   const selectedOutletName = useMemo(() => {
+    if (isManager) {
+      return currentUser?.outlet?.name || currentUser?.outlet_name || 'Your Assigned Outlet';
+    }
     if (selectedOutletId === 'all') return 'All Outlets';
     const found = outlets.find((o) => o.id === selectedOutletId);
     return found ? found.name : 'Selected Outlet';
-  }, [outlets, selectedOutletId]);
+  }, [outlets, selectedOutletId, isManager, currentUser]);
 
   return (
     <RoleGuard allowedRoles={['admin', 'manager']}>
@@ -113,68 +118,72 @@ export default function AdminDashboardPage() {
         <div className="bg-espresso text-cream rounded-[28px] p-6 sm:p-8 relative overflow-hidden shadow-lg border border-espresso-dark">
           <div className="relative z-10 max-w-xl">
             <span className="text-[10px] font-black uppercase tracking-widest text-mustard bg-white/10 px-2.5 py-1 rounded-full inline-block mb-2">
-              {isAdmin ? 'System Overview' : `Outlet: ${currentUser?.outlet?.name || 'Local Store'}`}
+              {isAdmin ? 'System Overview' : `Outlet: ${currentUser?.outlet?.name || currentUser?.outlet_name || 'Assigned Branch'}`}
             </span>
             <h1 className="font-display font-black text-2xl sm:text-3xl text-cream tracking-tight mb-2">
               Welcome back, {currentUser?.name}!
             </h1>
             <p className="text-xs sm:text-sm text-cream/75 leading-relaxed">
-              Real-time operational summary for Zécha! pickup orders. Monitor live queues, manage menu inventory, and keep staff coordinated.
+              {isAdmin
+                ? 'System-wide operational summary for Zécha! pickup orders across all branches.'
+                : `Live operational summary for ${currentUser?.outlet?.name || currentUser?.outlet_name || 'your outlet'}. Manage orders, kitchen queues, and staff.`}
             </p>
           </div>
         </div>
 
-        {/* Outlet Selector (Pills / Chips) */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-espresso/70 uppercase tracking-wider">
-              Filter by Branch
-            </span>
-            <span className="text-[11px] font-semibold text-espresso/50">
-              Viewing: <strong className="text-espresso">{selectedOutletName}</strong>
-            </span>
-          </div>
+        {/* Outlet Selector (Pills / Chips) - ADMIN ONLY */}
+        {isAdmin && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-espresso/70 uppercase tracking-wider">
+                Filter by Branch
+              </span>
+              <span className="text-[11px] font-semibold text-espresso/50">
+                Viewing: <strong className="text-espresso">{selectedOutletName}</strong>
+              </span>
+            </div>
 
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-            {/* All Outlets Pill (Default) */}
-            <button
-              onClick={() => setSelectedOutletId('all')}
-              className={cn(
-                'px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all duration-150',
-                selectedOutletId === 'all'
-                  ? 'bg-orange text-white shadow-orange-sm'
-                  : 'bg-sand text-espresso hover:bg-sand/80'
-              )}
-            >
-              All Outlets
-            </button>
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+              {/* All Outlets Pill (Default) */}
+              <button
+                onClick={() => setSelectedOutletId('all')}
+                className={cn(
+                  'px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all duration-150',
+                  selectedOutletId === 'all'
+                    ? 'bg-orange text-white shadow-orange-sm'
+                    : 'bg-sand text-espresso hover:bg-sand/80'
+                )}
+              >
+                All Outlets
+              </button>
 
-            {/* Individual Outlet Pills */}
-            {outlets.map((outlet) => {
-              const isSelected = selectedOutletId === outlet.id;
-              return (
-                <button
-                  key={outlet.id}
-                  onClick={() => setSelectedOutletId(outlet.id)}
-                  className={cn(
-                    'px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all duration-150 flex items-center gap-1.5',
-                    isSelected
-                      ? 'bg-orange text-white shadow-orange-sm'
-                      : 'bg-sand text-espresso hover:bg-sand/80'
-                  )}
-                >
-                  <span
+              {/* Individual Outlet Pills */}
+              {outlets.map((outlet) => {
+                const isSelected = selectedOutletId === outlet.id;
+                return (
+                  <button
+                    key={outlet.id}
+                    onClick={() => setSelectedOutletId(outlet.id)}
                     className={cn(
-                      'w-1.5 h-1.5 rounded-full',
-                      outlet.is_active ? 'bg-brandGreen' : 'bg-brandRed'
+                      'px-4 py-2 rounded-full text-xs font-bold whitespace-nowrap transition-all duration-150 flex items-center gap-1.5',
+                      isSelected
+                        ? 'bg-orange text-white shadow-orange-sm'
+                        : 'bg-sand text-espresso hover:bg-sand/80'
                     )}
-                  />
-                  <span>{outlet.name}</span>
-                </button>
-              );
-            })}
+                  >
+                    <span
+                      className={cn(
+                        'w-1.5 h-1.5 rounded-full',
+                        outlet.is_active ? 'bg-brandGreen' : 'bg-brandRed'
+                      )}
+                    />
+                    <span>{outlet.name}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Stats Metric Cards Grid (4 Cards: Orders Today, Revenue Today, Total Orders, Total Revenue) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -255,7 +264,7 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* Live Queue Notice (Filtered by Selected Outlet) */}
+        {/* Live Queue Notice (Filtered by Selected Outlet / Manager's Outlet) */}
         <div className="bg-card rounded-2xl border border-border p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
             <div className="w-10 h-10 rounded-xl bg-mustard/20 text-[#8B6400] flex items-center justify-center shrink-0">
@@ -335,6 +344,7 @@ export default function AdminDashboardPage() {
               </div>
             </Link>
 
+            {/* Outlets Link - ADMIN ONLY */}
             {isAdmin && (
               <Link
                 href="/admin/outlets"

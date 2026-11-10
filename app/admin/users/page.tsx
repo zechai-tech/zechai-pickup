@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useAdminStore } from '@/stores/admin-store';
 import { RoleGuard } from '@/components/admin/RoleGuard';
 import { AppUser, Outlet } from '@/types/supabase';
@@ -25,7 +25,7 @@ import {
 import { cn } from '@/lib/utils';
 
 export default function AdminUsersPage() {
-  const { currentUser } = useAdminStore();
+  const { currentUser, syncTrigger } = useAdminStore();
   const isAdmin = currentUser?.role === 'admin';
 
   const [users, setUsers] = useState<AppUser[]>([]);
@@ -60,7 +60,7 @@ export default function AdminUsersPage() {
 
   const fetchUsers = useCallback(async () => {
     try {
-      const outletParam = !isAdmin && currentUser?.outlet_id ? `?outlet_id=${currentUser.outlet_id}` : '';
+      const outletParam = !isAdmin && currentUser?.outlet_id ? `?outlet_id=${currentUser.outlet_id}&caller_role=manager` : '';
       const res = await fetch(`/api/admin/users${outletParam}`);
       const data = await res.json();
       setUsers(data.users || []);
@@ -84,7 +84,15 @@ export default function AdminUsersPage() {
   useEffect(() => {
     fetchUsers();
     fetchOutlets();
-  }, [fetchUsers, fetchOutlets]);
+  }, [fetchUsers, fetchOutlets, syncTrigger]);
+
+  // Scoped users list (Managers can ONLY see users in their outlet, excluding any admin)
+  const visibleUsers: AppUser[] = useMemo(() => {
+    return users.filter((u: AppUser) => {
+      if (isAdmin) return true;
+      return u.outlet_id === currentUser?.outlet_id && u.role !== 'admin';
+    });
+  }, [users, isAdmin, currentUser?.outlet_id]);
 
   // Handle Auth Migration for existing users (hadi, athif, etc.)
   const handleMigrateAuth = async () => {
@@ -311,7 +319,7 @@ export default function AdminUsersPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border/60">
-                  {users.map((u) => {
+                  {visibleUsers.map((u) => {
                     const isSelf = u.id === currentUser?.id;
                     return (
                       <tr key={u.id} className="hover:bg-sand/20 transition-colors">
@@ -390,22 +398,24 @@ export default function AdminUsersPage() {
                             <Power className="w-4 h-4" />
                           </button>
 
-                          {/* 4. Delete Button (Cannot delete self) */}
-                          {isSelf ? (
-                            <span
-                              className="inline-block p-2 text-espresso/20 cursor-not-allowed"
-                              title="You cannot delete your own account"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </span>
-                          ) : (
-                            <button
-                              onClick={() => setUserToDelete(u)}
-                              className="p-2 rounded-xl hover:bg-[#FDF0F0] text-espresso/50 hover:text-brandRed transition-colors"
-                              title="Delete user and auth account"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                          {/* 4. Delete Button (ADMIN ONLY - Managers cannot delete users) */}
+                          {isAdmin && (
+                            isSelf ? (
+                              <span
+                                className="inline-block p-2 text-espresso/20 cursor-not-allowed"
+                                title="You cannot delete your own account"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => setUserToDelete(u)}
+                                className="p-2 rounded-xl hover:bg-[#FDF0F0] text-espresso/50 hover:text-brandRed transition-colors"
+                                title="Delete user and auth account"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            )
                           )}
                         </td>
                       </tr>
@@ -417,7 +427,7 @@ export default function AdminUsersPage() {
 
             {/* 2. Mobile Cards Grid */}
             <div className="md:hidden space-y-3">
-              {users.map((u) => {
+              {visibleUsers.map((u) => {
                 const isSelf = u.id === currentUser?.id;
                 return (
                   <div key={u.id} className="bg-card rounded-2xl border border-border p-4 shadow-xs space-y-3">
@@ -483,18 +493,21 @@ export default function AdminUsersPage() {
                         >
                           <Power className="w-3.5 h-3.5" />
                         </button>
-                        {isSelf ? (
-                          <span className="p-1.5 text-espresso/20 cursor-not-allowed">
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => setUserToDelete(u)}
-                            className="p-1.5 rounded-lg border border-border text-espresso/50 hover:text-brandRed hover:bg-[#FDF0F0] transition-colors"
-                            title="Delete user"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                        {/* Delete Button (Admin only) */}
+                        {isAdmin && (
+                          isSelf ? (
+                            <span className="p-1.5 text-espresso/20 cursor-not-allowed">
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => setUserToDelete(u)}
+                              className="p-1.5 rounded-lg border border-border text-espresso/50 hover:text-brandRed hover:bg-[#FDF0F0] transition-colors"
+                              title="Delete user"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )
                         )}
                       </div>
                     </div>
@@ -513,6 +526,7 @@ export default function AdminUsersPage() {
           userToEdit={userToEdit}
           outlets={outlets}
           currentUserRole={currentUser?.role || 'staff'}
+          defaultOutletId={currentUser?.outlet_id}
         />
 
         {/* Reset Password Modal */}

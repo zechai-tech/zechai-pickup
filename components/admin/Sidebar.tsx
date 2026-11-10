@@ -24,42 +24,47 @@ interface SidebarProps {
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
   const { currentUser } = useAdminStore();
-  const role = currentUser?.role || 'staff';
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const isAdmin = mounted && currentUser?.role === 'admin';
 
   const navItems = [
     {
       label: 'Dashboard',
       href: '/admin/dashboard',
       icon: LayoutDashboard,
-      roles: ['admin', 'manager'],
     },
     {
       label: 'Live Orders',
       href: '/admin/orders',
       icon: ShoppingBag,
-      roles: ['admin', 'manager', 'staff', 'ordering_staff'],
     },
     {
       label: 'Menu Items',
       href: '/admin/menu',
       icon: UtensilsCrossed,
-      roles: ['admin', 'manager'],
     },
     {
       label: 'Users & Staff',
       href: '/admin/users',
       icon: Users,
-      roles: ['admin', 'manager'],
     },
-    {
-      label: 'Outlets',
-      href: '/admin/outlets',
-      icon: Store,
-      roles: ['admin'],
-    },
+    ...(isAdmin
+      ? [
+          {
+            label: 'Outlets',
+            href: '/admin/outlets',
+            icon: Store,
+          },
+        ]
+      : []),
   ];
 
-  const visibleItems = navItems.filter((item) => item.roles.includes(role));
+  const visibleItems = navItems;
 
   const content = (
     <div className="flex flex-col h-full justify-between bg-card border-r border-border p-4">
