@@ -6,7 +6,15 @@
   --font-archivo: 'Archivo', sans-serif;
 }
 
+html,
 body {
+  overflow-x: hidden;
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+  width: 100%;
+  max-width: 100vw;
+  height: 100%;
   background-color: #EFE5D0;
   color: #2B1A12;
   font-family: var(--font-archivo), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -14,6 +22,18 @@ body {
   -moz-osx-font-smoothing: grayscale;
   margin: 0;
   padding: 0;
+}
+
+/* Prevent tap/touch issues on mobile */
+* {
+  -webkit-tap-highlight-color: transparent;
+  box-sizing: border-box;
+}
+
+button,
+a,
+[role="button"] {
+  touch-action: manipulation;
 }
 
 .font-display {
@@ -39,6 +59,11 @@ body {
 .scrollbar-none {
   -ms-overflow-style: none;
   scrollbar-width: none;
+}
+
+/* Momentum scrolling for iOS */
+.touch-scroll {
+  -webkit-overflow-scrolling: touch;
 }
 
 /* Subtle page transition */

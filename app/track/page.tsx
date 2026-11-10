@@ -146,9 +146,9 @@ export default function TrackPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-cream page-transition overflow-hidden relative">
+    <div className="min-h-[100dvh] h-full flex flex-col bg-cream page-transition overflow-hidden relative w-full max-w-full">
       {/* Scrollable Container */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden pb-24 scrollbar-none">
+      <main className="flex-1 overflow-y-auto overscroll-contain overflow-x-hidden pb-28 scrollbar-none touch-scroll w-full max-w-full">
         {/* Top Orange Header matching design */}
         <div className="bg-orange text-cream pt-3.5 pb-10 px-4 rounded-b-[32px] relative overflow-hidden shadow-md">
           {/* Mascot Cream Graphic on right */}
@@ -311,10 +311,10 @@ export default function TrackPage() {
             </button>
           </div>
         </div>
-      </div>
+      </main>
 
-      {/* Sticky Bottom "I have picked it up" Button pinned inside 390x844 frame */}
-      <div className="absolute bottom-0 left-0 right-0 p-3.5 bg-cream/95 backdrop-blur-md border-t border-border z-30 safe-bottom">
+      {/* Fixed Bottom "I have picked it up" Button */}
+      <div className="shrink-0 p-3.5 bg-cream/95 backdrop-blur-md border-t border-border z-30 pb-[max(16px,env(safe-area-inset-bottom))] w-full">
         <Button
           onClick={handlePickUp}
           className="w-full h-12 text-[16px] font-bold shadow-orange active:scale-[0.98]"
@@ -323,9 +323,9 @@ export default function TrackPage() {
         </Button>
       </div>
 
-      {/* Full QR Modal pinned inside frame */}
+      {/* Full QR Modal */}
       {showQrModal && (
-        <div className="absolute inset-0 z-50 bg-espresso/70 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 bg-espresso/70 backdrop-blur-sm flex items-center justify-center p-6 overscroll-contain animate-in fade-in duration-150">
           <div className="bg-card w-full max-w-[280px] rounded-card-lg p-5 flex flex-col items-center text-center shadow-2xl border border-border relative">
             <button
               onClick={() => setShowQrModal(false)}

@@ -38,28 +38,29 @@ export default function OutletPage() {
   };
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-cream page-transition overflow-hidden relative">
-      {/* Scrollable Content Container */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-5 pb-24 scrollbar-none">
-        {/* Navigation / Top Bar */}
-        <div className="flex items-center justify-between pt-1 pb-3">
-          <div className="relative w-28 h-8">
-            <Image
-              src="/assets/logo-orange.png"
-              alt="Zécha!"
-              fill
-              className="object-contain object-left"
-              priority
-            />
-          </div>
-          <button
-            className="w-10 h-10 rounded-full border border-border bg-card flex items-center justify-center text-espresso hover:bg-sand/30 transition-colors"
-            aria-label="User Profile"
-          >
-            <User className="w-5 h-5 text-espresso/80 stroke-[1.8]" />
-          </button>
+    <div className="min-h-[100dvh] h-full flex flex-col overflow-hidden bg-cream relative w-full max-w-full">
+      {/* Fixed Header */}
+      <header className="shrink-0 px-5 pt-3 pb-2.5 flex items-center justify-between border-b border-border/40 bg-cream/95 backdrop-blur-xs z-10">
+        <div className="relative w-28 h-8">
+          <Image
+            src="/assets/logo-orange.png"
+            alt="Zécha!"
+            fill
+            sizes="112px"
+            className="object-contain object-left"
+            priority
+          />
         </div>
+        <button
+          className="w-10 h-10 rounded-full border border-border bg-card flex items-center justify-center text-espresso hover:bg-sand/30 transition-colors"
+          aria-label="User Profile"
+        >
+          <User className="w-5 h-5 text-espresso/80 stroke-[1.8]" />
+        </button>
+      </header>
 
+      {/* Main Scrollable Content Area */}
+      <main className="flex-1 overflow-y-auto overscroll-contain overflow-x-hidden p-5 pb-28 scrollbar-none touch-scroll w-full max-w-full">
         {/* Greeting & Title */}
         <div className="mt-1 mb-4">
           <p className="text-xs font-semibold text-espresso/60 mb-0.5">Good evening</p>
@@ -69,10 +70,10 @@ export default function OutletPage() {
         </div>
 
         {/* Outlet Cards List */}
-        <div className="space-y-2.5 mb-5">
+        <div className="space-y-2.5 mb-5 w-full max-w-full">
           {loading ? (
             [1, 2, 3].map((n) => (
-              <div key={n} className="h-20 bg-sand/30 rounded-card animate-pulse border border-border" />
+              <div key={n} className="h-20 bg-sand/30 rounded-card animate-pulse border border-border w-full" />
             ))
           ) : (
             outlets.map((item) => {
@@ -88,7 +89,7 @@ export default function OutletPage() {
                     }
                   }}
                   className={cn(
-                    'flex items-center justify-between p-3.5 rounded-card border transition-all duration-150',
+                    'w-full max-w-full overflow-hidden flex items-center justify-between p-3.5 rounded-card border transition-all duration-150',
                     isClosed
                       ? 'bg-card/50 border-border/50 opacity-60 cursor-not-allowed'
                       : isSelected
@@ -96,7 +97,7 @@ export default function OutletPage() {
                       : 'bg-card border-border hover:border-orange/40 cursor-pointer active:scale-[0.99]'
                   )}
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     {/* Outlet mascot badge */}
                     <div
                       className={cn(
@@ -117,17 +118,17 @@ export default function OutletPage() {
                       />
                     </div>
 
-                    <div>
+                    <div className="min-w-0">
                       <h2
                         className={cn(
-                          'font-bold text-[15px] leading-snug',
+                          'font-bold text-[15px] leading-snug truncate',
                           isClosed ? 'text-espresso/50' : 'text-espresso'
                         )}
                       >
                         {item.name}
                       </h2>
                       <p className="text-xs font-medium text-espresso/70 mt-0.5 flex items-center gap-1.5">
-                        <span>{item.address || item.distance || 'Kerala'}</span>
+                        <span>{item.distance}</span>
                         <span>·</span>
                         {isClosed ? (
                           <span className="text-brandRed font-semibold">{item.statusText}</span>
@@ -160,12 +161,12 @@ export default function OutletPage() {
         </div>
 
         {/* Section: Single Full-width Pickup now Card */}
-        <div className="mb-5">
+        <div className="mb-5 w-full max-w-full overflow-hidden">
           <h2 className="font-display text-base font-bold text-espresso mb-2.5">
             When do you want it?
           </h2>
 
-          <div className="w-full p-4 rounded-card bg-espresso text-cream shadow-md flex items-center justify-between border border-espresso-dark">
+          <div className="w-full max-w-full overflow-hidden p-4 rounded-card bg-espresso text-cream shadow-md flex items-center justify-between border border-espresso-dark">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-full bg-mustard/20 flex items-center justify-center flex-shrink-0">
                 <Zap className="w-4 h-4 text-mustard fill-mustard" />
@@ -187,7 +188,7 @@ export default function OutletPage() {
         </div>
 
         {/* Promo Banner: TODAY ONLY */}
-        <div className="relative overflow-hidden rounded-card bg-[#CE5535] text-cream p-4 shadow-sm mb-2">
+        <div className="w-full max-w-full relative overflow-hidden rounded-card bg-[#CE5535] text-cream p-4 shadow-sm mb-2">
           <div className="relative z-10 max-w-[200px]">
             <span className="text-[10px] font-black tracking-widest uppercase text-mustard bg-espresso/30 px-2 py-0.5 rounded-full inline-block mb-1">
               TODAY ONLY
@@ -205,14 +206,16 @@ export default function OutletPage() {
               src="/assets/iced.png"
               alt="Promo Iced Tea"
               fill
+              sizes="112px"
+              loading="lazy"
               className="object-contain"
             />
           </div>
         </div>
-      </div>
+      </main>
 
-      {/* Sticky Bottom CTA Button (pinned inside 390x844 frame) */}
-      <div className="absolute bottom-0 left-0 right-0 p-4 bg-cream/95 backdrop-blur-md border-t border-border z-30 safe-bottom">
+      {/* Fixed Bottom CTA Button (with Safe Area Padding) */}
+      <div className="shrink-0 p-4 bg-cream/95 backdrop-blur-md border-t border-border z-30 pb-[max(16px,env(safe-area-inset-bottom))] w-full">
         <Button
           onClick={handleProceed}
           disabled={!outlet || !outlet.isOpen}

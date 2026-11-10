@@ -24,7 +24,7 @@ export default function WelcomePage() {
   };
 
   return (
-    <div className="relative flex-1 flex flex-col justify-between p-6 pb-8 page-transition bg-cream min-h-full overflow-hidden">
+    <div className="min-h-[100dvh] h-full flex flex-col justify-between p-6 pb-8 page-transition bg-cream overflow-hidden relative w-full max-w-full">
       {/* Pattern overlay at top */}
       <div
         className="absolute inset-0 top-0 h-[45%] pointer-events-none opacity-25 overflow-hidden"
@@ -34,6 +34,7 @@ export default function WelcomePage() {
           src="/assets/pattern.jpg"
           alt="Zécha pattern"
           fill
+          sizes="390px"
           className="object-cover"
           priority
         />
@@ -62,6 +63,7 @@ export default function WelcomePage() {
               src="/assets/iced.png"
               alt="Zécha Iced Coolers"
               fill
+              sizes="190px"
               className="object-contain drop-shadow-lg"
               priority
             />
@@ -76,6 +78,7 @@ export default function WelcomePage() {
               src="/assets/chicken.png"
               alt="Crispy Fried Chicken"
               fill
+              sizes="115px"
               className="object-contain drop-shadow-xl"
               priority
             />
@@ -90,6 +93,7 @@ export default function WelcomePage() {
               src="/assets/loaded-cup.png"
               alt="Loaded Fries Cup"
               fill
+              sizes="120px"
               className="object-contain drop-shadow-xl"
               priority
             />
@@ -108,6 +112,7 @@ export default function WelcomePage() {
             src="/assets/logo-orange.png"
             alt="Zécha! One cup every day"
             fill
+            sizes="190px"
             className="object-contain"
             priority
           />
@@ -133,7 +138,7 @@ export default function WelcomePage() {
       </div>
 
       {/* Bottom Actions */}
-      <div className="relative z-10 w-full space-y-4 safe-bottom">
+      <div className="relative z-10 w-full space-y-4 safe-bottom pb-[max(16px,env(safe-area-inset-bottom))]">
         <Link href="/outlet" className="block w-full">
           <Button className="w-full text-[17px] font-bold group shadow-orange">
             <span>Start your order</span>

@@ -12,15 +12,13 @@ import {
   ArrowRight,
   PenLine,
   X,
-  Phone,
-  ShieldCheck,
   AlertCircle,
 } from 'lucide-react';
 import { useZechaStore, getCartSummary } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { Stepper } from '@/components/ui/Stepper';
 import { Button } from '@/components/ui/Button';
-import { cn, formatPrice } from '@/lib/utils';
+import { formatPrice } from '@/lib/utils';
 
 export default function CartPage() {
   const router = useRouter();
@@ -52,6 +50,18 @@ export default function CartPage() {
       router.push('/menu');
     }
   }, [cart.length, router]);
+
+  // Lock body scroll when phone modal is open (Fix 7)
+  useEffect(() => {
+    if (isPhoneModalOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isPhoneModalOpen]);
 
   const handleProceedToPayClick = () => {
     setIsPhoneModalOpen(true);
@@ -201,8 +211,8 @@ export default function CartPage() {
   // Empty cart fallback
   if (count === 0) {
     return (
-      <div className="flex-1 flex flex-col justify-between p-6 bg-cream page-transition min-h-full">
-        <div className="flex items-center pt-2">
+      <div className="min-h-[100dvh] h-full flex flex-col justify-between p-6 bg-cream page-transition overflow-hidden w-full max-w-full">
+        <header className="shrink-0 flex items-center pt-2">
           <Link
             href="/menu"
             className="w-10 h-10 rounded-full bg-card border border-border flex items-center justify-center text-espresso hover:bg-sand/40 transition-colors"
@@ -211,14 +221,16 @@ export default function CartPage() {
             <ChevronLeft className="w-5 h-5 stroke-[2.2]" />
           </Link>
           <h1 className="font-display text-xl font-black text-espresso ml-4">Your cart</h1>
-        </div>
+        </header>
 
-        <div className="flex flex-col items-center justify-center text-center px-4 my-auto">
+        <main className="flex-1 flex flex-col items-center justify-center text-center px-4 my-auto">
           <div className="w-24 h-24 relative mb-4 opacity-75">
             <Image
               src="/assets/mascot-orange.png"
               alt="Empty Cart"
               fill
+              sizes="96px"
+              priority
               className="object-contain"
             />
           </div>
@@ -231,15 +243,15 @@ export default function CartPage() {
           <Link href="/menu">
             <Button className="px-8 shadow-orange font-bold">Browse menu</Button>
           </Link>
-        </div>
+        </main>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 flex flex-col h-full bg-cream page-transition overflow-hidden relative">
+    <div className="min-h-[100dvh] h-full flex flex-col bg-cream page-transition overflow-hidden relative w-full max-w-full">
       {/* Top Header */}
-      <div className="shrink-0 z-30 bg-cream/95 backdrop-blur-md px-4 pt-3 pb-3 border-b border-border/50 flex items-center justify-between">
+      <header className="shrink-0 z-30 bg-cream/95 backdrop-blur-md px-4 pt-3 pb-3 border-b border-border/50 flex items-center justify-between w-full">
         <div className="flex items-center gap-3">
           <Link
             href="/menu"
@@ -253,16 +265,16 @@ export default function CartPage() {
         <span className="text-xs font-bold text-espresso/60">
           {count} {count === 1 ? 'item' : 'items'}
         </span>
-      </div>
+      </header>
 
-      {/* Cart Content (Scrollable) */}
-      <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 pb-28 space-y-4 scrollbar-none">
+      {/* Cart Content (Scrollable with mobile overscroll containment) */}
+      <main className="flex-1 overflow-y-auto overscroll-contain overflow-x-hidden p-4 pb-32 space-y-4 scrollbar-none touch-scroll w-full max-w-full">
         {/* Cart Line Items */}
-        <div className="space-y-2.5">
+        <div className="space-y-2.5 w-full max-w-full">
           {cart.map((line) => (
             <div
               key={line.lineId}
-              className="bg-card rounded-card border border-border p-3 flex items-center justify-between gap-3 shadow-xs"
+              className="bg-card rounded-card border border-border p-3 flex items-center justify-between gap-3 shadow-xs w-full max-w-full overflow-hidden"
             >
               {/* Thumbnail */}
               <div className="relative w-14 h-14 rounded-xl overflow-hidden bg-sand/40 flex-shrink-0">
@@ -270,6 +282,8 @@ export default function CartPage() {
                   src={line.image || '/assets/chai.jpg'}
                   alt={line.name}
                   fill
+                  sizes="56px"
+                  loading="lazy"
                   className="object-cover"
                 />
               </div>
@@ -283,7 +297,7 @@ export default function CartPage() {
               </div>
 
               {/* Stepper & Delete */}
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-shrink-0">
                 <Stepper
                   size="sm"
                   value={line.qty}
@@ -304,20 +318,20 @@ export default function CartPage() {
         </div>
 
         {/* Pickup Details Card */}
-        <div>
+        <div className="w-full max-w-full overflow-hidden">
           <h2 className="font-display text-base font-bold text-espresso mb-2">
             Pickup details
           </h2>
 
-          <div className="bg-card rounded-card border border-border p-3.5 space-y-3 shadow-xs">
+          <div className="bg-card rounded-card border border-border p-3.5 space-y-3 shadow-xs w-full max-w-full">
             {/* Outlet Info */}
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5">
+              <div className="flex items-center gap-2.5 min-w-0 pr-2">
                 <div className="w-8 h-8 rounded-full bg-sand/60 flex items-center justify-center flex-shrink-0">
                   <MapPin className="w-4 h-4 text-orange" />
                 </div>
-                <div>
-                  <h4 className="font-bold text-xs text-espresso leading-snug">
+                <div className="min-w-0">
+                  <h4 className="font-bold text-xs text-espresso leading-snug truncate">
                     {outlet?.name || 'Zécha! Thamarassery'}
                   </h4>
                   <p className="text-[11px] text-espresso/60 font-medium">
@@ -327,7 +341,7 @@ export default function CartPage() {
               </div>
               <Link
                 href="/outlet"
-                className="text-xs font-bold text-orange hover:text-orange-dark transition-colors"
+                className="text-xs font-bold text-orange hover:text-orange-dark transition-colors shrink-0"
               >
                 Change
               </Link>
@@ -353,7 +367,7 @@ export default function CartPage() {
         </div>
 
         {/* Note for kitchen input field */}
-        <div>
+        <div className="w-full max-w-full">
           <label className="font-display text-base font-bold text-espresso mb-2 flex items-center gap-1.5">
             <PenLine className="w-4 h-4 text-orange" />
             <span>Note for the kitchen (optional)</span>
@@ -367,8 +381,8 @@ export default function CartPage() {
           />
         </div>
 
-        {/* Bill Breakdown (Simplified per Change 6) */}
-        <div className="bg-card rounded-card border border-border p-4 space-y-2 shadow-xs">
+        {/* Bill Breakdown */}
+        <div className="bg-card rounded-card border border-border p-4 space-y-2 shadow-xs w-full max-w-full">
           <div className="flex items-center justify-between text-xs">
             <span className="font-medium text-espresso/70">Item total</span>
             <span className="font-bold text-espresso">{formatPrice(grandTotal)}</span>
@@ -385,10 +399,10 @@ export default function CartPage() {
             </span>
           </div>
         </div>
-      </div>
+      </main>
 
-      {/* Sticky Bottom Proceed to Pay CTA */}
-      <div className="absolute bottom-0 left-0 right-0 p-4 bg-cream/95 backdrop-blur-md border-t border-border z-30 safe-bottom">
+      {/* Fixed Bottom Proceed to Pay CTA */}
+      <div className="shrink-0 p-4 bg-cream/95 backdrop-blur-md border-t border-border z-30 pb-[max(16px,env(safe-area-inset-bottom))] w-full">
         <Button
           onClick={handleProceedToPayClick}
           className="w-full text-[17px] font-bold shadow-orange group"
@@ -398,9 +412,9 @@ export default function CartPage() {
         </Button>
       </div>
 
-      {/* Phone Number Modal / Bottom Sheet (Change 7) */}
+      {/* Phone Number Modal / Bottom Sheet (Fix 7) */}
       {isPhoneModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-espresso/60 backdrop-blur-xs animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-espresso/60 backdrop-blur-xs overscroll-contain animate-in fade-in duration-200">
           <div
             className="w-full max-w-sm bg-card rounded-t-[32px] sm:rounded-[32px] border border-border shadow-2xl p-6 relative animate-in slide-in-from-bottom sm:zoom-in-95 duration-200"
           >
@@ -410,6 +424,7 @@ export default function CartPage() {
                 if (!submitting) setIsPhoneModalOpen(false);
               }}
               className="absolute right-4 top-4 p-2 rounded-full text-espresso/50 hover:bg-sand/60 transition-colors"
+              aria-label="Close modal"
             >
               <X className="w-5 h-5" />
             </button>
@@ -448,6 +463,7 @@ export default function CartPage() {
                   onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
                   placeholder=""
                   disabled={submitting}
+                  style={{ fontSize: '16px' }}
                   className="w-full h-full px-3.5 text-base font-bold text-espresso bg-transparent focus:outline-none placeholder:text-espresso/35 tracking-wider"
                 />
               </div>
