@@ -26,7 +26,10 @@ export default function WelcomePage() {
   return (
     <div className="relative flex-1 flex flex-col justify-between p-6 pb-8 page-transition bg-cream min-h-full overflow-hidden">
       {/* Pattern overlay at top */}
-      <div className="absolute inset-0 top-0 h-[45%] pointer-events-none opacity-25 overflow-hidden">
+      <div
+        className="absolute inset-0 top-0 h-[45%] pointer-events-none opacity-25 overflow-hidden"
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, height: '45%', overflow: 'hidden' }}
+      >
         <Image
           src="/assets/pattern.jpg"
           alt="Zécha pattern"
@@ -40,12 +43,21 @@ export default function WelcomePage() {
       {/* Hero Visual Collage */}
       <div className="relative pt-6 pb-2 flex items-center justify-center">
         {/* Soft circle backdrop */}
-        <div className="w-[260px] h-[260px] rounded-full bg-[#F4E7CC]/80 absolute -z-0 blur-[0.5px]" />
+        <div
+          className="w-[260px] h-[260px] rounded-full bg-[#F4E7CC]/80 absolute -z-0 blur-[0.5px]"
+          style={{ width: 260, height: 260 }}
+        />
 
         {/* Collage elements */}
-        <div className="relative z-10 w-[300px] h-[270px]">
+        <div
+          className="relative z-10 w-[300px] h-[270px]"
+          style={{ width: 300, height: 270, position: 'relative' }}
+        >
           {/* Iced Tea glasses (center) */}
-          <div className="absolute left-1/2 -translate-x-1/2 top-1 w-[190px] h-[210px]">
+          <div
+            className="absolute left-1/2 -translate-x-1/2 top-1 w-[190px] h-[210px]"
+            style={{ width: 190, height: 210, position: 'absolute' }}
+          >
             <Image
               src="/assets/iced.png"
               alt="Zécha Iced Coolers"
@@ -56,7 +68,10 @@ export default function WelcomePage() {
           </div>
 
           {/* Fried Chicken (bottom left) */}
-          <div className="absolute -left-2 bottom-3 w-[115px] h-[105px] transform -rotate-6">
+          <div
+            className="absolute -left-2 bottom-3 w-[115px] h-[105px] transform -rotate-6"
+            style={{ width: 115, height: 105, position: 'absolute' }}
+          >
             <Image
               src="/assets/chicken.png"
               alt="Crispy Fried Chicken"
@@ -67,7 +82,10 @@ export default function WelcomePage() {
           </div>
 
           {/* Loaded Fries Bucket (bottom right) */}
-          <div className="absolute -right-2 bottom-1 w-[120px] h-[145px]">
+          <div
+            className="absolute -right-2 bottom-1 w-[120px] h-[145px]"
+            style={{ width: 120, height: 145, position: 'absolute' }}
+          >
             <Image
               src="/assets/loaded-cup.png"
               alt="Loaded Fries Cup"
@@ -82,7 +100,10 @@ export default function WelcomePage() {
       {/* Brand & Content Section */}
       <div className="relative z-10 flex flex-col items-center text-center mt-2 px-2">
         {/* Brand Logo */}
-        <div className="relative w-[190px] h-[72px] mb-4">
+        <div
+          className="relative w-[190px] h-[72px] mb-4"
+          style={{ width: 190, height: 72, position: 'relative' }}
+        >
           <Image
             src="/assets/logo-orange.png"
             alt="Zécha! One cup every day"

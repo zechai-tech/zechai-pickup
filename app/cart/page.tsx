@@ -38,7 +38,7 @@ export default function CartPage() {
 
   const [kitchenNote, setKitchenNote] = useState(customer.note || '');
   const [isPhoneModalOpen, setIsPhoneModalOpen] = useState(false);
-  const [phone, setPhone] = useState(customer.phone || '');
+  const [phone, setPhone] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -98,7 +98,7 @@ export default function CartPage() {
           qty: item.qty,
         })),
         total: grandTotal,
-        status: 'pending_payment',
+        status: 'confirmed',
         pickup_code: pickupCode,
         kitchen_note: kitchenNote.trim() || null,
         created_at: new Date().toISOString(),
@@ -446,7 +446,7 @@ export default function CartPage() {
                   maxLength={10}
                   value={phone}
                   onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
-                  placeholder="98765 43210"
+                  placeholder=""
                   disabled={submitting}
                   className="w-full h-full px-3.5 text-base font-bold text-espresso bg-transparent focus:outline-none placeholder:text-espresso/35 tracking-wider"
                 />

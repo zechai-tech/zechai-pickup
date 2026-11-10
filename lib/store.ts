@@ -39,8 +39,8 @@ export const useZechaStore = create<ZechaState>()(
       outlet: null,
       cart: [],
       customer: {
-        name: 'Hadi',
-        phone: '9847123210',
+        name: '',
+        phone: '',
         note: '',
       },
       activeOrder: null,
