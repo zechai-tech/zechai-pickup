@@ -1,16 +1,24 @@
+'use client';
+
 import React from 'react';
+import { usePathname } from 'next/navigation';
 
 interface PhoneFrameProps {
   children: React.ReactNode;
 }
 
 export function PhoneFrame({ children }: PhoneFrameProps) {
+  const pathname = usePathname();
+  const isAdmin = pathname?.startsWith('/admin');
+
+  // Admin panel is fully responsive for desktop, tablet, and mobile
+  if (isAdmin) {
+    return <div className="min-h-screen bg-cream text-espresso w-full flex flex-col">{children}</div>;
+  }
+
+  // Customer app is strictly mobile-first centered inside the 390x844 phone frame on desktop
   return (
     <div className="min-h-screen bg-[#EFE5D0] flex justify-center items-center md:py-6 selection:bg-orange/20 overflow-x-hidden">
-      {/* 
-        On desktop: exactly 390px wide by 844px tall, centred, rounded 44px, soft shadow, overflow hidden.
-        On mobile (<= 430px): 100% width, 100dvh with safe-area padding.
-      */}
       <div className="w-full h-[100dvh] md:w-[390px] md:h-[844px] md:max-h-[844px] md:rounded-[44px] bg-cream shadow-2xl relative flex flex-col overflow-hidden border-border/70 md:border">
         {children}
       </div>
