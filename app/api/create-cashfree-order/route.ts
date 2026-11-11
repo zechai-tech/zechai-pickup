@@ -5,17 +5,28 @@ export async function POST(req: NextRequest) {
   try {
     const { orderId, dbOrderId, orderAmount, customerPhone, customerName } = await req.json();
 
-    const settingsRes = await query(
-      "SELECT value FROM public.app_settings WHERE key = 'payment_gateway'"
-    );
-    const settings = settingsRes.rows[0];
-    const cf = settings?.value?.cashfree;
-    if (!cf?.app_id || !cf?.secret_key) {
-      return NextResponse.json({ error: 'Cashfree not configured' }, { status: 400 });
+    const appId = process.env.CASHFREE_APP_ID;
+    const secretKey = process.env.CASHFREE_SECRET_KEY;
+    const envMode = process.env.CASHFREE_ENV || 'production';
+
+    if (!appId) {
+      console.error('Missing required environment variable: CASHFREE_APP_ID');
+      return NextResponse.json(
+        { error: 'Payment gateway configuration error: CASHFREE_APP_ID is not set' },
+        { status: 500 }
+      );
+    }
+
+    if (!secretKey) {
+      console.error('Missing required environment variable: CASHFREE_SECRET_KEY');
+      return NextResponse.json(
+        { error: 'Payment gateway configuration error: CASHFREE_SECRET_KEY is not set' },
+        { status: 500 }
+      );
     }
 
     const baseUrl =
-      cf.mode === 'production'
+      envMode === 'production'
         ? 'https://api.cashfree.com/pg/orders'
         : 'https://sandbox.cashfree.com/pg/orders';
 
@@ -35,8 +46,8 @@ export async function POST(req: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-client-id': cf.app_id,
-        'x-client-secret': cf.secret_key,
+        'x-client-id': appId,
+        'x-client-secret': secretKey,
         'x-api-version': '2023-08-01',
       },
       body: JSON.stringify({

@@ -274,10 +274,7 @@ export default function CartPage() {
         // RAZORPAY FLOW
         // ==========================================
         await loadRazorpayScript();
-        const razorpayKey =
-          gwConfig?.razorpay?.key_id ||
-          process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ||
-          'rzp_test_TyW3SbL5Pf7xZ5';
+        const razorpayKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
 
         const options = {
           key: razorpayKey,

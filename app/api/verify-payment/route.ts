@@ -5,8 +5,9 @@ export async function POST(req: Request) {
   try {
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
     if (!keySecret) {
+      console.error('Missing required environment variable: RAZORPAY_KEY_SECRET');
       return NextResponse.json(
-        { error: 'Razorpay secret not configured on server' },
+        { error: 'Server configuration error: RAZORPAY_KEY_SECRET is not set' },
         { status: 500 }
       );
     }

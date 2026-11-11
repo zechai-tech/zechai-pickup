@@ -1,4 +1,3 @@
-import { supabaseAdmin } from '@/lib/supabase-admin';
 import { query } from '@/lib/db';
 
 export interface SyncResult {
@@ -11,33 +10,30 @@ export interface SyncResult {
 }
 
 /**
- * Gets Cashfree gateway configuration from app_settings or environment variables.
+ * Gets Cashfree gateway configuration strictly from environment variables.
+ * Never reads secrets from the database.
  */
-export async function getCashfreeConfig() {
-  try {
-    const settingsRes = await query(
-      "SELECT value FROM public.app_settings WHERE key = 'payment_gateway'"
-    );
-    const settings = settingsRes.rows[0];
-    const cf = settings?.value?.cashfree;
-    const appId = cf?.app_id || process.env.CASHFREE_APP_ID;
-    const secretKey = cf?.secret_key || process.env.CASHFREE_SECRET_KEY;
-    const mode = cf?.mode === 'production' || process.env.CASHFREE_ENV === 'production' ? 'production' : 'sandbox';
+export function getCashfreeConfig() {
+  const appId = process.env.CASHFREE_APP_ID;
+  const secretKey = process.env.CASHFREE_SECRET_KEY;
+  const mode = process.env.CASHFREE_ENV || 'production';
 
-    if (!appId || !secretKey) {
-      return null;
-    }
-
-    return {
-      appId,
-      secretKey,
-      mode,
-      baseUrl: mode === 'production' ? 'https://api.cashfree.com' : 'https://sandbox.cashfree.com',
-    };
-  } catch (err) {
-    console.error('Error loading Cashfree config:', err);
+  if (!appId) {
+    console.error('Missing required environment variable: CASHFREE_APP_ID');
     return null;
   }
+
+  if (!secretKey) {
+    console.error('Missing required environment variable: CASHFREE_SECRET_KEY');
+    return null;
+  }
+
+  return {
+    appId,
+    secretKey,
+    mode,
+    baseUrl: mode === 'production' ? 'https://api.cashfree.com' : 'https://sandbox.cashfree.com',
+  };
 }
 
 /**
@@ -104,14 +100,14 @@ export async function verifyAndSyncOrder(orderIdOrRow: string | any): Promise<Sy
       };
     }
 
-    const cfConfig = await getCashfreeConfig();
+    const cfConfig = getCashfreeConfig();
     if (!cfConfig) {
       return {
         orderId,
         updated: false,
         paid: false,
         status: currentStatus,
-        message: 'Cashfree credentials not configured',
+        message: 'Cashfree credentials not configured in environment',
       };
     }
 

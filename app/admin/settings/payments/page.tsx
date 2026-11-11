@@ -5,49 +5,35 @@ import { useRouter } from 'next/navigation';
 import { useAdminStore } from '@/stores/admin-store';
 import { useToast } from '@/components/ui/Toast';
 import { supabase } from '@/lib/supabase';
-import { Eye, EyeOff, Check, AlertTriangle, Save, Loader2 } from 'lucide-react';
+import { ShieldCheck, Check, Save, Loader2, Lock, Server } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface PaymentGatewayConfig {
   active: 'cashfree' | 'razorpay';
   cashfree: {
     enabled: boolean;
-    app_id: string;
-    secret_key: string;
     mode: 'sandbox' | 'production';
   };
   razorpay: {
     enabled: boolean;
-    key_id: string;
-    key_secret: string;
     mode: 'test' | 'live';
   };
 }
 
 export default function PaymentGatewaySettingsPage() {
   const router = useRouter();
-  const { currentUser, isAuthInitialized } = useAdminStore();
+  const { currentUser, isAuthInitialized, sessionToken } = useAdminStore();
   const { showToast } = useToast();
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Form states
+  // Form states (Non-secret only)
   const [selectedGateway, setSelectedGateway] = useState<'cashfree' | 'razorpay'>('cashfree');
-
-  // Cashfree states
-  const [cashfreeAppId, setCashfreeAppId] = useState('');
-  const [cashfreeSecret, setCashfreeSecret] = useState('');
-  const [cashfreeMode, setCashfreeMode] = useState<'sandbox' | 'production'>('sandbox');
-  const [showCashfreeAppId, setShowCashfreeAppId] = useState(false);
-  const [showCashfreeSecret, setShowCashfreeSecret] = useState(false);
-
-  // Razorpay states
-  const [razorpayKeyId, setRazorpayKeyId] = useState('');
-  const [razorpaySecret, setRazorpaySecret] = useState('');
+  const [cashfreeEnabled, setCashfreeEnabled] = useState(true);
+  const [cashfreeMode, setCashfreeMode] = useState<'sandbox' | 'production'>('production');
+  const [razorpayEnabled, setRazorpayEnabled] = useState(true);
   const [razorpayMode, setRazorpayMode] = useState<'test' | 'live'>('test');
-  const [showRazorpayKeyId, setShowRazorpayKeyId] = useState(false);
-  const [showRazorpaySecret, setShowRazorpaySecret] = useState(false);
 
   // Metadata states
   const [updatedAt, setUpdatedAt] = useState<string | null>(null);
@@ -66,54 +52,37 @@ export default function PaymentGatewaySettingsPage() {
     }
   }, [currentUser, isAuthInitialized, router, showToast]);
 
-  // Load gateway settings from Supabase
+  // Load gateway settings from secure server API
   useEffect(() => {
     let isMounted = true;
 
     async function loadSettings() {
       try {
-        const { data, error } = await (supabase.from('app_settings') as any)
-          .select('*')
-          .eq('key', 'payment_gateway')
-          .single();
-
-        if (error) {
-          console.error('Error fetching payment settings from Supabase:', error);
-          // Fallback to internal API route
-          const apiRes = await fetch('/api/admin/settings/payment');
-          const apiData = await apiRes.json();
-          if (apiData.settings && isMounted) {
-            populateForm(apiData.settings);
+        const res = await fetch('/api/admin/settings/gateway');
+        const data = await res.json();
+        if (data.settings && isMounted) {
+          const val = data.settings.value as PaymentGatewayConfig;
+          if (val) {
+            if (val.active === 'razorpay' || val.active === 'cashfree') {
+              setSelectedGateway(val.active);
+            }
+            if (val.cashfree) {
+              setCashfreeEnabled(val.cashfree.enabled ?? true);
+              setCashfreeMode(val.cashfree.mode === 'sandbox' ? 'sandbox' : 'production');
+            }
+            if (val.razorpay) {
+              setRazorpayEnabled(val.razorpay.enabled ?? true);
+              setRazorpayMode(val.razorpay.mode === 'live' ? 'live' : 'test');
+            }
           }
-        } else if (data && isMounted) {
-          populateForm(data);
+          setUpdatedAt(data.settings.updated_at || null);
+          setUpdatedBy(data.settings.updated_by || null);
         }
       } catch (err) {
         console.error('Failed to load payment gateway settings:', err);
       } finally {
         if (isMounted) setIsLoading(false);
       }
-    }
-
-    function populateForm(data: any) {
-      const val = data.value as PaymentGatewayConfig;
-      if (val) {
-        if (val.active === 'razorpay' || val.active === 'cashfree') {
-          setSelectedGateway(val.active);
-        }
-        if (val.cashfree) {
-          setCashfreeAppId(val.cashfree.app_id || '');
-          setCashfreeSecret(val.cashfree.secret_key || '');
-          setCashfreeMode(val.cashfree.mode === 'production' ? 'production' : 'sandbox');
-        }
-        if (val.razorpay) {
-          setRazorpayKeyId(val.razorpay.key_id || '');
-          setRazorpaySecret(val.razorpay.key_secret || '');
-          setRazorpayMode(val.razorpay.mode === 'live' ? 'live' : 'test');
-        }
-      }
-      setUpdatedAt(data.updated_at || null);
-      setUpdatedBy(data.updated_by || null);
     }
 
     if (isAuthInitialized) {
@@ -125,69 +94,46 @@ export default function PaymentGatewaySettingsPage() {
     };
   }, [isAuthInitialized]);
 
-  // Check if active gateway is missing API keys
-  const isActiveMissingKeys =
-    (selectedGateway === 'cashfree' && (!cashfreeAppId.trim() || !cashfreeSecret.trim())) ||
-    (selectedGateway === 'razorpay' && (!razorpayKeyId.trim() || !razorpaySecret.trim()));
-
   const handleSave = async () => {
     setIsSaving(true);
 
     const updatedConfig: PaymentGatewayConfig = {
       active: selectedGateway,
       cashfree: {
-        enabled: true,
-        app_id: cashfreeAppId.trim(),
-        secret_key: cashfreeSecret.trim(),
+        enabled: cashfreeEnabled,
         mode: cashfreeMode,
       },
       razorpay: {
-        enabled: true,
-        key_id: razorpayKeyId.trim(),
-        key_secret: razorpaySecret.trim(),
+        enabled: razorpayEnabled,
         mode: razorpayMode,
       },
     };
 
-    const userEmail = currentUser?.email || 'Admin';
-    const nowISO = new Date().toISOString();
-
     try {
-      // 1. Try direct Supabase update
-      const { error } = await (supabase.from('app_settings') as any)
-        .update({
-          value: updatedConfig,
-          updated_at: nowISO,
-          updated_by: userEmail,
-        })
-        .eq('key', 'payment_gateway');
+      // Get current auth token for server validation
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token || sessionToken;
 
-      if (!error) {
-        showToast('Payment gateway updated!', 'success');
-        setUpdatedAt(nowISO);
-        setUpdatedBy(userEmail);
-      } else {
-        // 2. Fallback to server API endpoint (uses service role key)
-        const apiRes = await fetch('/api/admin/settings/payment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            value: updatedConfig,
-            updated_by: userEmail,
-          }),
-        });
+      const res = await fetch('/api/admin/settings/gateway', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ value: updatedConfig }),
+      });
 
-        if (apiRes.ok) {
-          showToast('Payment gateway updated!', 'success');
-          setUpdatedAt(nowISO);
-          setUpdatedBy(userEmail);
-        } else {
-          showToast('Failed to save settings', 'error');
-        }
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to save settings');
       }
-    } catch (err) {
+
+      showToast('Payment gateway configuration saved!', 'success');
+      setUpdatedAt(data.settings?.updated_at || new Date().toISOString());
+      setUpdatedBy(data.settings?.updated_by || currentUser?.email || 'Admin');
+    } catch (err: any) {
       console.error('Error saving payment settings:', err);
-      showToast('Failed to save settings', 'error');
+      showToast(err.message || 'Failed to save settings', 'error');
     } finally {
       setIsSaving(false);
     }
@@ -224,22 +170,26 @@ export default function PaymentGatewaySettingsPage() {
       {/* Title & Subtitle */}
       <div>
         <h1 className="font-display text-2xl sm:text-3xl font-black text-[#2B1A12] tracking-tight">
-          Payment Gateway
+          Payment Gateway Settings
         </h1>
         <p className="text-sm text-[#75604F] font-medium mt-1">
-          Switch between payment providers. Only one can be active at a time.
+          Switch between payment providers. API credentials are encrypted and stored strictly in server environment variables.
         </p>
       </div>
 
-      {/* Warning Banner */}
-      {isActiveMissingKeys && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-xl p-4 flex items-start gap-3 shadow-xs animate-in fade-in duration-200">
-          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-          <p className="text-sm font-semibold leading-relaxed">
-            ⚠️ The active payment gateway has no API keys configured. Customers will not be able to place orders.
+      {/* Security Status Card */}
+      <div className="bg-[#EBF7EE] border border-brandGreen/30 text-[#1B4D27] rounded-2xl p-4 flex items-start gap-3 shadow-xs">
+        <ShieldCheck className="w-5 h-5 text-brandGreen shrink-0 mt-0.5" />
+        <div className="text-xs space-y-1">
+          <p className="font-bold text-sm text-[#1B4D27]">
+            Server-Side Environment Security Enforced
+          </p>
+          <p className="leading-relaxed opacity-90">
+            Payment secrets (App IDs, Secret Keys, and API Secrets) are never stored in the database.
+            They are loaded exclusively by the server runtime via environment variables (<code className="font-mono bg-white/60 px-1 py-0.5 rounded">CASHFREE_APP_ID</code>, <code className="font-mono bg-white/60 px-1 py-0.5 rounded">CASHFREE_SECRET_KEY</code>, <code className="font-mono bg-white/60 px-1 py-0.5 rounded">RAZORPAY_KEY_ID</code>, <code className="font-mono bg-white/60 px-1 py-0.5 rounded">RAZORPAY_KEY_SECRET</code>).
           </p>
         </div>
-      )}
+      </div>
 
       {/* Gateway Cards Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -249,17 +199,17 @@ export default function PaymentGatewaySettingsPage() {
         <div
           onClick={() => setSelectedGateway('cashfree')}
           className={cn(
-            'bg-[#FFFEF7] rounded-xl p-6 transition-all duration-200 flex flex-col justify-between cursor-pointer',
+            'bg-[#FFFEF7] rounded-2xl p-6 transition-all duration-200 flex flex-col justify-between cursor-pointer border',
             isCashfreeActive
               ? 'border-2 border-[#CE5535] shadow-md ring-1 ring-[#CE5535]/10'
-              : 'border border-[#EADFC7] hover:border-[#CE5535]/50'
+              : 'border-[#EADFC7] hover:border-[#CE5535]/50'
           )}
         >
           <div>
             {/* Header Row */}
             <div className="flex items-center justify-between pb-3 border-b border-[#EADFC7]/60">
               <div className="flex items-center gap-2.5">
-                <h2 className="text-lg font-bold text-[#2B1A12]">Cashfree</h2>
+                <h2 className="text-lg font-bold text-[#2B1A12]">Cashfree Payments</h2>
                 {isCashfreeActive ? (
                   <span className="bg-green-100 text-green-800 text-[11px] font-black tracking-wide px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
                     <span className="w-1.5 h-1.5 rounded-full bg-green-600 animate-pulse" />
@@ -273,7 +223,7 @@ export default function PaymentGatewaySettingsPage() {
                 )}
               </div>
 
-              {/* Radio Button */}
+              {/* Radio Indicator */}
               <div
                 className={cn(
                   'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors',
@@ -284,78 +234,55 @@ export default function PaymentGatewaySettingsPage() {
               </div>
             </div>
 
-            {/* Promo Tag */}
-            <div className="mt-3 mb-5">
-              <span className="bg-green-100 text-green-800 text-xs font-bold px-2.5 py-1 rounded-lg inline-block">
-                0% fees on first ₹20L
-              </span>
-            </div>
-
-            {/* Form Fields */}
-            <div className="space-y-4" onClick={(e) => e.stopPropagation()}>
-              {/* App ID */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-[#75604F] mb-1.5">
-                  App ID
-                </label>
-                <div className="relative">
-                  <input
-                    type={showCashfreeAppId ? 'text' : 'password'}
-                    value={cashfreeAppId}
-                    onChange={(e) => setCashfreeAppId(e.target.value)}
-                    placeholder="Enter Cashfree App ID"
-                    className="w-full pr-10 pl-3.5 py-2.5 rounded-xl bg-card border border-[#EADFC7] text-sm text-[#2B1A12] placeholder:text-[#75604F]/40 focus:outline-none focus:ring-2 focus:ring-[#CE5535]/30 focus:border-[#CE5535] transition-all"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowCashfreeAppId(!showCashfreeAppId)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-[#75604F]/60 hover:text-[#2B1A12]"
-                    tabIndex={-1}
-                  >
-                    {showCashfreeAppId ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Secret Key */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-[#75604F] mb-1.5">
-                  Secret Key
-                </label>
-                <div className="relative">
-                  <input
-                    type={showCashfreeSecret ? 'text' : 'password'}
-                    value={cashfreeSecret}
-                    onChange={(e) => setCashfreeSecret(e.target.value)}
-                    placeholder="Enter Cashfree Secret Key"
-                    className="w-full pr-10 pl-3.5 py-2.5 rounded-xl bg-card border border-[#EADFC7] text-sm text-[#2B1A12] placeholder:text-[#75604F]/40 focus:outline-none focus:ring-2 focus:ring-[#CE5535]/30 focus:border-[#CE5535] transition-all"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowCashfreeSecret(!showCashfreeSecret)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-[#75604F]/60 hover:text-[#2B1A12]"
-                    tabIndex={-1}
-                  >
-                    {showCashfreeSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
+            <div className="mt-4 space-y-4" onClick={(e) => e.stopPropagation()}>
               {/* Mode Dropdown */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-[#75604F] mb-1.5">
-                  Mode
+                  Environment Mode
                 </label>
                 <select
                   value={cashfreeMode}
                   onChange={(e) => setCashfreeMode(e.target.value as 'sandbox' | 'production')}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-card border border-[#EADFC7] text-sm font-medium text-[#2B1A12] focus:outline-none focus:ring-2 focus:ring-[#CE5535]/30 focus:border-[#CE5535] transition-all"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-card border border-[#EADFC7] text-sm text-[#2B1A12] focus:outline-none focus:ring-2 focus:ring-[#CE5535]/30 focus:border-[#CE5535] cursor-pointer"
                 >
-                  <option value="sandbox">Sandbox (Testing)</option>
                   <option value="production">Production (Live)</option>
+                  <option value="sandbox">Sandbox (Testing)</option>
                 </select>
               </div>
+
+              {/* Server Env Info Card */}
+              <div className="p-3 rounded-xl bg-[#F4E7CC]/30 border border-[#EADFC7] text-xs text-[#75604F] space-y-1.5">
+                <div className="flex items-center gap-1.5 font-bold text-[#2B1A12]">
+                  <Server className="w-3.5 h-3.5 text-orange" />
+                  <span>Configured via Server Environment</span>
+                </div>
+                <div className="font-mono text-[11px] space-y-0.5">
+                  <div className="flex items-center justify-between">
+                    <span>App ID:</span>
+                    <span className="font-bold text-[#2F7A3E]">CASHFREE_APP_ID</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Secret Key:</span>
+                    <span className="font-bold text-[#2F7A3E]">CASHFREE_SECRET_KEY</span>
+                  </div>
+                </div>
+              </div>
             </div>
+          </div>
+
+          {/* Enable Checkbox */}
+          <div className="pt-5 mt-6 border-t border-[#EADFC7]/60" onClick={(e) => e.stopPropagation()}>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={cashfreeEnabled}
+                onChange={(e) => setCashfreeEnabled(e.target.checked)}
+                className="w-4 h-4 rounded text-[#CE5535] border-[#EADFC7] focus:ring-[#CE5535]"
+              />
+              <span className="text-xs font-bold text-[#2B1A12]">
+                Enable Cashfree Gateway
+              </span>
+            </label>
           </div>
         </div>
 
@@ -365,10 +292,10 @@ export default function PaymentGatewaySettingsPage() {
         <div
           onClick={() => setSelectedGateway('razorpay')}
           className={cn(
-            'bg-[#FFFEF7] rounded-xl p-6 transition-all duration-200 flex flex-col justify-between cursor-pointer',
+            'bg-[#FFFEF7] rounded-2xl p-6 transition-all duration-200 flex flex-col justify-between cursor-pointer border',
             isRazorpayActive
               ? 'border-2 border-[#CE5535] shadow-md ring-1 ring-[#CE5535]/10'
-              : 'border border-[#EADFC7] hover:border-[#CE5535]/50'
+              : 'border-[#EADFC7] hover:border-[#CE5535]/50'
           )}
         >
           <div>
@@ -377,8 +304,8 @@ export default function PaymentGatewaySettingsPage() {
               <div className="flex items-center gap-2.5">
                 <h2 className="text-lg font-bold text-[#2B1A12]">Razorpay</h2>
                 {isRazorpayActive ? (
-                  <span className="bg-blue-100 text-blue-800 text-[11px] font-black tracking-wide px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 rounded-full bg-blue-600 animate-pulse" />
+                  <span className="bg-green-100 text-green-800 text-[11px] font-black tracking-wide px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-600 animate-pulse" />
                     ACTIVE
                   </span>
                 ) : (
@@ -389,7 +316,7 @@ export default function PaymentGatewaySettingsPage() {
                 )}
               </div>
 
-              {/* Radio Button */}
+              {/* Radio Indicator */}
               <div
                 className={cn(
                   'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors',
@@ -400,88 +327,74 @@ export default function PaymentGatewaySettingsPage() {
               </div>
             </div>
 
-            {/* Info Tag */}
-            <div className="mt-3 mb-5">
-              <span className="bg-amber-100 text-amber-800 text-xs font-bold px-2.5 py-1 rounded-lg inline-block">
-                2% + 18% GST per transaction
-              </span>
-            </div>
-
-            {/* Form Fields */}
-            <div className="space-y-4" onClick={(e) => e.stopPropagation()}>
-              {/* Key ID */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-[#75604F] mb-1.5">
-                  Key ID
-                </label>
-                <div className="relative">
-                  <input
-                    type={showRazorpayKeyId ? 'text' : 'password'}
-                    value={razorpayKeyId}
-                    onChange={(e) => setRazorpayKeyId(e.target.value)}
-                    placeholder="Enter Razorpay Key ID"
-                    className="w-full pr-10 pl-3.5 py-2.5 rounded-xl bg-card border border-[#EADFC7] text-sm text-[#2B1A12] placeholder:text-[#75604F]/40 focus:outline-none focus:ring-2 focus:ring-[#CE5535]/30 focus:border-[#CE5535] transition-all"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowRazorpayKeyId(!showRazorpayKeyId)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-[#75604F]/60 hover:text-[#2B1A12]"
-                    tabIndex={-1}
-                  >
-                    {showRazorpayKeyId ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
-              {/* Key Secret */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-[#75604F] mb-1.5">
-                  Key Secret
-                </label>
-                <div className="relative">
-                  <input
-                    type={showRazorpaySecret ? 'text' : 'password'}
-                    value={razorpaySecret}
-                    onChange={(e) => setRazorpaySecret(e.target.value)}
-                    placeholder="Enter Razorpay Key Secret"
-                    className="w-full pr-10 pl-3.5 py-2.5 rounded-xl bg-card border border-[#EADFC7] text-sm text-[#2B1A12] placeholder:text-[#75604F]/40 focus:outline-none focus:ring-2 focus:ring-[#CE5535]/30 focus:border-[#CE5535] transition-all"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowRazorpaySecret(!showRazorpaySecret)}
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-[#75604F]/60 hover:text-[#2B1A12]"
-                    tabIndex={-1}
-                  >
-                    {showRazorpaySecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-
+            <div className="mt-4 space-y-4" onClick={(e) => e.stopPropagation()}>
               {/* Mode Dropdown */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-[#75604F] mb-1.5">
-                  Mode
+                  Environment Mode
                 </label>
                 <select
                   value={razorpayMode}
                   onChange={(e) => setRazorpayMode(e.target.value as 'test' | 'live')}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-card border border-[#EADFC7] text-sm font-medium text-[#2B1A12] focus:outline-none focus:ring-2 focus:ring-[#CE5535]/30 focus:border-[#CE5535] transition-all"
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-card border border-[#EADFC7] text-sm text-[#2B1A12] focus:outline-none focus:ring-2 focus:ring-[#CE5535]/30 focus:border-[#CE5535] cursor-pointer"
                 >
-                  <option value="test">Test</option>
                   <option value="live">Live</option>
+                  <option value="test">Test</option>
                 </select>
               </div>
+
+              {/* Server Env Info Card */}
+              <div className="p-3 rounded-xl bg-[#F4E7CC]/30 border border-[#EADFC7] text-xs text-[#75604F] space-y-1.5">
+                <div className="flex items-center gap-1.5 font-bold text-[#2B1A12]">
+                  <Server className="w-3.5 h-3.5 text-orange" />
+                  <span>Configured via Server Environment</span>
+                </div>
+                <div className="font-mono text-[11px] space-y-0.5">
+                  <div className="flex items-center justify-between">
+                    <span>Key ID:</span>
+                    <span className="font-bold text-[#2F7A3E]">RAZORPAY_KEY_ID</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>Key Secret:</span>
+                    <span className="font-bold text-[#2F7A3E]">RAZORPAY_KEY_SECRET</span>
+                  </div>
+                </div>
+              </div>
             </div>
+          </div>
+
+          {/* Enable Checkbox */}
+          <div className="pt-5 mt-6 border-t border-[#EADFC7]/60" onClick={(e) => e.stopPropagation()}>
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={razorpayEnabled}
+                onChange={(e) => setRazorpayEnabled(e.target.checked)}
+                className="w-4 h-4 rounded text-[#CE5535] border-[#EADFC7] focus:ring-[#CE5535]"
+              />
+              <span className="text-xs font-bold text-[#2B1A12]">
+                Enable Razorpay Gateway
+              </span>
+            </label>
           </div>
         </div>
       </div>
 
-      {/* Save Button & Metadata */}
-      <div className="pt-4 space-y-3">
+      {/* Save Button Row & Last Modified Info */}
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-[#EADFC7]/60">
+        <div>
+          {updatedAt && (
+            <p className="text-xs text-[#75604F] font-medium">
+              Last saved: <strong>{formatDate(updatedAt)}</strong> by{' '}
+              <strong>{updatedBy || 'Admin'}</strong>
+            </p>
+          )}
+        </div>
+
         <button
           onClick={handleSave}
           disabled={isSaving}
-          className="w-full bg-[#CE5535] hover:bg-[#A8401F] text-white rounded-xl py-3 font-semibold transition-colors duration-150 shadow-sm flex items-center justify-center gap-2 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+          className="w-full sm:w-auto px-6 py-3 rounded-xl bg-[#CE5535] hover:bg-[#A8401F] text-white font-bold text-sm shadow-orange flex items-center justify-center gap-2 transition-all duration-150 active:scale-95 disabled:opacity-50"
         >
           {isSaving ? (
             <>
@@ -491,22 +404,10 @@ export default function PaymentGatewaySettingsPage() {
           ) : (
             <>
               <Save className="w-4 h-4" />
-              <span>Save Payment Settings</span>
+              <span>Save Configuration</span>
             </>
           )}
         </button>
-
-        {/* Last Updated metadata */}
-        <p className="text-center text-xs text-[#75604F] font-medium">
-          {updatedBy && updatedAt ? (
-            <>
-              Last updated by <span className="font-semibold text-[#2B1A12]">{updatedBy}</span> on{' '}
-              <span className="font-semibold text-[#2B1A12]">{formatDate(updatedAt)}</span>
-            </>
-          ) : (
-            'Configure your active payment provider above and click save.'
-          )}
-        </p>
       </div>
     </div>
   );

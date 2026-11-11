@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { supabaseAdmin } from '@/lib/supabase-admin';
 import { query } from '@/lib/db';
 
 export async function POST(req: NextRequest) {
@@ -13,17 +12,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing webhook verification headers' }, { status: 401 });
     }
 
-    // Load Cashfree secret key from app_settings
-    const settingsRes = await query(
-      "SELECT value FROM public.app_settings WHERE key = 'payment_gateway'"
-    );
-    const settings = settingsRes.rows[0];
-    const cf = settings?.value?.cashfree;
-    const secretKey = cf?.secret_key || process.env.CASHFREE_SECRET_KEY;
+    // Load Cashfree secret key strictly from server environment variable
+    const secretKey = process.env.CASHFREE_SECRET_KEY;
 
     if (!secretKey) {
-      console.error('Cashfree secret key not configured for webhook verification');
-      return NextResponse.json({ error: 'Secret key not configured' }, { status: 500 });
+      console.error('Missing required environment variable: CASHFREE_SECRET_KEY');
+      return NextResponse.json(
+        { error: 'Server configuration error: CASHFREE_SECRET_KEY is not set' },
+        { status: 500 }
+      );
     }
 
     // Verify signature: base64(HMAC_SHA256(x-webhook-timestamp + rawBody, Cashfree secret key))

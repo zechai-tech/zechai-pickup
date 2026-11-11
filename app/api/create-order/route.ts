@@ -6,9 +6,18 @@ export async function POST(req: Request) {
     const keyId = process.env.RAZORPAY_KEY_ID || process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
 
-    if (!keyId || !keySecret) {
+    if (!keyId) {
+      console.error('Missing required environment variable: RAZORPAY_KEY_ID');
       return NextResponse.json(
-        { error: 'Razorpay credentials not configured on server' },
+        { error: 'Server configuration error: RAZORPAY_KEY_ID is not set' },
+        { status: 500 }
+      );
+    }
+
+    if (!keySecret) {
+      console.error('Missing required environment variable: RAZORPAY_KEY_SECRET');
+      return NextResponse.json(
+        { error: 'Server configuration error: RAZORPAY_KEY_SECRET is not set' },
         { status: 500 }
       );
     }
