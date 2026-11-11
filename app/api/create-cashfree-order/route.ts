@@ -3,7 +3,12 @@ import { query } from '@/lib/db';
 
 export async function POST(req: NextRequest) {
   try {
-    const { orderId, dbOrderId, orderAmount, customerPhone, customerName } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const orderId = body.order_id || body.orderId;
+
+    if (!orderId || typeof orderId !== 'string') {
+      return NextResponse.json({ error: 'Valid order_id is required' }, { status: 400 });
+    }
 
     const appId = process.env.CASHFREE_APP_ID;
     const secretKey = process.env.CASHFREE_SECRET_KEY;
@@ -25,19 +30,35 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Load order and verified total strictly from the database
+    const orderRes = await query(
+      'SELECT id, total, customer_phone, customer_name, status FROM public.orders WHERE id = $1 LIMIT 1',
+      [orderId]
+    );
+
+    if (orderRes.rows.length === 0) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    }
+
+    const order = orderRes.rows[0];
+
+    if (order.status !== 'pending_payment') {
+      return NextResponse.json(
+        { error: `Order is not in pending_payment status (current: ${order.status})` },
+        { status: 400 }
+      );
+    }
+
     const baseUrl =
       envMode === 'production'
         ? 'https://api.cashfree.com/pg/orders'
         : 'https://sandbox.cashfree.com/pg/orders';
 
-    // Format clean phone number
-    const cleanPhone = (customerPhone || '').replace(/\D/g, '').slice(-10) || '9999999999';
+    // Format clean phone number from database record
+    const cleanPhone = (order.customer_phone || '').replace(/\D/g, '').slice(-10) || '9999999999';
 
-    // Determine database order UUID and Cashfree order ID
-    const resolvedDbOrderId = dbOrderId || (orderId && orderId.length === 36 ? orderId : null);
-    const cfOrderId = resolvedDbOrderId
-      ? `zc_${resolvedDbOrderId.replace(/-/g, '').slice(0, 16)}_${Date.now()}`
-      : (orderId || `zc_${Date.now()}`);
+    // Cashfree order ID format
+    const cfOrderId = `zc_${order.id.replace(/-/g, '').slice(0, 16)}_${Date.now()}`;
 
     // Set order_expiry_time to 20 minutes from now (ISO 8601 string)
     const expiryTime = new Date(Date.now() + 20 * 60 * 1000).toISOString();
@@ -52,12 +73,12 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         order_id: cfOrderId,
-        order_amount: Number(orderAmount),
+        order_amount: Number(order.total),
         order_currency: 'INR',
         customer_details: {
-          customer_id: `cust_${Date.now()}`,
+          customer_id: `cust_${order.id.replace(/-/g, '').slice(0, 12)}`,
           customer_phone: cleanPhone,
-          customer_name: customerName || 'Customer',
+          customer_name: order.customer_name || 'Customer',
         },
         order_meta: {
           return_url: `https://pickup.zechai.in/order-success?order_id={order_id}`,
@@ -70,12 +91,10 @@ export async function POST(req: NextRequest) {
 
     if (response.ok && data.order_id) {
       // Save cf_order_id on the order row
-      if (resolvedDbOrderId) {
-        await query(
-          `UPDATE public.orders SET cf_order_id = $1, updated_at = now() WHERE id = $2`,
-          [data.order_id, resolvedDbOrderId]
-        );
-      }
+      await query(
+        `UPDATE public.orders SET cf_order_id = $1, updated_at = now() WHERE id = $2`,
+        [data.order_id, order.id]
+      );
     }
 
     return NextResponse.json(data);

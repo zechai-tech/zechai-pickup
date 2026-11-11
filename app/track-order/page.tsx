@@ -1,25 +1,20 @@
 'use client';
 
-import React, { useEffect, useState, Suspense, useRef } from 'react';
+import React, { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ChevronLeft,
   Check,
-  Clock,
   Phone,
   AlertCircle,
   XCircle,
   ShoppingBag,
-  Sparkles,
   Camera,
   RotateCcw,
-  Package,
-  Store,
 } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
 import { formatPrice } from '@/lib/utils';
-import { normalizeOrderStatus, CanonicalStatus } from '@/lib/order-flow';
+import { normalizeOrderStatus } from '@/lib/order-flow';
 
 interface OrderItem {
   id?: string;
@@ -33,71 +28,61 @@ interface OrderData {
   id: string;
   pickup_code: string;
   status: string;
-  payment_status?: string | null;
   cancel_reason?: string | null;
   total: number;
   items: OrderItem[];
-  customer_name?: string;
-  customer_phone?: string;
   kitchen_note?: string;
   created_at?: string;
-  outlet_id?: string;
-  outlet?: {
-    id: string;
-    name: string;
-    address?: string | null;
-  } | null;
+  outlet_name?: string;
 }
 
 function TrackOrderContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const code = searchParams.get('code') || '';
+  const urlId = searchParams.get('id');
+  const urlCode = searchParams.get('code');
 
   const [order, setOrder] = useState<OrderData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const hasTriggeredVerifyRef = useRef(false);
+
+  const code = order?.pickup_code || urlCode || '';
 
   const fetchOrder = async (isSilent = false) => {
-    if (!code) {
-      setError('No pickup code provided');
-      setLoading(false);
+    const targetId =
+      urlId || (typeof window !== 'undefined' ? localStorage.getItem('activeOrderId') : null);
+    const targetCode =
+      urlCode ||
+      (!targetId && typeof window !== 'undefined' ? localStorage.getItem('activeOrderCode') : null);
+
+    if (!targetId && !targetCode) {
+      if (!isSilent) {
+        setError('No order id or pickup code provided');
+        setLoading(false);
+      }
       return;
     }
 
     try {
-      const { data, error: fetchErr } = await (supabase.from('orders') as any)
-        .select(`
-          *,
-          outlet:outlets(id, name, address)
-        `)
-        .eq('pickup_code', code)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
+      const param = targetId
+        ? `id=${encodeURIComponent(targetId)}`
+        : `code=${encodeURIComponent(targetCode!)}`;
 
-      if (fetchErr) {
-        if (!isSilent) setError('Order not found');
-      } else if (data) {
-        setOrder(data);
+      const res = await fetch(`/api/orders/track?${param}`, {
+        cache: 'no-store',
+      });
+      const data = await res.json();
+
+      if (!res.ok || !data.order) {
+        if (!isSilent) setError(data.error || 'Order not found');
+      } else {
+        setOrder(data.order);
         setError(null);
-
-        // Fallback verify for pending_payment on page load
-        if (data.status === 'pending_payment' && !hasTriggeredVerifyRef.current) {
-          hasTriggeredVerifyRef.current = true;
-          fetch('/api/orders/verify', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ orderId: data.id, pickupCode: code }),
-          })
-            .then((res) => res.json())
-            .then((verifyRes) => {
-              if (verifyRes.updated && verifyRes.status) {
-                setOrder((prev) => (prev ? { ...prev, status: verifyRes.status } : null));
-              }
-            })
-            .catch((e) => console.warn('Customer verification call notice:', e));
+        if (data.order.id) {
+          localStorage.setItem('activeOrderId', data.order.id);
+        }
+        if (data.order.pickup_code) {
+          localStorage.setItem('activeOrderCode', data.order.pickup_code);
         }
       }
     } catch (e: any) {
@@ -108,34 +93,42 @@ function TrackOrderContent() {
   };
 
   useEffect(() => {
-    fetchOrder();
+    fetchOrder(false);
 
-    // Supabase Realtime subscription for instant progress updates
-    const channel = supabase
-      .channel(`customer-order-tracker-${code}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'orders',
-          filter: `pickup_code=eq.${code}`,
-        },
-        (payload) => {
-          if (payload.new) {
-            setOrder((prev) => {
-              if (!prev) return payload.new as OrderData;
-              return { ...prev, ...(payload.new as any) };
-            });
-          }
-        }
-      )
-      .subscribe();
+    let intervalId: NodeJS.Timeout | null = null;
+
+    const startPolling = () => {
+      if (!intervalId) {
+        intervalId = setInterval(() => {
+          fetchOrder(true);
+        }, 4000);
+      }
+    };
+
+    const stopPolling = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        fetchOrder(true);
+        startPolling();
+      }
+    };
+
+    startPolling();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
-      supabase.removeChannel(channel);
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [code]);
+  }, [urlId, urlCode]);
 
   const canonicalStatus = normalizeOrderStatus(order?.status);
   const isCancelled = canonicalStatus === 'cancelled';

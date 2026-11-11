@@ -156,6 +156,27 @@ export async function verifyAndSyncOrder(orderIdOrRow: string | any): Promise<Sy
     );
 
     if (successfulPayment) {
+      const paidAmount = Number(successfulPayment.payment_amount || 0);
+      const expectedTotal = Number(order.total);
+
+      // Verify payment amount matches order total
+      if (Math.abs(paidAmount - expectedTotal) > 0.01) {
+        console.error(
+          `Payment amount mismatch for order ${orderId}: expected ₹${expectedTotal}, received ₹${paidAmount}`
+        );
+        await query(
+          `UPDATE public.orders SET payment_status = 'amount_mismatch', updated_at = now() WHERE id = $1`,
+          [orderId]
+        );
+        return {
+          orderId,
+          updated: true,
+          paid: false,
+          status: 'amount_mismatch',
+          message: 'Payment amount mismatch',
+        };
+      }
+
       const paymentMethod =
         successfulPayment.payment_group ||
         (successfulPayment.payment_method?.upi ? 'upi' : null) ||

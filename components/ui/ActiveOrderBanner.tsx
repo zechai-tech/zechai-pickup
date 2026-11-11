@@ -1,61 +1,108 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Sparkles, ArrowRight } from 'lucide-react';
-import { supabase } from '@/lib/supabase';
 
 export function ActiveOrderBanner() {
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [activeCode, setActiveCode] = useState<string | null>(null);
   const [activeStatus, setActiveStatus] = useState<string | null>(null);
 
-  useEffect(() => {
-    const checkActiveOrder = async () => {
-      try {
-        const storedCode =
-          localStorage.getItem('activeOrderCode') ||
-          sessionStorage.getItem('activeOrderCode');
-        const storedTime =
-          localStorage.getItem('activeOrderTime') ||
-          sessionStorage.getItem('activeOrderTime');
+  const checkActiveOrder = useCallback(async () => {
+    try {
+      const storedId =
+        localStorage.getItem('activeOrderId') || sessionStorage.getItem('activeOrderId');
+      const storedCode =
+        localStorage.getItem('activeOrderCode') || sessionStorage.getItem('activeOrderCode');
+      const storedTime =
+        localStorage.getItem('activeOrderTime') || sessionStorage.getItem('activeOrderTime');
 
-        if (!storedCode) return;
+      if (!storedId && !storedCode) {
+        setActiveCode(null);
+        return;
+      }
 
-        // Check if within last 2 hours (2 * 60 * 60 * 1000 = 7,200,000 ms)
-        if (storedTime) {
-          const age = Date.now() - parseInt(storedTime, 10);
-          if (age > 7200000) {
-            localStorage.removeItem('activeOrderCode');
-            localStorage.removeItem('activeOrderTime');
-            sessionStorage.removeItem('activeOrderCode');
-            sessionStorage.removeItem('activeOrderTime');
-            return;
-          }
+      // Check if within last 2 hours (2 * 60 * 60 * 1000 = 7,200,000 ms)
+      if (storedTime) {
+        const age = Date.now() - parseInt(storedTime, 10);
+        if (age > 7200000) {
+          localStorage.removeItem('activeOrderId');
+          localStorage.removeItem('activeOrderCode');
+          localStorage.removeItem('activeOrderTime');
+          sessionStorage.removeItem('activeOrderId');
+          sessionStorage.removeItem('activeOrderCode');
+          sessionStorage.removeItem('activeOrderTime');
+          setActiveCode(null);
+          return;
         }
+      }
 
-        // Query Supabase for latest status
-        const { data: order } = await (supabase.from('orders') as any)
-          .select('pickup_code, status, created_at')
-          .eq('pickup_code', storedCode)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single();
+      const param = storedId
+        ? `id=${encodeURIComponent(storedId)}`
+        : `code=${encodeURIComponent(storedCode!)}`;
 
-        if (order && ['pending', 'confirmed', 'preparing', 'packaging', 'ready'].includes(order.status)) {
-          setActiveCode(order.pickup_code);
-          setActiveStatus(order.status);
-        } else {
+      const res = await fetch(`/api/orders/track?${param}`, { cache: 'no-store' });
+      if (!res.ok) {
+        if (res.status === 404) {
           setActiveCode(null);
         }
-      } catch (err) {
-        console.warn('Active order check notice:', err);
+        return;
+      }
+
+      const data = await res.json();
+      const order = data?.order;
+
+      if (
+        order &&
+        ['pending', 'confirmed', 'preparing', 'packaging', 'ready'].includes(order.status)
+      ) {
+        setActiveId(order.id);
+        setActiveCode(order.pickup_code);
+        setActiveStatus(order.status);
+      } else {
+        setActiveCode(null);
+      }
+    } catch (err) {
+      console.warn('Active order check notice:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkActiveOrder();
+
+    let intervalId: NodeJS.Timeout | null = null;
+
+    const startPolling = () => {
+      if (!intervalId) {
+        intervalId = setInterval(checkActiveOrder, 4000);
       }
     };
 
-    checkActiveOrder();
-    const interval = setInterval(checkActiveOrder, 15000);
-    return () => clearInterval(interval);
-  }, []);
+    const stopPolling = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        checkActiveOrder();
+        startPolling();
+      }
+    };
+
+    startPolling();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [checkActiveOrder]);
 
   if (!activeCode) return null;
 
@@ -76,7 +123,7 @@ export function ActiveOrderBanner() {
       </div>
 
       <Link
-        href={`/track-order?code=${activeCode}`}
+        href={activeId ? `/track-order?id=${encodeURIComponent(activeId)}` : `/track-order?code=${activeCode}`}
         className="shrink-0 ml-2 px-3 py-1 rounded-full bg-white text-[#CE5535] font-black text-[11px] hover:bg-[#FDFBEA] active:scale-95 transition-all flex items-center gap-1 shadow-xs"
       >
         <span>Track</span>

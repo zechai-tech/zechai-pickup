@@ -74,6 +74,26 @@ export async function POST(req: NextRequest) {
     const currentStatus = order.status;
 
     if (eventType === 'PAYMENT_SUCCESS_WEBHOOK') {
+      const paidAmount = Number(paymentData?.payment_amount ?? orderData?.order_amount ?? 0);
+      const expectedTotal = Number(order.total);
+
+      // Verify that Cashfree paid amount equals order total in the database
+      if (Math.abs(paidAmount - expectedTotal) > 0.01) {
+        console.error(
+          `Payment amount mismatch for order ${orderId}: expected ₹${expectedTotal}, received ₹${paidAmount}`
+        );
+        await query(
+          `UPDATE public.orders SET payment_status = 'amount_mismatch', updated_at = now() WHERE id = $1`,
+          [orderId]
+        );
+        return NextResponse.json({
+          status: 'amount_mismatch',
+          orderId,
+          expected: expectedTotal,
+          received: paidAmount,
+        });
+      }
+
       // If status is pending_payment (or payment_cancelled/payment_failed for late success)
       if (['pending_payment', 'payment_cancelled', 'payment_failed'].includes(currentStatus)) {
         const cfPaymentId = String(paymentData?.cf_payment_id || '');

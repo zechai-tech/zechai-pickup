@@ -8,64 +8,106 @@ import { Button } from '@/components/ui/Button';
 
 function OrderSuccessContent() {
   const searchParams = useSearchParams();
+  const [orderId, setOrderId] = React.useState<string | null>(
+    searchParams.get('id') || searchParams.get('order_id') || null
+  );
   const [code, setCode] = React.useState(searchParams.get('code') || '');
   const [outlet, setOutlet] = React.useState(searchParams.get('outlet') || 'Zécha! Thamarassery');
   const [total, setTotal] = React.useState(searchParams.get('total') || '');
+
+  const fetchTrackData = React.useCallback(async () => {
+    const targetId =
+      searchParams.get('id') ||
+      searchParams.get('order_id') ||
+      orderId ||
+      (typeof window !== 'undefined' ? localStorage.getItem('activeOrderId') : null);
+    const targetCode =
+      searchParams.get('code') ||
+      (!targetId && typeof window !== 'undefined' ? localStorage.getItem('activeOrderCode') : null);
+
+    if (!targetId && !targetCode) return;
+
+    try {
+      const param = targetId
+        ? `id=${encodeURIComponent(targetId)}`
+        : `code=${encodeURIComponent(targetCode!)}`;
+
+      const res = await fetch(`/api/orders/track?${param}`, { cache: 'no-store' });
+      const data = await res.json();
+
+      if (data?.order) {
+        const ord = data.order;
+        if (ord.id) {
+          setOrderId(ord.id);
+          localStorage.setItem('activeOrderId', ord.id);
+        }
+        if (ord.pickup_code) {
+          setCode(ord.pickup_code);
+          localStorage.setItem('activeOrderCode', ord.pickup_code);
+        }
+        if (ord.outlet_name) {
+          setOutlet(ord.outlet_name);
+          localStorage.setItem('activeOrderOutlet', ord.outlet_name);
+        }
+        if (ord.total) {
+          setTotal(ord.total.toString());
+        }
+      }
+    } catch (e) {
+      console.warn('Track order fetch error:', e);
+    }
+  }, [searchParams, orderId]);
 
   React.useEffect(() => {
     const paramCode = searchParams.get('code');
     const paramOutlet = searchParams.get('outlet');
     const paramTotal = searchParams.get('total');
-    const paramOrderId = searchParams.get('order_id');
+    const paramId = searchParams.get('id') || searchParams.get('order_id');
 
-    if (paramCode) {
-      setCode(paramCode);
-      if (paramOutlet) setOutlet(paramOutlet);
-      if (paramTotal) setTotal(paramTotal);
-      // Trigger background sync
-      fetch('/api/orders/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pickupCode: paramCode }),
-      }).catch((e) => console.warn('Background sync error:', e));
-      return;
+    if (paramId) {
+      setOrderId(paramId);
+      localStorage.setItem('activeOrderId', paramId);
     }
+    if (paramCode) setCode(paramCode);
+    if (paramOutlet) setOutlet(paramOutlet);
+    if (paramTotal) setTotal(paramTotal);
 
-    // If redirected with order_id from Cashfree
-    if (paramOrderId) {
-      fetch('/api/orders/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: paramOrderId }),
-      })
-        .then((res) => res.json())
-        .then((data) => {
-          if (data?.order?.pickup_code) {
-            setCode(data.order.pickup_code);
-            localStorage.setItem('activeOrderCode', data.order.pickup_code);
-          }
-        })
-        .catch((e) => console.warn('Order verify error:', e));
-    }
+    // Initial fetch
+    fetchTrackData();
 
-    // Check sessionStorage
-    const pending = sessionStorage.getItem('pendingOrder');
-    if (pending) {
-      try {
-        const parsed = JSON.parse(pending);
-        if (parsed.pickupCode) setCode(parsed.pickupCode);
-        if (parsed.outletName) setOutlet(parsed.outletName);
-        if (parsed.total) setTotal(parsed.total.toString());
-        return;
-      } catch (e) {}
-    }
+    // 4-second polling while tab visible
+    let intervalId: NodeJS.Timeout | null = null;
 
-    // Check localStorage
-    const storedCode = localStorage.getItem('activeOrderCode');
-    const storedOutlet = localStorage.getItem('activeOrderOutlet');
-    if (storedCode) setCode(storedCode);
-    if (storedOutlet) setOutlet(storedOutlet);
-  }, [searchParams]);
+    const startPolling = () => {
+      if (!intervalId) {
+        intervalId = setInterval(fetchTrackData, 4000);
+      }
+    };
+
+    const stopPolling = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        fetchTrackData();
+        startPolling();
+      }
+    };
+
+    startPolling();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      stopPolling();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [searchParams, fetchTrackData]);
 
   const displayCode = code || '----';
 
@@ -120,7 +162,14 @@ function OrderSuccessContent() {
       {/* 5 & 6: Action Buttons */}
       <div className="shrink-0 w-full max-w-[320px] mx-auto space-y-2.5 pt-1 safe-bottom px-1">
         {/* Track my order button (Primary orange) */}
-        <Link href={`/track-order?code=${displayCode}`} className="block w-full">
+        <Link
+          href={
+            orderId
+              ? `/track-order?id=${encodeURIComponent(orderId)}`
+              : `/track-order?code=${displayCode}`
+          }
+          className="block w-full"
+        >
           <Button className="w-full h-12 text-base font-bold bg-[#CE5535] hover:bg-[#A8401F] text-white shadow-orange group rounded-2xl">
             <span>Track my order</span>
             <ArrowRight className="w-4 h-4 ml-1.5 group-hover:translate-x-1 transition-transform" />
