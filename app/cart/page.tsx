@@ -6,19 +6,18 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ChevronLeft,
-  MapPin,
   User,
-  Trash2,
-  ArrowRight,
+  Plus,
+  Minus,
   PenLine,
   X,
-  AlertCircle,
+  Loader2,
+  Check,
 } from 'lucide-react';
 import { useZechaStore, getCartSummary } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/components/ui/Toast';
-import { Stepper } from '@/components/ui/Stepper';
-import { Button } from '@/components/ui/Button';
+import { MenuImage } from '@/components/ui/MenuImage';
 import { formatPrice } from '@/lib/utils';
 
 export default function CartPage() {
@@ -33,19 +32,22 @@ export default function CartPage() {
     setCustomer,
   } = useZechaStore();
 
-  const { count, grandTotal } = getCartSummary(cart);
+  const { count, itemTotal, gst, grandTotal } = getCartSummary(cart);
   const { showToast } = useToast();
 
   const [kitchenNote, setKitchenNote] = useState(customer.note || '');
   const [isPhoneModalOpen, setIsPhoneModalOpen] = useState(false);
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState(customer.phone || '');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [isGatewayLoading, setIsGatewayLoading] = useState(false);
+
   const isNavigatingToSuccessRef = useRef(false);
+  const isSubmittingRef = useRef(false);
 
   // Validate 10-digit Indian phone number
-  const cleanPhone = phone.replace(/\D/g, '');
-  const isPhoneValid = /^\d{10}$/.test(cleanPhone);
+  const cleanPhone = phone.replace(/\D/g, '').slice(0, 10);
+  const isPhoneValid = /^[6-9]\d{9}$/.test(cleanPhone);
 
   // Route guard: if empty cart and not placing order, redirect to /menu
   useEffect(() => {
@@ -54,7 +56,7 @@ export default function CartPage() {
     }
   }, [cart.length, submitting, router]);
 
-  // Lock body scroll when phone modal is open (Fix 7)
+  // Lock body scroll when phone modal is open
   useEffect(() => {
     if (isPhoneModalOpen) {
       document.body.style.overflow = 'hidden';
@@ -66,11 +68,7 @@ export default function CartPage() {
     };
   }, [isPhoneModalOpen]);
 
-  const handleProceedToPayClick = () => {
-    setIsPhoneModalOpen(true);
-  };
-
-  // Dynamically load Cashfree checkout script if not ready
+  // Dynamically load Cashfree checkout script
   const loadCashfreeScript = (): Promise<boolean> => {
     return new Promise((resolve) => {
       if (typeof window !== 'undefined' && (window as any).Cashfree) {
@@ -102,28 +100,32 @@ export default function CartPage() {
     });
   };
 
-  const handlePlaceOrder = async () => {
-    if (!isPhoneValid) {
-      setErrorMsg('Please enter a valid 10-digit phone number');
-      return;
+  // Auto-trigger order creation & payment the moment the 10th digit is valid
+  useEffect(() => {
+    if (cleanPhone.length === 10 && isPhoneValid && isPhoneModalOpen && !isSubmittingRef.current) {
+      handleInitiatePayment(cleanPhone);
     }
-    setErrorMsg('');
+  }, [cleanPhone, isPhoneValid, isPhoneModalOpen]);
+
+  const handleInitiatePayment = async (phoneToUse: string) => {
+    if (isSubmittingRef.current) return;
+    isSubmittingRef.current = true;
     setSubmitting(true);
+    setErrorMsg('');
 
     try {
-      // 1. Save customer info to store
-      setCustomer({ phone: cleanPhone, note: kitchenNote });
+      setCustomer({ phone: phoneToUse, note: kitchenNote });
 
-      // Step 1: Create order securely on server
       const selectedOutletName = outlet?.name || 'Zécha! Thamarassery';
       const selectedOutletId = outlet?.id || '2d784d85-8afb-4524-bdd7-1d4a31f8b8d5';
 
+      // 1. Create order on server
       const createRes = await fetch('/api/orders/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           outlet_id: selectedOutletId,
-          customer_phone: cleanPhone,
+          customer_phone: phoneToUse,
           kitchen_note: kitchenNote.trim() || null,
           items: cart.map((item) => ({
             menu_item_id: item.itemId,
@@ -135,38 +137,37 @@ export default function CartPage() {
       const createData = await createRes.json();
 
       if (!createRes.ok || !createData.order_id) {
-        console.error('Order create error:', createData);
         setErrorMsg(createData.error || 'Failed to create order. Please try again.');
         setSubmitting(false);
+        isSubmittingRef.current = false;
         return;
       }
 
       const orderId = createData.order_id;
       const verifiedTotal = Number(createData.total);
 
-      // Save to sessionStorage for checkout redirect reference
       sessionStorage.setItem(
         'pendingOrder',
         JSON.stringify({
-          orderId: orderId,
+          orderId,
           outletName: selectedOutletName,
           total: verifiedTotal,
         })
       );
 
-      // Step 2: Fetch payment gateway configuration
+      // 2. Fetch payment gateway configuration
       const { data: settings } = await (supabase.from('app_settings') as any)
         .select('value')
         .eq('key', 'payment_gateway')
         .single();
 
       const gwConfig = settings?.value;
-      const activeGW = gwConfig?.active;
+      const activeGW = gwConfig?.active || 'cashfree';
+
+      setIsGatewayLoading(true);
 
       if (activeGW === 'cashfree') {
-        // ==========================================
-        // CASHFREE FLOW
-        // ==========================================
+        // ================= CASHFREE FLOW =================
         await loadCashfreeScript();
 
         const cfResponse = await fetch('/api/create-cashfree-order', {
@@ -183,6 +184,8 @@ export default function CartPage() {
           showToast('Payment initialization failed.', 'error');
           setErrorMsg(cfOrder.error || 'Payment initialization failed.');
           setSubmitting(false);
+          setIsGatewayLoading(false);
+          isSubmittingRef.current = false;
           return;
         }
 
@@ -208,19 +211,21 @@ export default function CartPage() {
               showToast('Payment failed.', 'error');
               setErrorMsg('Payment failed.');
               setSubmitting(false);
+              setIsGatewayLoading(false);
+              isSubmittingRef.current = false;
             }
           })
           .catch((err: any) => {
             console.error('Cashfree checkout error:', err);
             sessionStorage.removeItem('pendingOrder');
-            showToast('Payment failed.', 'error');
-            setErrorMsg('Payment failed.');
+            showToast('Payment cancelled or failed.', 'info');
+            setErrorMsg('Payment cancelled.');
             setSubmitting(false);
+            setIsGatewayLoading(false);
+            isSubmittingRef.current = false;
           });
       } else if (activeGW === 'razorpay') {
-        // ==========================================
-        // RAZORPAY FLOW
-        // ==========================================
+        // ================= RAZORPAY FLOW =================
         await loadRazorpayScript();
         const razorpayKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
 
@@ -255,13 +260,15 @@ export default function CartPage() {
             ondismiss: function () {
               sessionStorage.removeItem('pendingOrder');
               setSubmitting(false);
-              setErrorMsg('Payment cancelled');
+              setIsGatewayLoading(false);
+              isSubmittingRef.current = false;
+              showToast('Payment cancelled', 'info');
             },
             confirm_close: true,
             escape: false,
           },
           prefill: {
-            contact: cleanPhone,
+            contact: phoneToUse,
           },
           theme: {
             color: '#CE5535',
@@ -269,130 +276,168 @@ export default function CartPage() {
         };
 
         const rzp = new (window as any).Razorpay(options);
-
         rzp.on('payment.failed', function () {
           sessionStorage.removeItem('pendingOrder');
           setSubmitting(false);
+          setIsGatewayLoading(false);
+          isSubmittingRef.current = false;
           showToast('Payment failed. Please try again.', 'error');
           setErrorMsg('Payment failed. Please try again.');
         });
 
+        setIsGatewayLoading(false);
         rzp.open();
       } else {
-        showToast('Payment not configured. Please contact support.', 'error');
-        setErrorMsg('Payment not configured. Please contact support.');
+        showToast('Payment gateway not configured.', 'error');
+        setErrorMsg('Payment gateway not configured.');
         setSubmitting(false);
+        setIsGatewayLoading(false);
+        isSubmittingRef.current = false;
       }
     } catch (err) {
-      console.error('Payment flow error:', err);
+      console.error('Payment error:', err);
       setErrorMsg('Something went wrong. Please try again.');
       setSubmitting(false);
+      setIsGatewayLoading(false);
+      isSubmittingRef.current = false;
     }
   };
+
+  // Screen 6: Gateway loading overlay
+  if (isGatewayLoading) {
+    return (
+      <div className="min-h-screen bg-[#FDFBEA] flex flex-col items-center justify-center p-6 text-center page-transition">
+        <div className="relative w-36 h-12 mb-6">
+          <Image
+            src="/assets/logo-orange.png"
+            alt="Zécha!"
+            width={144}
+            height={48}
+            priority
+            className="object-contain"
+          />
+        </div>
+        <div className="w-12 h-12 rounded-full border-3 border-[#CE5535] border-t-transparent animate-spin mb-4" />
+        <h2 className="font-display text-xl font-extrabold text-[#2B1A12]">
+          Opening secure payment…
+        </h2>
+        <p className="text-xs text-[#75604F] mt-1">Please do not refresh or close</p>
+      </div>
+    );
+  }
 
   // Empty cart fallback
   if (count === 0) {
     return (
-      <div className="min-h-[100dvh] h-full flex flex-col justify-between p-6 bg-cream page-transition overflow-hidden w-full max-w-full">
-        <header className="shrink-0 flex items-center pt-2">
+      <div className="min-h-screen bg-[#FDFBEA] flex flex-col justify-between p-6 page-transition">
+        <header className="flex items-center pt-2">
           <Link
             href="/menu"
-            className="w-10 h-10 rounded-full bg-card border border-border flex items-center justify-center text-espresso hover:bg-sand/40 transition-colors"
-            aria-label="Back to menu"
+            className="w-11 h-11 rounded-full bg-[#FFFEF7] border border-[#EADFC7] flex items-center justify-center text-[#2B1A12]"
           >
-            <ChevronLeft className="w-5 h-5 stroke-[2.2]" />
+            <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
           </Link>
-          <h1 className="font-display text-xl font-black text-espresso ml-4">Your cart</h1>
+          <h1 className="font-display text-xl font-black text-[#2B1A12] ml-4">
+            Your cart
+          </h1>
         </header>
 
-        <main className="flex-1 flex flex-col items-center justify-center text-center px-4 my-auto">
-          <div className="w-24 h-24 relative mb-4 opacity-75">
-            <Image
-              src="/assets/mascot-orange.png"
-              alt="Empty Cart"
-              fill
-              sizes="96px"
-              priority
-              className="object-contain"
-            />
-          </div>
-          <h2 className="font-display text-2xl font-black text-espresso mb-1">
+        <div className="flex-1 flex flex-col items-center justify-center text-center px-4 my-auto">
+          <h2 className="font-display text-2xl font-black text-[#2B1A12] mb-1">
             Your cart is empty
           </h2>
-          <p className="text-xs font-medium text-espresso/60 max-w-[240px] mb-6">
-            Looks like you haven&apos;t added any chai or bites to your order yet.
+          <p className="text-sm text-[#75604F] mb-6">
+            Add hot tea and crunchy bites from our menu!
           </p>
-          <Link href="/menu">
-            <Button className="px-8 shadow-orange font-bold">Browse menu</Button>
+          <Link
+            href="/menu"
+            className="h-12 px-8 rounded-full bg-[#CE5535] text-[#FDFBEA] font-bold text-sm flex items-center justify-center shadow-orange"
+          >
+            Explore Menu
           </Link>
-        </main>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-[100dvh] h-full flex flex-col bg-cream page-transition overflow-hidden relative w-full max-w-full">
-      {/* Top Header */}
-      <header className="shrink-0 z-30 bg-cream/95 backdrop-blur-md px-4 pt-3 pb-3 border-b border-border/50 flex items-center justify-between w-full">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/menu"
-            className="w-10 h-10 rounded-full bg-card border border-border flex items-center justify-center text-espresso hover:bg-sand/40 transition-colors"
-            aria-label="Back to menu"
-          >
-            <ChevronLeft className="w-5 h-5 stroke-[2.2]" />
-          </Link>
-          <h1 className="font-display text-2xl font-black text-espresso">Your cart</h1>
-        </div>
-        <span className="text-xs font-bold text-espresso/60">
-          {count} {count === 1 ? 'item' : 'items'}
-        </span>
-      </header>
-
-      {/* Cart Content (Scrollable with mobile overscroll containment) */}
-      <main className="flex-1 overflow-y-auto overscroll-contain overflow-x-hidden p-4 pb-32 space-y-4 scrollbar-none touch-scroll w-full max-w-full">
-        {/* Cart Line Items */}
-        <div className="space-y-2.5 w-full max-w-full">
-          {cart.map((line) => (
-            <div
-              key={line.lineId}
-              className="bg-card rounded-card border border-border p-3 flex items-center justify-between gap-3 shadow-xs w-full max-w-full overflow-hidden"
+    <div className="min-h-screen bg-[#FDFBEA] flex flex-col justify-between pb-28 page-transition select-none">
+      <div className="p-4 space-y-4">
+        {/* Header: Back, "Your cart", "N items" on right */}
+        <header className="flex items-center justify-between pt-1 pb-1">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/menu"
+              className="w-11 h-11 rounded-full bg-[#FFFEF7] border border-[#EADFC7] flex items-center justify-center text-[#2B1A12] hover:bg-[#F4E7CC]/50 transition-colors shadow-2xs"
+              aria-label="Back to menu"
             >
-              {/* Thumbnail */}
-              <div className="relative w-14 h-14 rounded-xl overflow-hidden bg-sand/40 flex-shrink-0">
-                <Image
-                  src={line.image || '/assets/chai.jpg'}
-                  alt={line.name}
+              <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
+            </Link>
+            <h1 className="font-display text-[24px] font-extrabold text-[#2B1A12] tracking-tight">
+              Your cart
+            </h1>
+          </div>
+          <span className="text-sm font-bold text-[#75604F]">
+            {count} {count === 1 ? 'item' : 'items'}
+          </span>
+        </header>
+
+        {/* Item Cards: Each item is its OWN card (14px padding, 20px radius, 12px gap between cards) */}
+        <div className="space-y-3">
+          {cart.map((item) => (
+            <div
+              key={item.lineId}
+              className="bg-[#FFFEF7] rounded-[20px] border border-[#EADFC7] p-3.5 flex items-center justify-between gap-3 shadow-2xs hover:border-[#E3D7BC] transition-all"
+            >
+              {/* Left: 68px photo */}
+              <div className="w-[68px] h-[68px] rounded-[14px] overflow-hidden shrink-0 relative border border-[#EADFC7]/50">
+                <MenuImage
+                  src={item.image || '/assets/chai.jpg'}
+                  alt={item.name}
                   fill
-                  sizes="56px"
-                  loading="lazy"
+                  sizes="68px"
                   className="object-cover"
                 />
               </div>
 
-              {/* Details */}
-              <div className="flex-1 min-w-0">
-                <h3 className="font-bold text-xs text-espresso truncate">{line.name}</h3>
-                <span className="font-extrabold text-[14px] text-espresso mt-0.5 block">
-                  {formatPrice(line.unitPrice * line.qty)}
-                </span>
+              {/* Middle: Name, small note line, price */}
+              <div className="flex-1 min-w-0 pr-1">
+                <h3 className="font-extrabold text-[16px] text-[#2B1A12] truncate leading-tight">
+                  {item.name}
+                </h3>
+                {item.selectedSize ? (
+                  <p className="text-[12px] text-[#75604F] mt-0.5 truncate">
+                    {item.selectedSize}
+                    {item.selectedSugar ? ` · ${item.selectedSugar}` : ''}
+                  </p>
+                ) : (
+                  <p className="text-[12px] text-[#75604F] mt-0.5 truncate">
+                    Standard portion
+                  </p>
+                )}
+                <p className="font-extrabold text-[15px] text-[#2B1A12] mt-1">
+                  {formatPrice(item.unitPrice * item.qty)}
+                </p>
               </div>
 
-              {/* Stepper & Delete */}
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                <Stepper
-                  size="sm"
-                  value={line.qty}
-                  onIncrement={() => updateCartQty(line.lineId, 1)}
-                  onDecrement={() => updateCartQty(line.lineId, -1)}
-                  variant="light"
-                />
+              {/* Right: Stepper (40px tall) */}
+              <div className="h-[40px] px-2 rounded-[14px] bg-[#F4E7CC]/60 border border-[#EADFC7] flex items-center gap-2 shrink-0">
                 <button
-                  onClick={() => removeFromCart(line.lineId)}
-                  className="p-1 text-espresso/40 hover:text-brandRed transition-colors"
-                  aria-label={`Remove ${line.name}`}
+                  onClick={() => updateCartQty(item.lineId, -1)}
+                  className="w-7 h-7 flex items-center justify-center text-[#2B1A12] hover:bg-[#F4E7CC] rounded-full active:scale-95 transition-all"
+                  aria-label="Decrease quantity"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <Minus className="w-3.5 h-3.5 stroke-[2.5]" />
+                </button>
+                <span className="font-extrabold text-sm text-[#2B1A12] w-4 text-center">
+                  {item.qty}
+                </span>
+                <button
+                  onClick={() => updateCartQty(item.lineId, 1)}
+                  className="w-7 h-7 flex items-center justify-center text-[#2B1A12] hover:bg-[#F4E7CC] rounded-full active:scale-95 transition-all"
+                  aria-label="Increase quantity"
+                >
+                  <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                 </button>
               </div>
             </div>
@@ -400,175 +445,210 @@ export default function CartPage() {
         </div>
 
         {/* Pickup Details Card */}
-        <div className="w-full max-w-full overflow-hidden">
-          <h2 className="font-display text-base font-bold text-espresso mb-2">
+        <div className="space-y-1.5 pt-1">
+          <h2 className="text-xs font-black text-[#75604F] uppercase tracking-wider px-1">
             Pickup details
           </h2>
-
-          <div className="bg-card rounded-card border border-border p-3.5 space-y-3 shadow-xs w-full max-w-full">
-            {/* Outlet Info */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2.5 min-w-0 pr-2">
-                <div className="w-8 h-8 rounded-full bg-sand/60 flex items-center justify-center flex-shrink-0">
-                  <MapPin className="w-4 h-4 text-orange" />
+          <div className="bg-[#FFFEF7] rounded-[20px] border border-[#EADFC7] p-4 divide-y divide-[#EADFC7]/70 shadow-2xs space-y-3">
+            {/* Outlet Row */}
+            <div className="flex items-center justify-between gap-3 pb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-[46px] h-[46px] rounded-[14px] bg-[#CE5535] flex items-center justify-center shrink-0 shadow-xs">
+                  <Image
+                    src="/assets/mascot-cream.png"
+                    alt="Outlet"
+                    width={24}
+                    height={24}
+                    className="object-contain"
+                  />
                 </div>
-                <div className="min-w-0">
-                  <h4 className="font-bold text-xs text-espresso leading-snug truncate">
+                <div>
+                  <h3 className="font-extrabold text-[15px] text-[#2B1A12] leading-tight">
                     {outlet?.name || 'Zécha! Thamarassery'}
-                  </h4>
-                  <p className="text-[11px] text-espresso/60 font-medium">
+                  </h3>
+                  <p className="text-[12px] text-[#75604F] mt-0.5 font-medium">
                     Pickup now · ready in 15-20 min
                   </p>
                 </div>
               </div>
               <Link
-                href="/outlet"
-                className="text-xs font-bold text-orange hover:text-orange-dark transition-colors shrink-0"
+                href="/outlets"
+                className="text-xs font-extrabold text-[#CE5535] hover:underline shrink-0"
               >
                 Change
               </Link>
             </div>
 
-            <div className="h-px bg-border/60" />
-
-            {/* Customer Info */}
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-full bg-sand/60 flex items-center justify-center flex-shrink-0">
-                <User className="w-4 h-4 text-espresso/60" />
+            {/* Customer WhatsApp Row */}
+            <div className="flex items-center gap-3 pt-3">
+              <div className="w-[46px] h-[46px] rounded-[14px] bg-[#F4E7CC] flex items-center justify-center shrink-0 text-[#2B1A12]">
+                <User className="w-5 h-5 text-[#2B1A12] stroke-[2]" />
               </div>
               <div>
-                <p className="text-xs font-bold text-espresso">
-                  {cleanPhone ? `+91 ${cleanPhone}` : 'Phone number will be requested before payment'}
-                </p>
-                <p className="text-[11px] text-espresso/50 font-medium">
-                  We&apos;ll send pickup alerts via WhatsApp
+                <h3 className="font-extrabold text-[15px] text-[#2B1A12] leading-tight">
+                  {customer.name || 'Express Pickup'}
+                </h3>
+                <p className="text-[12px] text-[#75604F] mt-0.5 font-medium">
+                  {cleanPhone.length === 10 ? `+91 ${cleanPhone} · WhatsApp` : 'Updates on WhatsApp'}
                 </p>
               </div>
             </div>
           </div>
         </div>
 
-        {/* Note for kitchen input field */}
-        <div className="w-full max-w-full">
-          <label className="font-display text-base font-bold text-espresso mb-2 flex items-center gap-1.5">
-            <PenLine className="w-4 h-4 text-orange" />
-            <span>Note for the kitchen (optional)</span>
-          </label>
+        {/* Dashed-border Kitchen Note Input */}
+        <div className="relative">
+          <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-[#75604F]">
+            <PenLine className="w-4 h-4 stroke-[2]" />
+          </div>
           <input
             type="text"
             value={kitchenNote}
             onChange={(e) => setKitchenNote(e.target.value)}
-            placeholder="e.g. Extra hot chai, pack chicken separate"
-            className="w-full px-3.5 py-2.5 rounded-card bg-card border border-border text-xs font-semibold text-espresso placeholder:text-espresso/40 focus:outline-none focus:border-orange transition-colors"
+            placeholder="Note for the kitchen (optional)"
+            className="w-full h-[48px] pl-11 pr-4 rounded-[16px] bg-[#FFFEF7] border border-dashed border-[#EADFC7] text-xs font-semibold text-[#2B1A12] placeholder:text-[#75604F]/60 focus:outline-none focus:border-[#CE5535] focus:border-solid transition-all"
           />
         </div>
 
-        {/* Bill Breakdown */}
-        <div className="bg-card rounded-card border border-border p-4 space-y-2 shadow-xs w-full max-w-full">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-medium text-espresso/70">Item total</span>
-            <span className="font-bold text-espresso">{formatPrice(grandTotal)}</span>
+        {/* Totals Card */}
+        <div className="bg-[#FFFEF7] rounded-[20px] border border-[#EADFC7] p-4 shadow-2xs space-y-2.5">
+          <div className="flex items-center justify-between text-sm font-semibold text-[#75604F]">
+            <span>Item total</span>
+            <span className="font-bold text-[#2B1A12]">{formatPrice(itemTotal)}</span>
           </div>
 
-          <div className="h-px bg-border my-2" />
+          <div className="flex items-center justify-between text-sm font-semibold text-[#75604F]">
+            <span>Taxes (GST 5%)</span>
+            <span className="font-bold text-[#2B1A12]">{formatPrice(gst)}</span>
+          </div>
 
-          <div className="flex items-center justify-between">
-            <span className="font-display font-black text-sm text-espresso uppercase tracking-wider">
-              TOTAL
+          <div className="border-t border-dashed border-[#EADFC7] pt-2.5 flex items-center justify-between">
+            <span className="font-display font-extrabold text-[18px] text-[#2B1A12]">
+              To pay
             </span>
-            <span className="font-display font-black text-lg text-espresso">
+            <span className="font-display font-black text-[18px] text-[#2B1A12]">
               {formatPrice(grandTotal)}
             </span>
           </div>
         </div>
-      </main>
-
-      {/* Fixed Bottom Proceed to Pay CTA */}
-      <div className="shrink-0 p-4 bg-cream/95 backdrop-blur-md border-t border-border z-30 pb-[max(16px,env(safe-area-inset-bottom))] w-full">
-        <Button
-          onClick={handleProceedToPayClick}
-          className="w-full text-[17px] font-bold shadow-orange group"
-        >
-          <span>Proceed to pay</span>
-          <ArrowRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
-        </Button>
       </div>
 
-      {/* Phone Number Modal / Bottom Sheet (Fix 7) */}
-      {isPhoneModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-espresso/60 backdrop-blur-xs overscroll-contain animate-in fade-in duration-200">
-          <div
-            className="w-full max-w-sm bg-card rounded-t-[32px] sm:rounded-[32px] border border-border shadow-2xl p-6 relative animate-in slide-in-from-bottom sm:zoom-in-95 duration-200"
-          >
-            {/* Close Button */}
-            <button
-              onClick={() => {
-                if (!submitting) setIsPhoneModalOpen(false);
-              }}
-              className="absolute right-4 top-4 p-2 rounded-full text-espresso/50 hover:bg-sand/60 transition-colors"
-              aria-label="Close modal"
-            >
-              <X className="w-5 h-5" />
-            </button>
+      {/* Sticky Bottom CTA: "<total> Proceed to pay →" */}
+      <div className="fixed bottom-0 left-0 right-0 max-w-[430px] mx-auto p-4 bg-[#FDFBEA]/95 backdrop-blur-md border-t border-[#EADFC7]/80 z-30">
+        <button
+          onClick={() => setIsPhoneModalOpen(true)}
+          className="w-full h-[56px] rounded-[20px] bg-[#CE5535] text-[#FDFBEA] font-extrabold text-[16px] flex items-center justify-between px-5 shadow-[0_10px_24px_rgba(206,85,53,0.25)] hover:bg-[#A8401F] active:scale-[0.98] transition-all"
+        >
+          <span className="tabular-nums font-black text-[17px]">
+            {formatPrice(grandTotal)}
+          </span>
+          <div className="flex items-center gap-1.5">
+            <span>Proceed to pay</span>
+            <span className="text-xl">→</span>
+          </div>
+        </button>
+      </div>
 
-            {/* Title & Description */}
-            <div className="text-left mb-5 pr-8">
-              <h3 className="font-display font-black text-xl text-espresso tracking-tight">
-                Enter your phone number
-              </h3>
-              <p className="text-xs text-espresso/65 font-medium mt-1">
-                We&apos;ll send order updates and your pickup code via WhatsApp
-              </p>
+      {/* SCREEN 5b: Phone Number Bottom Sheet */}
+      {isPhoneModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#2B1A12]/60 backdrop-blur-xs p-0 animate-in fade-in duration-200">
+          <div className="bg-[#FFFEF7] w-full max-w-[430px] rounded-t-[32px] border-t border-[#EADFC7] p-6 shadow-2xl relative animate-in slide-in-from-bottom duration-250">
+            {/* Sheet Handle */}
+            <div className="w-12 h-1.5 rounded-full bg-[#EADFC7] mx-auto mb-4" />
+
+            {/* Top row: Title and close button */}
+            <div className="flex items-start justify-between gap-3 mb-1">
+              <div>
+                <h3 className="font-display text-[24px] font-extrabold text-[#2B1A12] leading-tight">
+                  Enter your phone<br />number
+                </h3>
+              </div>
+              <button
+                onClick={() => {
+                  if (!submitting) {
+                    setIsPhoneModalOpen(false);
+                    setErrorMsg('');
+                  }
+                }}
+                disabled={submitting}
+                className="w-9 h-9 rounded-full bg-[#F4E7CC] flex items-center justify-center text-[#2B1A12] hover:bg-[#EBD8B7] transition-colors"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4 stroke-[2.5]" />
+              </button>
             </div>
 
-            {errorMsg && (
-              <div className="mb-4 p-3 rounded-xl bg-[#FDF0F0] border border-brandRed/20 text-brandRed text-xs font-semibold flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{errorMsg}</span>
-              </div>
-            )}
+            <p className="text-xs text-[#75604F] font-medium leading-relaxed mb-5">
+              We'll send order updates and your pickup code on WhatsApp.
+            </p>
 
-            {/* Phone Input with Non-Editable +91 Prefix */}
-            <div className="mb-5">
-              <label className="text-[10px] font-black uppercase tracking-wider text-espresso/60 block mb-1.5">
-                Mobile Number *
-              </label>
-              <div className="flex items-center h-12 rounded-2xl bg-sand/30 border border-border overflow-hidden focus-within:border-orange focus-within:ring-2 focus-within:ring-orange/20 transition-all">
-                <span className="px-3.5 bg-sand/60 h-full flex items-center text-xs font-black text-espresso border-r border-border select-none">
-                  🇮🇳 +91
-                </span>
+            {/* Phone Input with +91 prefix block */}
+            <div className="mb-3">
+              <div className="relative flex items-center h-[56px] rounded-[18px] bg-[#FFFEF7] border-2 border-[#CE5535] overflow-hidden shadow-xs">
+                {/* +91 Block */}
+                <div className="h-full px-4 bg-[#FBEDE3] border-r border-[#CE5535]/30 flex items-center justify-center text-[18px] font-extrabold text-[#2B1A12] select-none">
+                  +91
+                </div>
+
+                {/* Numeric Input (max 10 digits) */}
                 <input
                   type="tel"
                   inputMode="numeric"
-                  maxLength={10}
+                  pattern="[0-9]*"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
-                  placeholder=""
+                  onChange={(e) => {
+                    const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                    setPhone(digits);
+                    setErrorMsg('');
+                  }}
                   disabled={submitting}
-                  style={{ fontSize: '16px' }}
-                  className="w-full h-full px-3.5 text-base font-bold text-espresso bg-transparent focus:outline-none placeholder:text-espresso/35 tracking-wider"
+                  placeholder="9876543210"
+                  autoFocus
+                  className="w-full h-full px-4 text-[20px] font-extrabold text-[#2B1A12] placeholder:text-[#75604F]/40 focus:outline-none bg-transparent tracking-wide"
                 />
               </div>
-              <span className="text-[11px] text-espresso/50 mt-1 block">
-                {cleanPhone.length}/10 digits entered
-              </span>
+
+              {/* Live Counter underneath */}
+              <div className="flex items-center justify-between mt-2 px-1">
+                <span
+                  className={`text-xs font-bold flex items-center gap-1 ${
+                    cleanPhone.length === 10 && isPhoneValid
+                      ? 'text-[#2F7A3E]'
+                      : 'text-[#75604F]'
+                  }`}
+                >
+                  {cleanPhone.length === 10 && isPhoneValid ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 stroke-[3]" />
+                      <span>10/10 digits entered</span>
+                    </>
+                  ) : (
+                    <span>{cleanPhone.length}/10 digits</span>
+                  )}
+                </span>
+              </div>
             </div>
 
-            {/* Submit Place Order Button */}
-            <Button
-              onClick={handlePlaceOrder}
-              disabled={!isPhoneValid || submitting}
-              className="w-full h-12 text-base font-bold shadow-orange"
-            >
-              {submitting ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Preparing Checkout...</span>
-                </div>
-              ) : (
-                <span>Place order · {formatPrice(grandTotal)} →</span>
-              )}
-            </Button>
+            {/* Inline Error Message if failed */}
+            {errorMsg && (
+              <div className="p-3 rounded-[14px] bg-[#FDF0F0] border border-[#BA1A1A]/30 text-[#BA1A1A] text-xs font-bold mb-4">
+                {errorMsg}
+              </div>
+            )}
+
+            {/* Spinner button row while submitting */}
+            {submitting ? (
+              <div className="w-full h-[54px] rounded-[20px] bg-[#F4E7CC] text-[#2B1A12] font-extrabold text-sm flex items-center justify-center gap-2 mb-2">
+                <Loader2 className="w-4 h-4 animate-spin stroke-[2.5]" />
+                <span>Opening secure payment…</span>
+              </div>
+            ) : (
+              <div className="text-center py-2">
+                <p className="text-[11px] text-[#75604F] font-medium">
+                  Payment opens automatically once all 10 digits are typed.
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}

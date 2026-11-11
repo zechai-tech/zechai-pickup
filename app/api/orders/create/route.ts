@@ -174,6 +174,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // 5% GST
+    const taxes = Math.round(recomputedTotal * 0.05);
+    const grandTotal = recomputedTotal + taxes;
+
     // Generate unique 4-digit pickup code per outlet per day on server
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
@@ -211,7 +215,7 @@ export async function POST(req: NextRequest) {
         'Customer',
         cleanPhone,
         JSON.stringify(verifiedOrderItems),
-        recomputedTotal,
+        grandTotal,
         pickupCode,
         cleanNote,
       ]

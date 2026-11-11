@@ -20,10 +20,10 @@ export function PhoneFrame({ children }: PhoneFrameProps) {
     return <div className="min-h-screen bg-cream text-espresso w-full flex flex-col">{children}</div>;
   }
 
-  // Customer app: full 100dvh on mobile, centered 390x844 phone frame on desktop
+  // Customer app: full height on mobile, centered max-width 430px on desktop
   return (
-    <div className="h-[100dvh] min-h-[100dvh] bg-cream md:bg-[#EFE5D0] flex justify-center items-center md:py-6 selection:bg-orange/20 overflow-hidden w-full max-w-[100vw]">
-      <div className="w-full h-full md:w-[390px] md:max-w-[390px] md:h-[844px] md:max-h-[844px] md:rounded-[44px] bg-cream md:shadow-2xl relative flex flex-col overflow-hidden border-border/70 md:border">
+    <div className="min-h-screen bg-[#FAF4E6] md:bg-[#ECE2CC] flex justify-center selection:bg-orange/20 w-full">
+      <div className="w-full max-w-[430px] min-h-screen bg-cream md:shadow-2xl relative flex flex-col overflow-x-hidden border-border/60 md:border-x">
         {children}
       </div>
     </div>

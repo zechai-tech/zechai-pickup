@@ -14,7 +14,7 @@ export async function getOutlets(): Promise<Outlet[]> {
   try {
     const { data, error } = await supabase
       .from('outlets')
-      .select('id, name, address, is_active, opening_time, closing_time')
+      .select('id, name, address, phone, is_active, opening_time, closing_time, latitude, longitude')
       .order('name');
 
     if (error || !data || data.length === 0) {
@@ -25,7 +25,10 @@ export async function getOutlets(): Promise<Outlet[]> {
       id: o.id,
       name: o.name,
       address: o.address || 'Kerala',
-      distance: '0.8 km',
+      phone: o.phone || null,
+      latitude: o.latitude ? Number(o.latitude) : null,
+      longitude: o.longitude ? Number(o.longitude) : null,
+      distance: '1.2 km',
       isOpen: o.is_active ?? true,
       is_active: o.is_active ?? true,
       statusText: o.is_active ? 'Open now' : 'Closed',
@@ -49,7 +52,7 @@ export async function getOutletById(id: string): Promise<Outlet | null> {
   try {
     const { data, error } = await supabase
       .from('outlets')
-      .select('id, name, address, is_active, opening_time, closing_time')
+      .select('id, name, address, phone, is_active, opening_time, closing_time, latitude, longitude')
       .eq('id', id)
       .single();
 
@@ -60,7 +63,10 @@ export async function getOutletById(id: string): Promise<Outlet | null> {
       id: o.id,
       name: o.name,
       address: o.address || 'Kerala',
-      distance: '0.8 km',
+      phone: o.phone || null,
+      latitude: o.latitude ? Number(o.latitude) : null,
+      longitude: o.longitude ? Number(o.longitude) : null,
+      distance: '1.2 km',
       isOpen: o.is_active ?? true,
       is_active: o.is_active ?? true,
       statusText: o.is_active ? 'Open now' : 'Closed',

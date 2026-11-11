@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
 
     // Fetch refreshed order details
     const orderRes = await query(
-      `SELECT o.id, o.status, o.payment_status, o.pickup_code, o.total, ot.name as outlet_name
+      `SELECT o.id, o.status, o.payment_status, o.pickup_code, o.total, ot.name as outlet_name, ot.phone as outlet_phone
        FROM public.orders o
        LEFT JOIN public.outlets ot ON o.outlet_id = ot.id
        WHERE o.id = $1`,
@@ -64,6 +64,7 @@ export async function POST(req: NextRequest) {
             pickup_code: orderRow.pickup_code,
             total: Number(orderRow.total),
             outlet_name: orderRow.outlet_name || 'Zécha! Outlet',
+            outlet_phone: orderRow.outlet_phone || null,
           }
         : null,
     });

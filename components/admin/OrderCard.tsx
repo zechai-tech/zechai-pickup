@@ -16,6 +16,7 @@ import {
   Package,
   Flame,
   CheckCircle2,
+  Trash2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -24,6 +25,10 @@ interface OrderCardProps {
   onUpdateStatus: (orderId: string, nextStatus: OrderStatus) => Promise<void>;
   onRequestCancel: (order: Order) => void;
   onGiveToCustomer?: (order: Order) => void;
+  onDeleteOrder?: (order: Order) => void;
+  onMarkRefundDone?: (order: Order) => void;
+  isCancelledTab?: boolean;
+  canDelete?: boolean;
   isSaving?: boolean;
   isNew?: boolean;
 }
@@ -33,6 +38,10 @@ export function OrderCard({
   onUpdateStatus,
   onRequestCancel,
   onGiveToCustomer,
+  onDeleteOrder,
+  onMarkRefundDone,
+  isCancelledTab = false,
+  canDelete = false,
   isSaving = false,
   isNew = false,
 }: OrderCardProps) {
@@ -93,15 +102,53 @@ export function OrderCard({
               </span>
             )}
             {order.refund_required && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange text-white text-[10px] font-bold">
-                Refund needs manual processing
-              </span>
+              order.refund_done ? (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-[#EBF7EE] text-brandGreen border border-brandGreen/30 text-[10px] font-bold">
+                  <Check className="w-3 h-3 stroke-[3]" />
+                  <span>Refund done</span>
+                </span>
+              ) : (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange text-white text-[10px] font-bold">
+                    Refund needs manual processing
+                  </span>
+                  {onMarkRefundDone && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onMarkRefundDone(order);
+                      }}
+                      disabled={isSaving}
+                      className="px-2 py-0.5 rounded-full bg-sand/60 hover:bg-sand border border-border text-[10px] font-bold text-espresso hover:text-orange transition-colors"
+                      title="Mark refund as completed"
+                    >
+                      Mark refund done
+                    </button>
+                  )}
+                </div>
+              )
             )}
           </div>
 
-          <div className="flex items-center gap-1 text-[11px] font-semibold text-espresso/60 shrink-0">
-            <Clock className="w-3.5 h-3.5" />
-            <span>{timeSince}</span>
+          <div className="flex items-center gap-2 text-[11px] font-semibold text-espresso/60 shrink-0">
+            <div className="flex items-center gap-1">
+              <Clock className="w-3.5 h-3.5" />
+              <span>{timeSince}</span>
+            </div>
+            {isCancelledTab && canDelete && onDeleteOrder && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteOrder(order);
+                }}
+                disabled={isSaving}
+                className="p-1.5 rounded-lg hover:bg-[#FDF0F0] text-espresso/40 hover:text-brandRed transition-colors"
+                title="Delete this order permanently"
+                aria-label="Delete order"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -310,6 +357,19 @@ export function OrderCard({
               <Ban className="w-4 h-4" />
             </button>
           </>
+        )}
+        {/* Cancelled Stage: Trash Delete Button */}
+        {isCancelledTab && canDelete && onDeleteOrder && (
+          <div className="w-full flex items-center justify-end">
+            <button
+              onClick={() => onDeleteOrder(order)}
+              disabled={isSaving}
+              className="py-2 px-3 rounded-xl border border-border text-xs font-bold text-espresso/50 hover:text-brandRed hover:border-brandRed/40 hover:bg-[#FDF0F0] active:scale-95 disabled:opacity-50 transition-all flex items-center gap-1.5"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Order</span>
+            </button>
+          </div>
         )}
       </div>
     </div>

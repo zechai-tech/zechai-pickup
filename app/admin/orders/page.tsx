@@ -23,6 +23,8 @@ import {
   Ban,
   Calendar,
   Undo2,
+  Trash2,
+  AlertCircle,
 } from 'lucide-react';
 
 type TabKey = 'pending' | 'making' | 'packaging' | 'completed' | 'cancelled' | 'all';
@@ -38,6 +40,8 @@ export default function AdminOrdersPage() {
     syncTrigger,
   } = useAdminStore();
   const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
+  const isManager = currentUser?.role === 'manager';
+  const canDelete = isAdmin || isManager;
   const { showToast } = useToast();
 
   const [outlets, setOutlets] = useState<Outlet[]>([]);
@@ -50,6 +54,11 @@ export default function AdminOrdersPage() {
 
   // Cancel modal state
   const [cancellingOrder, setCancellingOrder] = useState<Order | null>(null);
+
+  // Deletion modals state
+  const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
+  const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Undo Handover Toast state
   const [undoHandover, setUndoHandover] = useState<{
@@ -300,6 +309,71 @@ export default function AdminOrdersPage() {
       showToast(err.message || 'Sync failed', 'error');
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const handleDeleteSingleOrder = async () => {
+    if (!orderToDelete) return;
+    setIsDeleting(true);
+    try {
+      const res = await fetch(`/api/admin/orders/${orderToDelete.id}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete order');
+      showToast('Order permanently deleted', 'success');
+      setOrderToDelete(null);
+      fetchOrders();
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteAllCancelled = async () => {
+    setIsDeleting(true);
+    try {
+      const res = await fetch('/api/admin/orders/delete-cancelled', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          outlet_id: activeOutletId || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to delete cancelled orders');
+
+      if (data.skippedCount > 0) {
+        showToast(
+          `Deleted ${data.deletedCount}. Skipped ${data.skippedCount} order${
+            data.skippedCount > 1 ? 's' : ''
+          } that still need(s) a refund.`,
+          'info'
+        );
+      } else {
+        showToast(`Deleted ${data.deletedCount} orders`, 'success');
+      }
+      setIsDeleteAllModalOpen(false);
+      fetchOrders();
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleMarkRefundDone = async (order: Order) => {
+    try {
+      const res = await fetch(`/api/admin/orders/${order.id}/refund`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to mark refund done');
+      showToast('Refund marked done', 'success');
+      fetchOrders();
+    } catch (err: any) {
+      showToast(err.message, 'error');
     }
   };
 
@@ -650,6 +724,23 @@ export default function AdminOrdersPage() {
           </div>
         )}
 
+        {/* Cancelled Tab Sub-bar: Delete All Button */}
+        {activeTab === 'cancelled' && canDelete && filteredOrders.length > 0 && (
+          <div className="flex items-center justify-between p-3.5 px-4 rounded-2xl bg-card border border-border">
+            <div className="flex items-center gap-2 text-xs text-espresso/70">
+              <Trash2 className="w-4 h-4 text-brandRed" />
+              <span>{filteredOrders.length} cancelled order(s) listed</span>
+            </div>
+            <button
+              onClick={() => setIsDeleteAllModalOpen(true)}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-brandRed/10 text-brandRed hover:bg-brandRed hover:text-white text-xs font-bold transition-colors shadow-2xs"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete All</span>
+            </button>
+          </div>
+        )}
+
         {/* Orders Cards Grid */}
         {loading ? (
           <div className="py-20 flex flex-col items-center justify-center text-center space-y-3">
@@ -677,10 +768,111 @@ export default function AdminOrdersPage() {
                 onUpdateStatus={handleUpdateStatus}
                 onRequestCancel={(ord) => setCancellingOrder(ord)}
                 onGiveToCustomer={handleGiveToCustomer}
+                onDeleteOrder={(ord) => setOrderToDelete(ord)}
+                onMarkRefundDone={handleMarkRefundDone}
+                isCancelledTab={activeTab === 'cancelled'}
+                canDelete={canDelete}
                 isSaving={isSavingStatus === order.id}
                 isNew={newOrderId === order.id}
               />
             ))}
+          </div>
+        )}
+
+        {/* Single Delete Confirm Modal */}
+        {orderToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-espresso/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+            <div className="bg-card w-full max-w-sm rounded-[24px] border border-border p-6 shadow-2xl space-y-4">
+              <div className="w-12 h-12 rounded-full bg-brandRed/10 text-brandRed flex items-center justify-center">
+                <Trash2 className="w-6 h-6" />
+              </div>
+
+              <div className="space-y-1.5">
+                <h3 className="text-lg font-extrabold text-espresso">
+                  Delete this order permanently?
+                </h3>
+                <p className="text-xs text-espresso/70">
+                  This cannot be undone. Order #{orderToDelete.pickup_code} will be permanently removed.
+                </p>
+
+                {/* Stronger warning if refund is still owed */}
+                {orderToDelete.refund_required && !orderToDelete.refund_done && (
+                  <div className="p-3 rounded-xl bg-mustard/15 border border-mustard/40 text-espresso text-xs font-semibold flex items-start gap-2 mt-2">
+                    <AlertCircle className="w-4 h-4 text-mustard shrink-0 mt-0.5" />
+                    <span>This customer may still be owed a refund. Delete anyway?</span>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setOrderToDelete(null)}
+                  disabled={isDeleting}
+                  className="flex-1 h-11 rounded-full border border-border font-bold text-xs text-espresso hover:bg-sand/40"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteSingleOrder}
+                  disabled={isDeleting}
+                  className="flex-1 h-11 rounded-full bg-brandRed text-white font-bold text-xs hover:bg-[#9B1414] shadow-xs disabled:opacity-50"
+                >
+                  {isDeleting ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Delete All Confirm Modal */}
+        {isDeleteAllModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-espresso/60 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+            <div className="bg-card w-full max-w-sm rounded-[24px] border border-border p-6 shadow-2xl space-y-4">
+              <div className="w-12 h-12 rounded-full bg-brandRed/10 text-brandRed flex items-center justify-center">
+                <Trash2 className="w-6 h-6" />
+              </div>
+
+              <div className="space-y-1.5">
+                <h3 className="text-lg font-extrabold text-espresso">
+                  Delete {filteredOrders.length} cancelled order{filteredOrders.length > 1 ? 's' : ''}?
+                </h3>
+                <p className="text-xs text-espresso/70">
+                  This cannot be undone.
+                </p>
+
+                {/* All Outlets Warning */}
+                {!activeOutletId && (
+                  <p className="text-xs font-bold text-orange mt-1">
+                    This deletes cancelled orders from ALL outlets.
+                  </p>
+                )}
+
+                <p className="text-[11px] text-espresso/60 pt-1">
+                  Orders requiring a manual refund that have not been marked done will be safely skipped.
+                </p>
+              </div>
+
+              <div className="flex gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsDeleteAllModalOpen(false)}
+                  disabled={isDeleting}
+                  className="flex-1 h-11 rounded-full border border-border font-bold text-xs text-espresso hover:bg-sand/40"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteAllCancelled}
+                  disabled={isDeleting}
+                  className="flex-1 h-11 rounded-full bg-brandRed text-white font-bold text-xs hover:bg-[#9B1414] shadow-xs disabled:opacity-50"
+                >
+                  {isDeleting ? 'Deleting...' : 'Delete All'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

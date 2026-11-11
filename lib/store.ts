@@ -168,7 +168,7 @@ export const useZechaStore = create<ZechaState>()(
 export function getCartSummary(cart: CartItem[]) {
   const count = cart.reduce((acc, item) => acc + item.qty, 0);
   const itemTotal = cart.reduce((acc, item) => acc + Number(item.unitPrice || 0) * item.qty, 0);
-  const gst = 0; // Tax display removed per Change 6
-  const grandTotal = itemTotal;
+  const gst = Math.round(itemTotal * 0.05); // GST 5%
+  const grandTotal = itemTotal + gst;
   return { count, itemTotal, gst, grandTotal };
 }

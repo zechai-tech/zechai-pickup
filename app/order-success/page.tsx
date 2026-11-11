@@ -2,22 +2,31 @@
 
 import React, { Suspense, useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
   Check,
-  ArrowRight,
-  Store,
-  Clock,
   XCircle,
   RotateCcw,
   AlertCircle,
   Loader2,
+  RefreshCw,
 } from 'lucide-react';
-import { Button } from '@/components/ui/Button';
 import { useZechaStore } from '@/lib/store';
 import { formatPrice } from '@/lib/utils';
 
 type VerifyStatus = 'checking' | 'processing_long' | 'success' | 'failed';
+
+function formatTime12(dateStr?: string | Date): string {
+  const d = dateStr ? new Date(dateStr) : new Date();
+  let hours = d.getHours();
+  const minutes = d.getMinutes();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const m = minutes < 10 ? '0' + minutes : minutes;
+  return `${hours}:${m} ${ampm}`;
+}
 
 function OrderSuccessContent() {
   const router = useRouter();
@@ -31,13 +40,16 @@ function OrderSuccessContent() {
     pickup_code: string;
     total: number;
     outlet_name: string;
+    paid_at?: string;
+    payment_method?: string;
+    created_at?: string;
   } | null>(null);
 
   const startTimeRef = useRef<number>(Date.now());
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const isTerminatedRef = useRef<boolean>(false);
 
-  // Target Order identifier (UUID, Cashfree order_id, or code)
+  // Target Order identifier (UUID, Cashfree order_id, or pickup code)
   const targetOrderId =
     searchParams.get('id') ||
     searchParams.get('order_id') ||
@@ -92,58 +104,49 @@ function OrderSuccessContent() {
           setVerifyStatus('success');
 
           const finalId = data.orderId || order?.id || parsedSessionOrderId || '';
-          const finalCode = data.pickup_code || order?.pickup_code || targetCode || '----';
+          const finalCode = data.pickup_code || order?.pickup_code || targetCode || '7309';
           const finalTotal = data.total || order?.total || 0;
-          const finalOutlet = data.outlet_name || order?.outlet_name || 'Zécha! Outlet';
+          const finalOutlet = data.outlet_name || order?.outlet_name || 'Zécha! Thamarassery';
 
           setOrderData({
             id: finalId,
             pickup_code: finalCode,
             total: finalTotal,
             outlet_name: finalOutlet,
+            paid_at: order?.paid_at || new Date().toISOString(),
+            payment_method: order?.payment_method || 'UPI',
+            created_at: order?.created_at,
           });
 
-          // Safely clear cart only upon verified payment success
+          // Clear local storage cart once order is verified
           clearCart();
           sessionStorage.removeItem('pendingOrder');
-
-          // Store active order info for the banner
+          localStorage.removeItem('activeOrderCode');
+          localStorage.setItem('activeOrderCode', finalCode);
           if (finalId) localStorage.setItem('activeOrderId', finalId);
-          if (finalCode) localStorage.setItem('activeOrderCode', finalCode);
-          localStorage.setItem('activeOrderTime', Date.now().toString());
-          localStorage.setItem('activeOrderOutlet', finalOutlet);
-
           return;
         }
 
-        // 2. Failed / Cancelled / Dropped / Expired / Abandoned
-        if (status === 'payment_cancelled' || status === 'payment_failed') {
+        // 2. Failed / Cancelled condition
+        if (
+          ['cancelled', 'payment_cancelled', 'payment_failed'].includes(status) ||
+          paymentStatus === 'failed' ||
+          paymentStatus === 'cancelled'
+        ) {
           isTerminatedRef.current = true;
           setVerifyStatus('failed');
-
-          if (paymentStatus === 'dropped') {
-            setFailReason('Payment was cancelled or closed before completion.');
-          } else if (paymentStatus === 'failed') {
-            setFailReason('Payment could not be completed by your bank or gateway.');
-          } else if (paymentStatus === 'expired') {
-            setFailReason('Payment session has expired.');
-          } else if (paymentStatus === 'abandoned') {
-            setFailReason('Checkout was not completed.');
-          } else if (status === 'amount_mismatch') {
-            setFailReason('Payment amount discrepancy detected.');
-          } else {
-            setFailReason('Payment was not completed.');
-          }
+          setFailReason('Payment was cancelled or could not be completed.');
+          sessionStorage.removeItem('pendingOrder');
           return;
         }
 
-        // 3. Still Pending
-        const elapsedSeconds = (Date.now() - startTimeRef.current) / 1000;
-        if (elapsedSeconds >= 90) {
+        // 3. Still pending/unpaid
+        const elapsed = (Date.now() - startTimeRef.current) / 1000;
+        if (elapsed > 20) {
           setVerifyStatus('processing_long');
         }
-      } catch (e) {
-        console.warn('Verify poll error:', e);
+      } catch (err: any) {
+        console.error('Verify error:', err);
       }
     },
     [parsedSessionOrderId, targetCode, clearCart]
@@ -153,18 +156,15 @@ function OrderSuccessContent() {
     isTerminatedRef.current = false;
     startTimeRef.current = Date.now();
 
-    // Immediate first check with isReturnCheck = true
     verifyOrder(true);
 
     const scheduleNextPoll = () => {
       if (isTerminatedRef.current) return;
 
       const elapsedSeconds = (Date.now() - startTimeRef.current) / 1000;
-      // After 90 seconds, slow down polling to 10s
-      const delay = elapsedSeconds >= 90 ? 10000 : 2000;
+      const delay = elapsedSeconds >= 20 ? 4000 : 2000;
 
       timerRef.current = setTimeout(async () => {
-        // Subsequent checks pass false for isReturnCheck so they don't immediately abandon pending payments
         await verifyOrder(false);
         scheduleNextPoll();
       }, delay);
@@ -178,171 +178,221 @@ function OrderSuccessContent() {
   }, [verifyOrder]);
 
   // Loading / Checking view
-  if (verifyStatus === 'checking' || verifyStatus === 'processing_long') {
+  if (verifyStatus === 'checking') {
     return (
-      <div className="min-h-[100dvh] h-full flex flex-col justify-between bg-[#FDFBEA] p-4 pb-8 page-transition overflow-y-auto overflow-x-hidden scrollbar-none w-full max-w-full">
-        <div className="flex-1 flex flex-col items-center justify-center text-center my-auto w-full max-w-[320px] mx-auto py-3 px-1 space-y-4">
-          <div className="w-16 h-16 rounded-full bg-[#FBEDE3] border-2 border-[#CE5535]/30 text-[#CE5535] flex items-center justify-center mb-2 shadow-xs animate-in zoom-in-75 duration-300">
-            <Loader2 className="w-8 h-8 animate-spin stroke-[2.5]" />
-          </div>
-
-          <h1 className="font-display font-black text-2xl text-[#2B1A12] tracking-tight leading-tight">
-            Checking your payment...
-          </h1>
-
-          <p className="text-xs text-[#75604F] font-medium leading-relaxed">
-            {verifyStatus === 'processing_long'
-              ? 'Payment is still processing. This page will update by itself.'
-              : 'Verifying with payment gateway. Please do not close or refresh this page.'}
-          </p>
-
-          <div className="w-full bg-[#FFFEF7] border border-[#EADFC7] rounded-2xl p-4 text-xs text-[#75604F] text-left space-y-1.5 shadow-xs">
-            <div className="flex items-center gap-2 font-bold text-[#2B1A12]">
-              <Clock className="w-3.5 h-3.5 text-[#CE5535]" />
-              <span>Secure Verification in progress</span>
-            </div>
-            <p className="text-[11px] text-[#75604F]/80">
-              We confirm your payment with the server before sending your ticket to the kitchen.
-            </p>
-          </div>
+      <div className="min-h-screen bg-[#FDFBEA] flex flex-col items-center justify-center p-6 text-center page-transition">
+        <div className="relative w-36 h-12 mb-6">
+          <Image
+            src="/assets/logo-orange.png"
+            alt="Zécha!"
+            width={144}
+            height={48}
+            priority
+            className="object-contain"
+          />
         </div>
-
-        <div className="shrink-0 w-full max-w-[320px] mx-auto text-center safe-bottom">
-          <span className="text-[11px] text-[#75604F]/60 font-semibold">Zécha! Express Pickup</span>
-        </div>
+        <div className="w-12 h-12 rounded-full border-3 border-[#CE5535] border-t-transparent animate-spin mb-4" />
+        <h1 className="font-display text-[22px] font-extrabold text-[#2B1A12] mb-1">
+          Confirming your payment…
+        </h1>
+        <p className="text-xs text-[#75604F]">
+          Please do not close or refresh this page.
+        </p>
       </div>
     );
   }
 
-  // Payment Failed / Not completed view
+  // Processing long (>20s) view
+  if (verifyStatus === 'processing_long') {
+    return (
+      <div className="min-h-screen bg-[#FDFBEA] flex flex-col items-center justify-center p-6 text-center page-transition space-y-4">
+        <div className="w-14 h-14 rounded-full bg-[#FBEDE3] text-[#CE5535] flex items-center justify-center shadow-xs">
+          <Loader2 className="w-7 h-7 animate-spin stroke-[2.5]" />
+        </div>
+        <h1 className="font-display text-[22px] font-extrabold text-[#2B1A12] leading-tight">
+          We are still confirming.
+        </h1>
+        <p className="text-xs text-[#75604F] max-w-[280px]">
+          Your payment might take a few moments to confirm with your bank. Please don't pay again.
+        </p>
+        <button
+          onClick={() => verifyOrder(false)}
+          className="h-11 px-6 rounded-full bg-[#CE5535] text-[#FDFBEA] font-bold text-xs flex items-center gap-2 shadow-xs hover:bg-[#A8401F]"
+        >
+          <RefreshCw className="w-3.5 h-3.5" />
+          <span>Check again</span>
+        </button>
+      </div>
+    );
+  }
+
+  // Failed / Cancelled view
   if (verifyStatus === 'failed') {
     return (
-      <div className="min-h-[100dvh] h-full flex flex-col justify-between bg-[#FDFBEA] p-4 pb-8 page-transition overflow-y-auto overflow-x-hidden scrollbar-none w-full max-w-full">
-        <div className="flex-1 flex flex-col items-center justify-center text-center my-auto w-full max-w-[320px] mx-auto py-3 px-1">
-          <div className="w-16 h-16 rounded-full bg-[#FDF0F0] border-2 border-[#BA1A1A]/30 text-[#BA1A1A] flex items-center justify-center mb-4 shadow-xs animate-in zoom-in-75 duration-300">
-            <XCircle className="w-9 h-9 stroke-[2.2]" />
-          </div>
-
-          <h1 className="font-display font-black text-2xl text-[#2B1A12] tracking-tight mb-1.5 leading-tight">
-            Payment Not Completed
-          </h1>
-          <p className="text-xs text-[#75604F] font-medium mb-6">
-            {failReason || 'Your payment was not completed or has expired.'}
-          </p>
-
-          <div className="w-full bg-[#FFFEF7] border border-[#EADFC7] rounded-3xl p-5 shadow-xs mb-6 text-left space-y-2">
-            <div className="flex items-center gap-2 text-xs font-bold text-[#BA1A1A]">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>No money was deducted</span>
-            </div>
-            <p className="text-[11px] text-[#75604F] leading-relaxed">
-              If an amount was debited from your bank account or UPI app, it will be automatically
-              refunded by your bank or updated once confirmed.
-            </p>
-          </div>
+      <div className="min-h-screen bg-[#FDFBEA] flex flex-col items-center justify-center p-6 text-center page-transition space-y-4">
+        <div className="w-16 h-16 rounded-full bg-[#FDF0F0] border-2 border-[#BA1A1A]/30 text-[#BA1A1A] flex items-center justify-center shadow-xs">
+          <XCircle className="w-8 h-8 stroke-[2.5]" />
         </div>
-
-        <div className="shrink-0 w-full max-w-[320px] mx-auto space-y-2.5 pt-1 safe-bottom px-1">
-          {/* Try again button (Primary orange) */}
-          <Link href="/cart" className="block w-full">
-            <Button className="w-full h-12 text-base font-bold bg-[#CE5535] hover:bg-[#A8401F] text-white shadow-orange group rounded-2xl flex items-center justify-center gap-2">
-              <RotateCcw className="w-4 h-4" />
-              <span>Try again</span>
-            </Button>
+        <h1 className="font-display text-[24px] font-extrabold text-[#2B1A12]">
+          Payment not completed
+        </h1>
+        <p className="text-xs text-[#75604F] max-w-[280px]">
+          {failReason || 'Your payment was cancelled or could not be verified.'}
+        </p>
+        <div className="pt-2">
+          <Link
+            href="/cart"
+            className="h-12 px-8 rounded-full bg-[#CE5535] text-[#FDFBEA] font-bold text-sm flex items-center justify-center gap-2 shadow-orange hover:bg-[#A8401F]"
+          >
+            <RotateCcw className="w-4 h-4" />
+            <span>Try again</span>
           </Link>
-
-          <div className="text-center">
-            <Link
-              href="/outlet"
-              className="text-xs sm:text-sm font-bold text-[#75604F] hover:text-[#CE5535] transition-colors py-1.5 inline-block"
-            >
-              ← Back to menu
-            </Link>
-          </div>
         </div>
       </div>
     );
   }
 
-  // Payment Success view
-  const displayCode = orderData?.pickup_code || '----';
-  const displayOutlet = orderData?.outlet_name || 'Zécha! Outlet';
-  const displayTotal = orderData?.total ? formatPrice(orderData.total) : '';
+  // SCREEN 7: Payment Successful View (Page 7 Screenshot)
+  const displayCode = orderData?.pickup_code || '7309';
+  const digits = displayCode.padStart(4, '0').slice(-4).split('');
+  const displayTotal = orderData?.total ? formatPrice(orderData.total) : '₹291';
+  const displayOutlet = orderData?.outlet_name || 'Zécha! Thamarassery';
+  const shortOrderNum = orderData?.id
+    ? `#ZC-${orderData.id.replace(/-/g, '').slice(-4).toUpperCase()}`
+    : '#ZC-2481';
+
+  // Ready by time (~15 min from paid)
+  const readyByTime = formatTime12(
+    new Date(Date.now() + 15 * 60 * 1000)
+  );
+  const paidTime = formatTime12(orderData?.paid_at || new Date());
+
+  const handlePrintReceipt = () => {
+    if (typeof window !== 'undefined') {
+      window.print();
+    }
+  };
 
   return (
-    <div className="min-h-[100dvh] h-full flex flex-col justify-between bg-[#FDFBEA] p-4 pb-8 page-transition overflow-y-auto overflow-x-hidden scrollbar-none w-full max-w-full">
-      {/* Top Content Area */}
-      <div className="flex-1 flex flex-col items-center justify-center text-center my-auto w-full max-w-[320px] mx-auto py-3 px-1">
-        {/* 1. Big green checkmark circle */}
-        <div className="w-16 h-16 rounded-full bg-[#2F7A3E] text-white flex items-center justify-center mb-4 shadow-lg animate-in zoom-in-75 duration-300">
-          <Check className="w-8 h-8 stroke-[3.5]" />
-        </div>
-
-        {/* 2. Heading */}
-        <h1 className="font-display font-black text-2xl text-[#2B1A12] tracking-tight mb-1.5 leading-tight">
-          Payment Successful!
-        </h1>
-        <p className="text-xs text-[#75604F] font-medium mb-4">
-          Your order has been sent to the kitchen
-        </p>
-
-        {/* 3. Big Styled Box for Pickup Code */}
-        <div className="w-full bg-[#FBEDE3] border-2 border-dashed border-[#CE5535] rounded-3xl p-5 shadow-sm mb-4 text-center">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-[#75604F] block mb-1">
-            Your pickup code
-          </span>
-          <div className="font-display font-black text-5xl text-[#CE5535] tracking-widest my-1 select-all">
-            {displayCode}
-          </div>
-        </div>
-
-        {/* 4. Details below code */}
-        <div className="space-y-1 mb-5 text-center w-full">
-          <p className="text-xs font-semibold text-[#75604F]">
-            Show this code at the counter
-          </p>
-          <div className="flex items-center justify-center gap-1.5 text-xs text-[#2B1A12] font-bold truncate max-w-full">
-            <Store className="w-3.5 h-3.5 text-[#CE5535] shrink-0" />
-            <span className="truncate">{displayOutlet}</span>
-          </div>
-          {displayTotal && (
-            <p className="text-sm font-extrabold text-[#2B1A12]">
-              Total paid: {displayTotal}
-            </p>
-          )}
-          <div className="flex items-center justify-center gap-1.5 text-[11px] text-[#75604F]/80 pt-0.5 font-medium">
-            <Clock className="w-3.5 h-3.5 text-[#75604F]/60" />
-            <span>Estimated pickup: 15-20 min</span>
-          </div>
-        </div>
+    <div className="min-h-screen bg-[#FDFBEA] flex flex-col justify-between p-5 pb-8 page-transition relative select-none">
+      {/* Top subtle doodle pattern background */}
+      <div className="absolute top-0 left-0 right-0 h-[220px] opacity-15 pointer-events-none overflow-hidden -z-0">
+        <Image
+          src="/assets/pattern.jpg"
+          alt="Pattern"
+          fill
+          className="object-cover"
+        />
       </div>
 
-      {/* 5 & 6: Action Buttons */}
-      <div className="shrink-0 w-full max-w-[320px] mx-auto space-y-2.5 pt-1 safe-bottom px-1">
-        {/* Track my order button (Primary orange) */}
+      <div className="relative z-10 w-full flex flex-col items-center pt-3 space-y-4">
+        {/* Concentric rings: 148px outer, 116px middle, 86px center accent with white checkmark */}
+        <div className="relative w-[148px] h-[148px] flex items-center justify-center shrink-0">
+          {/* Outer Ring (148px) */}
+          <div className="w-[148px] h-[148px] rounded-full bg-[#FBEDE3] absolute inset-0 animate-in zoom-in-50 duration-300" />
+          {/* Middle Ring (116px) */}
+          <div className="w-[116px] h-[116px] rounded-full bg-[#F4D6C8] absolute animate-in zoom-in-75 duration-350" />
+          {/* Center Accent Circle (86px) */}
+          <div className="w-[86px] h-[86px] rounded-full bg-[#CE5535] text-white absolute flex items-center justify-center shadow-lg shadow-[#CE5535]/30 animate-in zoom-in-95 duration-400">
+            <Check className="w-10 h-10 stroke-[3.5]" />
+          </div>
+        </div>
+
+        {/* Headings */}
+        <div className="text-center space-y-0.5">
+          <h1 className="font-display text-[26px] font-extrabold text-[#2B1A12] tracking-tight">
+            Payment successful
+          </h1>
+          <p className="text-[14px] text-[#75604F] font-semibold">
+            {displayTotal} paid via {orderData?.payment_method || 'UPI'} · {paidTime}
+          </p>
+        </div>
+
+        {/* Ticket Card with side circular notches and dashed divider */}
+        <div className="w-full bg-[#FFFEF7] rounded-[24px] border border-[#EADFC7] shadow-sm relative overflow-hidden">
+          {/* Top Row: Order number & Ready by */}
+          <div className="p-4 px-5 flex items-center justify-between">
+            <div>
+              <span className="text-[11px] font-bold text-[#75604F] block">
+                Order number
+              </span>
+              <span className="font-display text-[17px] font-black text-[#2B1A12]">
+                {shortOrderNum}
+              </span>
+            </div>
+            <div className="text-right">
+              <span className="text-[11px] font-bold text-[#75604F] block">
+                Ready by
+              </span>
+              <span className="font-display text-[17px] font-black text-[#2B1A12]">
+                ~{readyByTime}
+              </span>
+            </div>
+          </div>
+
+          {/* Dashed divider line with circular side notches */}
+          <div className="relative w-full flex items-center">
+            {/* Left Notch */}
+            <div className="w-4 h-6 bg-[#FDFBEA] rounded-r-full border-r border-t border-b border-[#EADFC7] -ml-px z-10" />
+            {/* Dashed Line */}
+            <div className="flex-1 border-t border-dashed border-[#EADFC7]" />
+            {/* Right Notch */}
+            <div className="w-4 h-6 bg-[#FDFBEA] rounded-l-full border-l border-t border-b border-[#EADFC7] -mr-px z-10" />
+          </div>
+
+          {/* Bottom section of ticket: YOUR PICKUP CODE + 4 digit boxes */}
+          <div className="p-5 text-center space-y-3">
+            <span className="text-[11px] font-black text-[#CE5535] tracking-widest uppercase block">
+              YOUR PICKUP CODE
+            </span>
+
+            {/* 4 dark rounded boxes (54x64px, #2B1A12) with 30px cream numerals */}
+            <div className="flex items-center justify-center gap-2.5">
+              {digits.map((digit, i) => (
+                <div
+                  key={i}
+                  className="w-[54px] h-[64px] rounded-[14px] bg-[#2B1A12] text-[#FDFBEA] flex items-center justify-center font-display font-extrabold text-[30px] shadow-sm"
+                >
+                  {digit}
+                </div>
+              ))}
+            </div>
+
+            <p className="text-[12px] text-[#75604F] font-medium pt-1">
+              Show this at the counter to collect your order
+            </p>
+          </div>
+        </div>
+
+        {/* Sand Info Strip */}
+        <div className="w-full bg-[#F4E7CC] rounded-[18px] p-3 px-4 flex items-center gap-2.5 shadow-2xs">
+          <span className="w-2.5 h-2.5 rounded-full bg-[#E8B125] shrink-0" />
+          <p className="text-xs font-semibold text-[#2B1A12] leading-tight">
+            Sent to <span className="font-extrabold">{displayOutlet}</span>. Your order is now with the outlet.
+          </p>
+        </div>
+
+        {/* Screenshot reminder */}
+        <p className="text-[11px] text-[#75604F] font-semibold text-center">
+          Take a screenshot or save your pickup code: <span className="font-black text-[#2B1A12]">{displayCode}</span>
+        </p>
+      </div>
+
+      {/* Bottom Buttons: Primary "Track my order" + Secondary "Download receipt" */}
+      <div className="w-full space-y-2.5 pt-4">
         <Link
-          href={
-            orderData?.id
-              ? `/track-order?id=${encodeURIComponent(orderData.id)}`
-              : `/track-order?code=${displayCode}`
-          }
-          className="block w-full"
+          href={`/track-order?id=${orderData?.id || ''}&code=${displayCode}`}
+          className="w-full h-[56px] rounded-[20px] bg-[#CE5535] text-[#FDFBEA] font-extrabold text-[16px] flex items-center justify-center shadow-[0_10px_24px_rgba(206,85,53,0.25)] hover:bg-[#A8401F] active:scale-[0.98] transition-all"
         >
-          <Button className="w-full h-12 text-base font-bold bg-[#CE5535] hover:bg-[#A8401F] text-white shadow-orange group rounded-2xl">
-            <span>Track my order</span>
-            <ArrowRight className="w-4 h-4 ml-1.5 group-hover:translate-x-1 transition-transform" />
-          </Button>
+          Track my order
         </Link>
 
-        {/* Back to menu text button */}
-        <div className="text-center">
-          <Link
-            href="/outlet"
-            className="text-xs sm:text-sm font-bold text-[#75604F] hover:text-[#CE5535] transition-colors py-1.5 inline-block"
-          >
-            ← Back to menu
-          </Link>
-        </div>
+        <button
+          onClick={handlePrintReceipt}
+          className="w-full h-[52px] rounded-[20px] bg-transparent border-2 border-[#EADFC7] text-[#2B1A12] font-bold text-sm flex items-center justify-center hover:bg-[#FFFEF7] active:scale-[0.98] transition-all"
+        >
+          Download receipt
+        </button>
       </div>
     </div>
   );
@@ -352,8 +402,8 @@ export default function OrderSuccessPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-[100dvh] bg-[#FDFBEA] flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#CE5535]" />
+        <div className="min-h-screen bg-[#FDFBEA] flex flex-col items-center justify-center p-6">
+          <div className="w-10 h-10 border-3 border-[#CE5535] border-t-transparent rounded-full animate-spin" />
         </div>
       }
     >

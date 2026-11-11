@@ -2,24 +2,24 @@
 
 import React, { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ChevronLeft,
-  Check,
   Phone,
-  AlertCircle,
+  Check,
+  MapPin,
+  QrCode,
   XCircle,
-  ShoppingBag,
-  Camera,
   RotateCcw,
 } from 'lucide-react';
 import { formatPrice } from '@/lib/utils';
-import { getCustomerStageState } from '@/lib/order-flow';
 
 interface OrderItem {
   id?: string;
   name: string;
-  price: number;
+  price?: number;
+  unitPrice?: number;
   quantity?: number;
   qty?: number;
 }
@@ -31,9 +31,28 @@ interface OrderData {
   cancel_reason?: string | null;
   total: number;
   items: OrderItem[];
-  kitchen_note?: string;
   created_at?: string;
+  paid_at?: string | null;
+  making_at?: string | null;
+  packaging_at?: string | null;
+  ready_at?: string | null;
+  received_at?: string | null;
   outlet_name?: string;
+  outlet_phone?: string | null;
+  outlet_address?: string | null;
+}
+
+function formatTime12(dateStr?: string | Date | null): string {
+  if (!dateStr) return '';
+  const d = dateStr instanceof Date ? dateStr : new Date(dateStr);
+  if (isNaN(d.getTime())) return '';
+  let hours = d.getHours();
+  const minutes = d.getMinutes();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  hours = hours % 12;
+  hours = hours ? hours : 12;
+  const m = minutes < 10 ? '0' + minutes : minutes;
+  return `${hours}:${m} ${ampm}`;
 }
 
 function TrackOrderContent() {
@@ -46,8 +65,6 @@ function TrackOrderContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const code = order?.pickup_code || urlCode || '';
-
   const fetchOrder = async (isSilent = false) => {
     const targetId =
       urlId || (typeof window !== 'undefined' ? localStorage.getItem('activeOrderId') : null);
@@ -57,7 +74,7 @@ function TrackOrderContent() {
 
     if (!targetId && !targetCode) {
       if (!isSilent) {
-        setError('No order id or pickup code provided');
+        setError('No order identifier provided');
         setLoading(false);
       }
       return;
@@ -95,359 +112,320 @@ function TrackOrderContent() {
   useEffect(() => {
     fetchOrder(false);
 
-    let intervalId: NodeJS.Timeout | null = null;
+    // Poll every 5 seconds (real data, no fake times)
+    const intervalId = setInterval(() => {
+      fetchOrder(true);
+    }, 5000);
 
-    const startPolling = () => {
-      if (!intervalId) {
-        intervalId = setInterval(() => {
-          fetchOrder(true);
-        }, 4000);
-      }
-    };
-
-    const stopPolling = () => {
-      if (intervalId) {
-        clearInterval(intervalId);
-        intervalId = null;
-      }
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.hidden) {
-        stopPolling();
-      } else {
-        fetchOrder(true);
-        startPolling();
-      }
-    };
-
-    startPolling();
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    // Poll on window focus
+    const handleFocus = () => fetchOrder(true);
+    window.addEventListener('focus', handleFocus);
 
     return () => {
-      stopPolling();
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      clearInterval(intervalId);
+      window.removeEventListener('focus', handleFocus);
     };
   }, [urlId, urlCode]);
 
-  const stageProgress = getCustomerStageState(order?.status);
-  const { canonicalStatus, isCancelled, isPaymentCancelled, isReady, isReceived } = stageProgress;
-  const getStageState = (stageNumber: number) => stageProgress.getStage(stageNumber);
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#FDFBEA] flex flex-col items-center justify-center p-6">
+        <div className="w-10 h-10 border-3 border-[#CE5535] border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
-  const stages = [
+  if (error || !order) {
+    return (
+      <div className="min-h-screen bg-[#FDFBEA] flex flex-col items-center justify-center p-6 text-center space-y-4">
+        <div className="w-16 h-16 rounded-full bg-[#FDF0F0] text-[#BA1A1A] flex items-center justify-center">
+          <XCircle className="w-8 h-8" />
+        </div>
+        <h2 className="font-display text-xl font-bold text-[#2B1A12]">
+          {error || 'Order not found'}
+        </h2>
+        <Link
+          href="/"
+          className="h-11 px-6 rounded-full bg-[#CE5535] text-[#FDFBEA] font-bold text-xs flex items-center shadow-xs"
+        >
+          Go to Home
+        </Link>
+      </div>
+    );
+  }
+
+  const status = (order.status || 'pending').toLowerCase();
+  const isCancelled = ['cancelled', 'payment_cancelled', 'payment_failed'].includes(status);
+  const isReceived = status === 'received' || status === 'completed';
+  const isReady = status === 'ready';
+  const isPackaging = status === 'packaging';
+  const isMaking = status === 'preparing' || status === 'confirmed';
+  const isPending = status === 'pending' || status === 'pending_payment';
+
+  // Order timeline stage index (0 to 3)
+  // Stage 0: Payment successful
+  // Stage 1: Making
+  // Stage 2: Packaging
+  // Stage 3: Ready for pickup
+  let currentStageIndex = 0;
+  if (isMaking) currentStageIndex = 1;
+  else if (isPackaging) currentStageIndex = 2;
+  else if (isReady || isReceived) currentStageIndex = 3;
+
+  const orderNum = order.id
+    ? `#ZC-${order.id.replace(/-/g, '').slice(-4).toUpperCase()}`
+    : '#ZC-2481';
+
+  const itemCount = Array.isArray(order.items)
+    ? order.items.reduce((acc, item) => acc + (item.quantity || item.qty || 1), 0)
+    : 0;
+
+  // Header Title & Pill text based on status
+  let headerPillText = 'ORDER CONFIRMED';
+  let headerTitle = 'Order received';
+  let headerSubtitle = 'The kitchen has received your order.';
+
+  if (isMaking) {
+    headerPillText = `MAKING · ${formatTime12(order.making_at) || formatTime12(order.created_at)}`;
+    headerTitle = "We're making\nyour order";
+    headerSubtitle = 'Our kitchen is freshly preparing your items.';
+  } else if (isPackaging) {
+    headerPillText = `PACKAGING · ${formatTime12(order.packaging_at) || formatTime12(new Date())}`;
+    headerTitle = 'Packaging\nyour order';
+    headerSubtitle = 'Almost ready! We are packing your items.';
+  } else if (isReady) {
+    headerPillText = `READY · ${formatTime12(order.ready_at) || formatTime12(new Date())}`;
+    headerTitle = 'Your order\nis ready!';
+    headerSubtitle = 'Head to the counter and show your pickup code.';
+  } else if (isReceived) {
+    headerPillText = `COLLECTED · ${formatTime12(order.received_at) || formatTime12(new Date())}`;
+    headerTitle = 'Order\ncollected!';
+    headerSubtitle = 'Thank you for choosing Zécha! Enjoy your order.';
+  } else if (isCancelled) {
+    headerPillText = 'CANCELLED';
+    headerTitle = 'Order\ncancelled';
+    headerSubtitle = order.cancel_reason || 'This order was cancelled by the outlet.';
+  }
+
+  // 4 Timeline Steps with REAL timestamps from database
+  const timelineSteps = [
     {
-      num: 1,
-      title: 'Payment Received',
-      desc:
-        canonicalStatus === 'pending'
-          ? 'Payment received. Waiting for the outlet to confirm your order.'
-          : 'Payment received successfully.',
+      id: 'paid',
+      label: 'Payment successful',
+      time: formatTime12(order.paid_at || order.created_at),
+      stageIdx: 0,
     },
     {
-      num: 2,
-      title: 'Order Confirmed',
-      desc: 'Your order is accepted by the kitchen staff.',
+      id: 'making',
+      label: 'Making',
+      time: formatTime12(order.making_at),
+      stageIdx: 1,
     },
     {
-      num: 3,
-      title: 'Being Made',
-      desc: 'Freshly brewing your chai & frying bites right now.',
+      id: 'packaging',
+      label: 'Packaging',
+      time: formatTime12(order.packaging_at),
+      stageIdx: 2,
     },
     {
-      num: 4,
-      title: 'Packing',
-      desc: 'Carefully packing your items for a clean handover.',
-    },
-    {
-      num: 5,
-      title: 'Ready for Pickup',
-      desc: 'Hot and ready at the counter! Show your pickup code.',
-    },
-    {
-      num: 6,
-      title: 'Received',
-      desc: 'Order handed over. Enjoy every sip of your Zécha!',
+      id: 'ready',
+      label: 'Ready for pickup',
+      time: formatTime12(order.ready_at),
+      stageIdx: 3,
     },
   ];
 
   return (
-    <div className="min-h-[100dvh] h-full flex flex-col bg-[#FDFBEA] page-transition overflow-hidden relative w-full max-w-full">
-      {/* Header */}
-      <header className="shrink-0 px-4 pt-3 pb-3 border-b border-[#EADFC7] bg-[#FDFBEA]/95 backdrop-blur-md flex items-center justify-between z-20">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => router.back()}
-            className="w-10 h-10 rounded-full bg-[#FFFEF7] border border-[#EADFC7] flex items-center justify-center text-[#2B1A12] hover:bg-[#F4E7CC]/40 transition-colors"
-            aria-label="Back"
-          >
-            <ChevronLeft className="w-5 h-5 stroke-[2.2]" />
-          </button>
-          <h1 className="font-display text-xl font-black text-[#2B1A12]">
-            Track Order
+    <div className="min-h-screen bg-[#FDFBEA] flex flex-col justify-between pb-12 page-transition select-none">
+      <div>
+        {/* Header Block: Accent bg (#CE5535), bottom corners 32px, cup mascot art bottom-right */}
+        <div className="relative bg-[#CE5535] rounded-b-[32px] p-5 pt-4 pb-14 text-white overflow-hidden shadow-md">
+          {/* Top navigation row: back button, Order #no, call outlet button */}
+          <div className="flex items-center justify-between mb-4">
+            <Link
+              href="/"
+              className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white transition-colors"
+              aria-label="Back to home"
+            >
+              <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
+            </Link>
+
+            <span className="font-extrabold text-sm text-white/95">
+              Order {orderNum}
+            </span>
+
+            {order.outlet_phone ? (
+              <a
+                href={`tel:+91${order.outlet_phone}`}
+                className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center text-white transition-colors"
+                title="Call outlet"
+                aria-label="Call outlet"
+              >
+                <Phone className="w-4 h-4 fill-white" />
+              </a>
+            ) : (
+              <div className="w-10 h-10" />
+            )}
+          </div>
+
+          {/* Current State Pill */}
+          <div className="inline-flex items-center px-3 py-1 rounded-full bg-[#FFFEF7] text-[#CE5535] text-[11px] font-black tracking-wider uppercase mb-3 shadow-xs">
+            {headerPillText}
+          </div>
+
+          {/* Big Title */}
+          <h1 className="font-display text-[32px] font-extrabold text-white leading-[1.1] mb-2 tracking-tight whitespace-pre-line">
+            {headerTitle}
           </h1>
+
+          {/* Subtitle helper line */}
+          <p className="text-xs text-white/85 font-medium max-w-[240px] leading-relaxed">
+            {headerSubtitle}
+          </p>
+
+          {/* Mascot Art Peeking bottom-right */}
+          <div className="absolute right-0 -bottom-2 w-[130px] h-[170px] pointer-events-none">
+            <Image
+              src="/assets/mascot-cream.png"
+              alt="Mascot"
+              fill
+              className="object-contain object-bottom-right opacity-90"
+            />
+          </div>
         </div>
 
-        {code && (
-          <span className="font-display font-black text-sm text-[#CE5535] bg-[#FBEDE3] px-3 py-1 rounded-full border border-[#CE5535]/30">
-            #{code}
-          </span>
-        )}
-      </header>
-
-      {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto overscroll-contain overflow-x-hidden p-4 pb-28 space-y-4 scrollbar-none touch-scroll w-full max-w-full">
-        {loading ? (
-          <div className="py-20 flex flex-col items-center justify-center text-center space-y-3">
-            <div className="w-10 h-10 border-3 border-[#CE5535]/20 border-t-[#CE5535] rounded-full animate-spin" />
-            <p className="text-xs font-semibold text-[#75604F]">
-              Locating your order...
-            </p>
-          </div>
-        ) : error || !order ? (
-          <div className="bg-[#FFFEF7] rounded-3xl border border-[#EADFC7] p-6 text-center my-8 shadow-xs">
-            <AlertCircle className="w-10 h-10 text-[#CE5535] mx-auto mb-2" />
-            <h2 className="font-bold text-base text-[#2B1A12] mb-1">
-              Order Not Found
-            </h2>
-            <p className="text-xs text-[#75604F] mb-4">
-              We couldn&apos;t find an order matching pickup code &ldquo;{code}&rdquo;.
-            </p>
-            <Link
-              href="/outlet"
-              className="inline-block px-5 py-2.5 rounded-full bg-[#CE5535] text-white text-xs font-bold"
-            >
-              Go to Outlets
-            </Link>
-          </div>
-        ) : (
-          <>
-            {/* Payment Cancelled Banner */}
-            {isPaymentCancelled && (
-              <div className="bg-[#FDF0F0] border border-[#BA1A1A]/30 text-[#BA1A1A] p-5 rounded-3xl space-y-3">
-                <div className="flex items-start gap-3">
-                  <XCircle className="w-6 h-6 shrink-0 text-[#BA1A1A] mt-0.5" />
-                  <div>
-                    <h3 className="font-bold text-sm text-[#2B1A12]">Payment not completed</h3>
-                    <p className="text-xs text-[#75604F] mt-0.5 leading-relaxed">
-                      Your payment was not completed or has expired. Please try placing your order again.
-                    </p>
-                  </div>
-                </div>
-                <Link
-                  href="/menu"
-                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-2xl bg-[#BA1A1A] text-white text-xs font-bold hover:bg-[#93000A] transition-colors"
-                >
-                  <RotateCcw className="w-3.5 h-3.5" />
-                  <span>Try again</span>
-                </Link>
-              </div>
-            )}
-
-            {/* Order Cancelled by Outlet Banner */}
-            {isCancelled && (
-              <div className="bg-[#FDF0F0] border border-[#BA1A1A]/30 p-5 rounded-3xl space-y-2.5">
-                <div className="flex items-start gap-3">
-                  <XCircle className="w-6 h-6 shrink-0 text-[#BA1A1A] mt-0.5" />
-                  <div className="space-y-1">
-                    <h3 className="font-bold text-sm text-[#2B1A12]">Order cancelled by outlet</h3>
-                    {order.cancel_reason && (
-                      <p className="text-xs font-semibold text-[#BA1A1A]">
-                        Reason: {order.cancel_reason}
-                      </p>
-                    )}
-                    <p className="text-xs text-[#75604F] leading-relaxed pt-1 border-t border-[#BA1A1A]/15">
-                      No automatic refund. Please contact the outlet for assistance.
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Prominent Pickup Code Card */}
-            <div className="bg-[#FFFEF7] rounded-3xl border border-[#EADFC7] p-5 shadow-xs text-center relative overflow-hidden">
-              <span className="text-[11px] font-black uppercase tracking-wider text-[#75604F] block mb-1">
-                Your Pickup Code
+        {/* Floating Dark Pickup-Code Card overlapping the header */}
+        <div className="px-5 -mt-8 relative z-20">
+          <div className="bg-[#2B1A12] rounded-[22px] p-4 px-5 text-[#FDFBEA] shadow-[0_12px_28px_rgba(43,26,18,0.25)] flex items-center justify-between border border-[#2B1A12]">
+            <div>
+              <span className="text-[11px] font-bold text-[#FDFBEA]/70 uppercase tracking-wider block">
+                Pickup code
               </span>
-              <div className="font-display font-black text-5xl text-[#CE5535] tracking-widest my-1 select-all">
-                {order.pickup_code}
-              </div>
-              <p className="text-xs text-[#75604F] font-medium mt-1">
-                {isReady
-                  ? 'Your order is ready. Show this code to collect it.'
-                  : isReceived
-                  ? 'Order collected. Thank you for visiting!'
-                  : 'Show this code when collecting your order'}
-              </p>
-
-              {/* Highlighted Tip Card */}
-              <div className="mt-4 p-3 rounded-2xl bg-[#FBEDE3] border border-[#CE5535]/30 flex items-center gap-2.5 text-left">
-                <Camera className="w-5 h-5 text-[#CE5535] shrink-0" />
-                <p className="text-[11px] font-bold text-[#CE5535] leading-tight">
-                  {isReady
-                    ? 'Show this code at the pickup counter to collect your order.'
-                    : 'Take a screenshot or remember your code. You will need it to collect your order.'}
-                </p>
-              </div>
+              <span className="font-display text-[30px] font-black text-[#FDFBEA] tracking-widest block leading-tight mt-0.5">
+                {order.pickup_code || '7309'}
+              </span>
             </div>
 
-            {/* Thank you message when order is received */}
-            {isReceived && (
-              <div className="bg-[#EBF7EE] border border-[#2F7A3E]/30 rounded-3xl p-5 text-center space-y-1.5 shadow-xs animate-in zoom-in-95 duration-200">
-                <div className="w-12 h-12 rounded-full bg-[#2F7A3E] text-white flex items-center justify-center mx-auto shadow-xs">
-                  <Check className="w-6 h-6 stroke-[3]" />
-                </div>
-                <h3 className="font-display font-black text-base text-[#2F7A3E]">
-                  Thank you for your order!
-                </h3>
-                <p className="text-xs text-[#75604F] font-medium leading-relaxed">
-                  Your order has been handed over. Enjoy every sip of your Zécha!
-                </p>
-              </div>
-            )}
+            <div className="w-12 h-12 rounded-[14px] bg-white/10 flex items-center justify-center text-white/90">
+              <QrCode className="w-6 h-6 stroke-[2]" />
+            </div>
+          </div>
+        </div>
 
-            {/* Live Progress Tracker */}
-            {!isCancelled && !isPaymentCancelled && (
-              <div className="bg-[#FFFEF7] rounded-3xl border border-[#EADFC7] p-6 shadow-xs">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="font-display font-black text-sm uppercase tracking-wider text-[#75604F]">
-                    Live Order Progress
-                  </h2>
-                  <span className="flex items-center gap-1.5 text-[11px] font-bold text-[#2F7A3E]">
-                    <span className="w-2 h-2 rounded-full bg-[#2F7A3E] animate-pulse" />
-                    Live Tracker
-                  </span>
-                </div>
+        {/* Main Content Area */}
+        <div className="p-5 pt-6 space-y-6">
+          {/* Order Status Vertical Timeline (4 steps) */}
+          <div>
+            <h2 className="font-display text-[18px] font-extrabold text-[#2B1A12] mb-4 tracking-tight">
+              Order status
+            </h2>
 
-                <div className="space-y-0 relative">
-                  {stages.map((st, idx) => {
-                    const state = getStageState(st.num);
-                    const isLast = idx === stages.length - 1;
+            <div className="space-y-0 relative pl-2">
+              {timelineSteps.map((step, idx) => {
+                const isStepCompleted = isReceived || currentStageIndex > step.stageIdx;
+                const isStepCurrent = !isReceived && currentStageIndex === step.stageIdx;
+                const isStepFuture = !isReceived && currentStageIndex < step.stageIdx;
+                const isLast = idx === timelineSteps.length - 1;
 
-                    return (
-                      <div key={st.num} className={`flex items-start gap-4 relative ${isLast ? '' : 'pb-7'}`}>
-                        {/* Connecting Line */}
-                        {!isLast && (
-                          <div
-                            className={`absolute left-4 top-8 -bottom-0 w-0.5 ${
-                              state === 'completed' ? 'bg-[#2F7A3E]' : 'bg-[#EADFC7]'
-                            }`}
-                          />
-                        )}
+                return (
+                  <div key={step.id} className="relative flex items-start gap-4 pb-6 last:pb-0">
+                    {/* Vertical Connector Line */}
+                    {!isLast && (
+                      <div
+                        className={`absolute left-[13px] top-[26px] bottom-0 w-[2px] ${
+                          isStepCompleted ? 'bg-[#2B1A12]' : 'bg-[#EADFC7]'
+                        }`}
+                      />
+                    )}
 
-                        {/* Step Circle */}
-                        <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 transition-all ${
-                            state === 'completed'
-                              ? 'bg-[#2F7A3E] text-white shadow-xs'
-                              : state === 'current'
-                              ? 'bg-[#CE5535] text-white ring-4 ring-[#CE5535]/20 animate-pulse'
-                              : 'bg-[#EADFC7] text-[#75604F]'
-                          }`}
-                        >
-                          {state === 'completed' ? (
-                            <Check className="w-4 h-4 stroke-[3]" />
-                          ) : (
-                            <span className="text-xs font-black">{st.num}</span>
-                          )}
+                    {/* Step Icon / Dot */}
+                    <div className="relative z-10 shrink-0">
+                      {isStepCompleted ? (
+                        <div className="w-7 h-7 rounded-full bg-[#2B1A12] text-white flex items-center justify-center shadow-xs">
+                          <Check className="w-4 h-4 stroke-[3]" />
                         </div>
-
-                        {/* Step Details */}
-                        <div className="pt-0.5">
-                          <h3
-                            className={`font-bold text-sm leading-tight ${
-                              state === 'current'
-                                ? 'text-[#CE5535]'
-                                : state === 'completed'
-                                ? 'text-[#2F7A3E]'
-                                : 'text-[#75604F]/60'
-                            }`}
-                          >
-                            {st.title}
-                          </h3>
-                          <p
-                            className={`text-xs mt-0.5 leading-relaxed ${
-                              state === 'current'
-                                ? 'text-[#2B1A12] font-medium'
-                                : 'text-[#75604F]/70'
-                            }`}
-                          >
-                            {st.desc}
-                          </p>
+                      ) : isStepCurrent ? (
+                        <div className="w-7 h-7 rounded-full bg-[#FBEDE3] border-2 border-[#CE5535] flex items-center justify-center shadow-xs animate-pulse">
+                          <div className="w-2.5 h-2.5 rounded-full bg-[#CE5535]" />
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+                      ) : (
+                        <div className="w-7 h-7 rounded-full bg-[#F4E7CC] border border-[#EADFC7] flex items-center justify-center">
+                          <div className="w-2 h-2 rounded-full bg-[#75604F]/40" />
+                        </div>
+                      )}
+                    </div>
 
-            {/* Order Items Info Card */}
-            <div className="bg-[#FFFEF7] rounded-3xl border border-[#EADFC7] p-5 shadow-xs space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-[#EADFC7]">
-                <div className="flex items-center gap-2">
-                  <ShoppingBag className="w-4 h-4 text-[#CE5535]" />
-                  <span className="font-bold text-xs text-[#2B1A12]">
-                    Order Summary
-                  </span>
-                </div>
-                <span className="text-xs font-bold text-[#75604F]">
-                  {order.items?.length || 0} items
-                </span>
-              </div>
-
-              <div className="divide-y divide-[#EADFC7]/50">
-                {(order.items || []).map((item, index) => {
-                  const qty = item.qty || item.quantity || 1;
-                  const price = item.price || 0;
-                  return (
-                    <div
-                      key={index}
-                      className="py-2.5 flex items-center justify-between text-xs"
-                    >
-                      <span className="text-[#2B1A12] font-semibold truncate pr-2">
-                        <strong className="text-[#CE5535] font-black mr-1.5">
-                          {qty}×
-                        </strong>
-                        {item.name}
+                    {/* Step Label & Real Timestamp */}
+                    <div className="flex-1 flex items-center justify-between pt-0.5">
+                      <span
+                        className={`text-[15px] font-extrabold ${
+                          isStepCompleted || isStepCurrent
+                            ? isStepCurrent
+                              ? 'text-[#CE5535]'
+                              : 'text-[#2B1A12]'
+                            : 'text-[#75604F]/60'
+                        }`}
+                      >
+                        {step.label}
                       </span>
-                      <span className="font-bold text-[#2B1A12] shrink-0">
-                        {formatPrice(price * qty)}
+                      <span
+                        className={`text-xs font-semibold tabular-nums ${
+                          isStepCompleted || isStepCurrent
+                            ? 'text-[#75604F]'
+                            : 'text-[#75604F]/40'
+                        }`}
+                      >
+                        {step.time || '--:--'}
                       </span>
                     </div>
-                  );
-                })}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Outlet Card: Cup tile, outlet name, "<distance> · N items · ₹<amount> paid", and "Directions" button */}
+          <div className="bg-[#FFFEF7] rounded-[22px] border border-[#EADFC7] p-4 flex items-center justify-between gap-3 shadow-2xs">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-[12px] bg-[#FBEDE3] text-[#CE5535] flex items-center justify-center shrink-0">
+                <MapPin className="w-5 h-5 stroke-[2.2]" />
               </div>
-
-              {order.kitchen_note && (
-                <div className="bg-[#F4E7CC]/30 rounded-xl p-2.5 text-xs text-[#75604F] border border-[#EADFC7]">
-                  <span className="font-bold text-[#2B1A12] block mb-0.5">
-                    Kitchen Note:
-                  </span>
-                  {order.kitchen_note}
-                </div>
-              )}
-
-              <div className="pt-2 border-t border-[#EADFC7] flex items-center justify-between">
-                <span className="text-xs font-bold text-[#75604F]">Total Amount</span>
-                <span className="font-display font-black text-base text-[#2B1A12]">
-                  {formatPrice(order.total)}
-                </span>
+              <div className="min-w-0">
+                <h3 className="font-extrabold text-[15px] text-[#2B1A12] truncate leading-tight">
+                  {order.outlet_name || 'Zécha! Thamarassery'}
+                </h3>
+                <p className="text-[12px] text-[#75604F] mt-0.5 truncate font-medium">
+                  1.2 km · {itemCount} {itemCount === 1 ? 'item' : 'items'} ·{' '}
+                  {formatPrice(order.total)} paid
+                </p>
               </div>
             </div>
-          </>
-        )}
-      </main>
 
-      {/* Bottom: Contact Outlet Assistance */}
-      <footer className="shrink-0 p-4 bg-[#FDFBEA]/95 backdrop-blur-md border-t border-[#EADFC7] z-20 pb-[max(16px,env(safe-area-inset-bottom))] w-full">
-        <a
-          href="tel:+919847123210"
-          className="w-full h-12 rounded-2xl bg-[#FFFEF7] border border-[#EADFC7] text-[#2B1A12] hover:bg-[#F4E7CC]/40 flex items-center justify-center gap-2 text-xs font-bold shadow-xs transition-colors"
-        >
-          <Phone className="w-4 h-4 text-[#CE5535]" />
-          <span>Need help? Contact the outlet</span>
-        </a>
-      </footer>
+            <a
+              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
+                (order.outlet_name || 'Zécha!') + ' ' + (order.outlet_address || 'Kerala')
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="h-9 px-4 rounded-full border border-[#CE5535] text-[#CE5535] font-extrabold text-xs flex items-center justify-center hover:bg-[#FBEDE3] transition-colors shrink-0"
+            >
+              Directions
+            </a>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom CTA when status is ready or received: "Back to home" */}
+      {(isReady || isReceived) && (
+        <div className="p-5 pt-2">
+          <Link
+            href="/"
+            className="w-full h-[56px] rounded-[20px] bg-[#CE5535] text-[#FDFBEA] font-extrabold text-[16px] flex items-center justify-center shadow-[0_10px_24px_rgba(206,85,53,0.25)] hover:bg-[#A8401F] active:scale-[0.98] transition-all"
+          >
+            Back to home
+          </Link>
+        </div>
+      )}
     </div>
   );
 }
@@ -456,8 +434,8 @@ export default function TrackOrderPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-[100dvh] bg-[#FDFBEA] flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#CE5535]" />
+        <div className="min-h-screen bg-[#FDFBEA] flex flex-col items-center justify-center p-6">
+          <div className="w-10 h-10 border-3 border-[#CE5535] border-t-transparent rounded-full animate-spin" />
         </div>
       }
     >

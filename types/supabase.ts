@@ -4,6 +4,9 @@ export interface Outlet {
   id: string;
   name: string;
   address: string | null;
+  phone?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   opening_time: string; // e.g. '15:00:00'
   closing_time: string; // e.g. '00:00:00'
   is_active: boolean;
@@ -90,6 +93,7 @@ export interface Order {
   cancel_reason?: string | null;
   cancelled_by?: string | null;
   refund_required?: boolean | null;
+  refund_done?: boolean | null;
   kitchen_note?: string | null;
   created_at: string;
   updated_at: string;

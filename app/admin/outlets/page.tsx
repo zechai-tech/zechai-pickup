@@ -5,7 +5,7 @@ import { RoleGuard } from '@/components/admin/RoleGuard';
 import { Outlet } from '@/types/supabase';
 import { OutletForm } from '@/components/admin/OutletForm';
 import { Button } from '@/components/ui/Button';
-import { Store, Plus, Edit2, Power, Trash2, MapPin, Clock, AlertTriangle, X } from 'lucide-react';
+import { Store, Plus, Edit2, Power, Trash2, MapPin, Clock, AlertTriangle, X, Phone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function AdminOutletsPage() {
@@ -135,6 +135,7 @@ export default function AdminOutletsPage() {
                   <tr className="bg-sand/30 border-b border-border/80 text-[11px] font-black uppercase tracking-wider text-espresso/60">
                     <th className="py-3.5 px-5">Outlet</th>
                     <th className="py-3.5 px-4">Address</th>
+                    <th className="py-3.5 px-4">Phone</th>
                     <th className="py-3.5 px-4">Hours</th>
                     <th className="py-3.5 px-4">Status</th>
                     <th className="py-3.5 px-5 text-right">Actions</th>
@@ -151,6 +152,25 @@ export default function AdminOutletsPage() {
                           <MapPin className="w-3.5 h-3.5 text-orange shrink-0" />
                           <span>{o.address || 'Address not set'}</span>
                         </span>
+                      </td>
+                      <td className="py-3.5 px-4">
+                        {o.phone ? (
+                          <a
+                            href={`tel:+91${o.phone}`}
+                            className="text-xs font-semibold text-espresso hover:text-orange flex items-center gap-1.5 font-mono"
+                          >
+                            <Phone className="w-3.5 h-3.5 text-espresso/50" />
+                            <span>+91 {o.phone}</span>
+                          </a>
+                        ) : (
+                          <button
+                            onClick={() => handleOpenEdit(o)}
+                            className="text-xs text-espresso/40 hover:text-orange font-medium underline flex items-center gap-1"
+                          >
+                            <Phone className="w-3.5 h-3.5 opacity-40" />
+                            <span>Add phone</span>
+                          </button>
+                        )}
                       </td>
                       <td className="py-3.5 px-4">
                         <span className="text-xs font-semibold text-espresso flex items-center gap-1.5">
@@ -223,6 +243,22 @@ export default function AdminOutletsPage() {
                         <MapPin className="w-3 h-3 text-orange shrink-0" />
                         <span>{o.address || 'Address not set'}</span>
                       </p>
+                      {o.phone ? (
+                        <p className="text-xs text-espresso/70 flex items-center gap-1 mt-0.5 font-mono">
+                          <Phone className="w-3 h-3 text-espresso/40 shrink-0" />
+                          <span>+91 {o.phone}</span>
+                        </p>
+                      ) : (
+                        <p className="text-xs text-espresso/40 flex items-center gap-1 mt-0.5">
+                          <Phone className="w-3 h-3 opacity-40 shrink-0" />
+                          <button
+                            onClick={() => handleOpenEdit(o)}
+                            className="underline hover:text-orange"
+                          >
+                            Add phone
+                          </button>
+                        </p>
+                      )}
                     </div>
                     {o.is_active ? (
                       <span className="px-2 py-0.5 rounded-full bg-[#EBF7EE] text-brandGreen text-[10px] font-bold border border-brandGreen/20">

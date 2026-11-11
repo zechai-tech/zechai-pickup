@@ -10,6 +10,9 @@ export interface Outlet {
   closingTime?: string;
   openingTime?: string;
   address?: string;
+  phone?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export interface MenuItemOption {
@@ -60,6 +63,8 @@ export interface CartItem {
   isVeg: boolean;
   size?: string;
   sugar?: 'No sugar' | 'Less' | 'Regular';
+  selectedSize?: string;
+  selectedSugar?: string;
   addons?: CartItemAddon[];
   unitPrice: number;
   qty: number;
