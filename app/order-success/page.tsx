@@ -16,12 +16,36 @@ function OrderSuccessContent() {
     const paramCode = searchParams.get('code');
     const paramOutlet = searchParams.get('outlet');
     const paramTotal = searchParams.get('total');
+    const paramOrderId = searchParams.get('order_id');
 
     if (paramCode) {
       setCode(paramCode);
       if (paramOutlet) setOutlet(paramOutlet);
       if (paramTotal) setTotal(paramTotal);
+      // Trigger background sync
+      fetch('/api/orders/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pickupCode: paramCode }),
+      }).catch((e) => console.warn('Background sync error:', e));
       return;
+    }
+
+    // If redirected with order_id from Cashfree
+    if (paramOrderId) {
+      fetch('/api/orders/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: paramOrderId }),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.order?.pickup_code) {
+            setCode(data.order.pickup_code);
+            localStorage.setItem('activeOrderCode', data.order.pickup_code);
+          }
+        })
+        .catch((e) => console.warn('Order verify error:', e));
     }
 
     // Check sessionStorage

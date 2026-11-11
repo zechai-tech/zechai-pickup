@@ -41,7 +41,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       icon: LayoutDashboard,
     },
     {
-      label: 'Live Orders',
+      label: 'Orders',
       href: '/admin/orders',
       icon: ShoppingBag,
     },

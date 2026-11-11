@@ -103,18 +103,20 @@ export default function StaffOrdersPage() {
     );
 
     try {
-      const { error } = await (supabase
-        .from('orders') as any)
-        .update({ status: nextStatus, updated_at: new Date().toISOString() })
-        .eq('id', orderId);
-
-      if (error) {
-        const res = await fetch('/api/admin/orders', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: orderId, status: nextStatus }),
-        });
-        if (!res.ok) throw new Error('Failed to update status');
+      const res = await fetch(`/api/admin/orders/${orderId}/status`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(currentUser ? { Authorization: `Bearer ${currentUser.id}` } : {}),
+        },
+        body: JSON.stringify({
+          status: nextStatus,
+          caller_role: currentUser?.role,
+          caller_outlet_id: currentUser?.outlet_id,
+        }),
+      });
+      if (!res.ok) {
+        throw new Error('Failed to update status');
       }
       fetchOrders();
     } catch (e) {

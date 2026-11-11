@@ -1,21 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { query } from '@/lib/db';
 
 export async function POST(req: NextRequest) {
   try {
-    const { orderId, orderAmount, customerPhone, customerName } = await req.json();
+    const { orderId, dbOrderId, orderAmount, customerPhone, customerName } = await req.json();
 
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    const settingsRes = await query(
+      "SELECT value FROM public.app_settings WHERE key = 'payment_gateway'"
     );
-
-    const { data: settings } = await supabase
-      .from('app_settings')
-      .select('value')
-      .eq('key', 'payment_gateway')
-      .single();
-
+    const settings = settingsRes.rows[0];
     const cf = settings?.value?.cashfree;
     if (!cf?.app_id || !cf?.secret_key) {
       return NextResponse.json({ error: 'Cashfree not configured' }, { status: 400 });
@@ -29,6 +22,15 @@ export async function POST(req: NextRequest) {
     // Format clean phone number
     const cleanPhone = (customerPhone || '').replace(/\D/g, '').slice(-10) || '9999999999';
 
+    // Determine database order UUID and Cashfree order ID
+    const resolvedDbOrderId = dbOrderId || (orderId && orderId.length === 36 ? orderId : null);
+    const cfOrderId = resolvedDbOrderId
+      ? `zc_${resolvedDbOrderId.replace(/-/g, '').slice(0, 16)}_${Date.now()}`
+      : (orderId || `zc_${Date.now()}`);
+
+    // Set order_expiry_time to 20 minutes from now (ISO 8601 string)
+    const expiryTime = new Date(Date.now() + 20 * 60 * 1000).toISOString();
+
     const response = await fetch(baseUrl, {
       method: 'POST',
       headers: {
@@ -38,7 +40,7 @@ export async function POST(req: NextRequest) {
         'x-api-version': '2023-08-01',
       },
       body: JSON.stringify({
-        order_id: orderId,
+        order_id: cfOrderId,
         order_amount: Number(orderAmount),
         order_currency: 'INR',
         customer_details: {
@@ -49,10 +51,22 @@ export async function POST(req: NextRequest) {
         order_meta: {
           return_url: `https://pickup.zechai.in/order-success?order_id={order_id}`,
         },
+        order_expiry_time: expiryTime,
       }),
     });
 
     const data = await response.json();
+
+    if (response.ok && data.order_id) {
+      // Save cf_order_id on the order row
+      if (resolvedDbOrderId) {
+        await query(
+          `UPDATE public.orders SET cf_order_id = $1, updated_at = now() WHERE id = $2`,
+          [data.order_id, resolvedDbOrderId]
+        );
+      }
+    }
+
     return NextResponse.json(data);
   } catch (error: any) {
     console.error('Error creating Cashfree order:', error);

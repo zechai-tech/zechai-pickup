@@ -114,10 +114,24 @@ export default function CartPage() {
       // 1. Save customer info to store
       setCustomer({ phone: cleanPhone, note: kitchenNote });
 
-      // Step 1: Generate 4-digit pickup code FIRST
-      const pickupCode = Math.floor(1000 + Math.random() * 9000).toString();
+      // Step 1: Generate 4-digit pickup code unique per outlet per day
       const selectedOutletName = outlet?.name || 'Zécha! Thamarassery';
       const selectedOutletId = outlet?.id || '2d784d85-8afb-4524-bdd7-1d4a31f8b8d5';
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+
+      let pickupCode = Math.floor(1000 + Math.random() * 9000).toString();
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const { data: existing } = await (supabase.from('orders') as any)
+          .select('id')
+          .eq('outlet_id', selectedOutletId)
+          .eq('pickup_code', pickupCode)
+          .gte('created_at', startOfToday.toISOString())
+          .maybeSingle();
+
+        if (!existing) break;
+        pickupCode = Math.floor(1000 + Math.random() * 9000).toString();
+      }
 
       // Step 2: Insert order into Supabase with status 'pending_payment'
       const { data: order, error: insertError } = await (supabase
@@ -181,7 +195,8 @@ export default function CartPage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            orderId: `zc_${order.id.replace(/-/g, '').slice(0, 16)}_${Date.now()}`,
+            orderId: order.id,
+            dbOrderId: order.id,
             orderAmount: grandTotal,
             customerPhone: cleanPhone,
             customerName: customer.name || 'Customer',
@@ -214,8 +229,12 @@ export default function CartPage() {
               isNavigatingToSuccessRef.current = true;
               await (supabase.from('orders') as any)
                 .update({
-                  status: 'confirmed',
+                  status: 'pending',
+                  payment_status: 'success',
                   payment_id: result.paymentDetails.cf_payment_id || 'cf_payment',
+                  cf_payment_id: String(result.paymentDetails.cf_payment_id || ''),
+                  payment_method: 'cashfree',
+                  paid_at: new Date().toISOString(),
                   updated_at: new Date().toISOString(),
                 })
                 .eq('id', order.id);
@@ -232,7 +251,7 @@ export default function CartPage() {
             }
             if (result.error) {
               await (supabase.from('orders') as any)
-                .update({ status: 'payment_failed' })
+                .update({ status: 'payment_cancelled', payment_status: 'failed' })
                 .eq('id', order.id);
               sessionStorage.removeItem('pendingOrder');
               showToast('Payment failed.', 'error');
@@ -243,7 +262,7 @@ export default function CartPage() {
           .catch(async (err: any) => {
             console.error('Cashfree checkout error:', err);
             await (supabase.from('orders') as any)
-              .update({ status: 'payment_failed' })
+              .update({ status: 'payment_cancelled', payment_status: 'failed' })
               .eq('id', order.id);
             sessionStorage.removeItem('pendingOrder');
             showToast('Payment failed.', 'error');
@@ -268,13 +287,16 @@ export default function CartPage() {
           description: `Order #${pickupCode}`,
           image: '/assets/logo-orange.png',
           handler: async function (response: any) {
-            // Payment SUCCESS
+            // Payment SUCCESS -> reaches status 'pending'
             isNavigatingToSuccessRef.current = true;
             try {
               const { error: updateError } = await (supabase.from('orders') as any)
                 .update({
-                  status: 'confirmed',
+                  status: 'pending',
+                  payment_status: 'success',
+                  payment_method: 'razorpay',
                   payment_id: response.razorpay_payment_id,
+                  paid_at: new Date().toISOString(),
                   updated_at: new Date().toISOString(),
                 })
                 .eq('id', orderId);
@@ -310,7 +332,8 @@ export default function CartPage() {
               // User closed Razorpay without paying
               await (supabase.from('orders') as any)
                 .update({
-                  status: 'payment_failed',
+                  status: 'payment_cancelled',
+                  payment_status: 'cancelled',
                 })
                 .eq('id', orderId);
               sessionStorage.removeItem('pendingOrder');

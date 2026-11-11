@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState, Suspense } from 'react';
+import React, { useEffect, useState, Suspense, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
@@ -12,9 +12,14 @@ import {
   XCircle,
   ShoppingBag,
   Sparkles,
+  Camera,
+  RotateCcw,
+  Package,
+  Store,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { formatPrice } from '@/lib/utils';
+import { normalizeOrderStatus, CanonicalStatus } from '@/lib/order-flow';
 
 interface OrderItem {
   id?: string;
@@ -28,6 +33,8 @@ interface OrderData {
   id: string;
   pickup_code: string;
   status: string;
+  payment_status?: string | null;
+  cancel_reason?: string | null;
   total: number;
   items: OrderItem[];
   customer_name?: string;
@@ -35,6 +42,11 @@ interface OrderData {
   kitchen_note?: string;
   created_at?: string;
   outlet_id?: string;
+  outlet?: {
+    id: string;
+    name: string;
+    address?: string | null;
+  } | null;
 }
 
 function TrackOrderContent() {
@@ -45,6 +57,7 @@ function TrackOrderContent() {
   const [order, setOrder] = useState<OrderData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const hasTriggeredVerifyRef = useRef(false);
 
   const fetchOrder = async (isSilent = false) => {
     if (!code) {
@@ -55,7 +68,10 @@ function TrackOrderContent() {
 
     try {
       const { data, error: fetchErr } = await (supabase.from('orders') as any)
-        .select('*')
+        .select(`
+          *,
+          outlet:outlets(id, name, address)
+        `)
         .eq('pickup_code', code)
         .order('created_at', { ascending: false })
         .limit(1)
@@ -66,6 +82,23 @@ function TrackOrderContent() {
       } else if (data) {
         setOrder(data);
         setError(null);
+
+        // Fallback verify for pending_payment on page load
+        if (data.status === 'pending_payment' && !hasTriggeredVerifyRef.current) {
+          hasTriggeredVerifyRef.current = true;
+          fetch('/api/orders/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ orderId: data.id, pickupCode: code }),
+          })
+            .then((res) => res.json())
+            .then((verifyRes) => {
+              if (verifyRes.updated && verifyRes.status) {
+                setOrder((prev) => (prev ? { ...prev, status: verifyRes.status } : null));
+              }
+            })
+            .catch((e) => console.warn('Customer verification call notice:', e));
+        }
       }
     } catch (e: any) {
       if (!isSilent) setError(e.message || 'Error fetching order');
@@ -77,35 +110,110 @@ function TrackOrderContent() {
   useEffect(() => {
     fetchOrder();
 
-    // Auto-refresh every 6 seconds to track kitchen progress live
-    const interval = setInterval(() => {
-      fetchOrder(true);
-    }, 6000);
+    // Supabase Realtime subscription for instant progress updates
+    const channel = supabase
+      .channel(`customer-order-tracker-${code}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+          filter: `pickup_code=eq.${code}`,
+        },
+        (payload) => {
+          if (payload.new) {
+            setOrder((prev) => {
+              if (!prev) return payload.new as OrderData;
+              return { ...prev, ...(payload.new as any) };
+            });
+          }
+        }
+      )
+      .subscribe();
 
-    return () => clearInterval(interval);
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [code]);
 
-  // Stepper logic
-  // Steps: 1: confirmed, 2: preparing, 3: ready, 4: completed
-  const getStepState = (targetStep: number) => {
+  const canonicalStatus = normalizeOrderStatus(order?.status);
+  const isCancelled = canonicalStatus === 'cancelled';
+  const isPaymentCancelled =
+    canonicalStatus === 'payment_cancelled' || order?.status === 'payment_failed';
+
+  // 6 Stages:
+  // 1. Payment received (pending)
+  // 2. Order confirmed (confirmed / preparing)
+  // 3. Being made (preparing)
+  // 4. Packing (packaging)
+  // 5. Ready for pickup (ready)
+  // 6. Received (received)
+  const getStageState = (stageNumber: number): 'completed' | 'current' | 'future' => {
     if (!order) return 'future';
 
-    const status = order.status;
-    let currentStepNumber = 1;
+    let currentStage = 1;
+    switch (canonicalStatus) {
+      case 'pending':
+        currentStage = 1;
+        break;
+      case 'preparing':
+        // If order had confirmed_at and is in making
+        currentStage = 3;
+        break;
+      case 'packaging':
+        currentStage = 4;
+        break;
+      case 'ready':
+        currentStage = 5;
+        break;
+      case 'received':
+        currentStage = 6;
+        break;
+      default:
+        currentStage = 1;
+    }
 
-    if (status === 'confirmed') currentStepNumber = 1;
-    else if (status === 'preparing') currentStepNumber = 2;
-    else if (status === 'ready') currentStepNumber = 3;
-    else if (status === 'completed' || status === 'picked_up') currentStepNumber = 4;
-    else currentStepNumber = 0;
-
-    if (targetStep < currentStepNumber) return 'completed';
-    if (targetStep === currentStepNumber) return 'current';
+    if (stageNumber < currentStage) return 'completed';
+    if (stageNumber === currentStage) return 'current';
     return 'future';
   };
 
-  const isCancelled = order?.status === 'cancelled';
-  const isPaymentFailed = order?.status === 'payment_failed';
+  const stages = [
+    {
+      num: 1,
+      title: 'Payment Received',
+      desc:
+        canonicalStatus === 'pending'
+          ? 'Payment received. Waiting for the outlet to confirm your order.'
+          : 'Payment received successfully.',
+    },
+    {
+      num: 2,
+      title: 'Order Confirmed',
+      desc: 'Your order is accepted by the kitchen staff.',
+    },
+    {
+      num: 3,
+      title: 'Being Made',
+      desc: 'Freshly brewing your chai & frying bites right now.',
+    },
+    {
+      num: 4,
+      title: 'Packing',
+      desc: 'Carefully packing your items for a clean handover.',
+    },
+    {
+      num: 5,
+      title: 'Ready for Pickup',
+      desc: 'Hot and ready at the counter! Show your pickup code.',
+    },
+    {
+      num: 6,
+      title: 'Received',
+      desc: 'Order handed over. Enjoy every sip of your Zécha!',
+    },
+  ];
 
   return (
     <div className="min-h-[100dvh] h-full flex flex-col bg-[#FDFBEA] page-transition overflow-hidden relative w-full max-w-full">
@@ -158,27 +266,44 @@ function TrackOrderContent() {
           </div>
         ) : (
           <>
-            {/* Status Banners for edge states */}
-            {isCancelled && (
-              <div className="bg-[#FDF0F0] border border-[#BA1A1A]/30 text-[#BA1A1A] p-4 rounded-2xl flex items-center gap-3">
-                <XCircle className="w-6 h-6 shrink-0" />
-                <div>
-                  <h3 className="font-bold text-sm">This order was cancelled</h3>
-                  <p className="text-xs opacity-90 mt-0.5">
-                    Please visit the counter or place a new order.
-                  </p>
+            {/* Payment Cancelled Banner */}
+            {isPaymentCancelled && (
+              <div className="bg-[#FDF0F0] border border-[#BA1A1A]/30 text-[#BA1A1A] p-5 rounded-3xl space-y-3">
+                <div className="flex items-start gap-3">
+                  <XCircle className="w-6 h-6 shrink-0 text-[#BA1A1A] mt-0.5" />
+                  <div>
+                    <h3 className="font-bold text-sm text-[#2B1A12]">Payment not completed</h3>
+                    <p className="text-xs text-[#75604F] mt-0.5 leading-relaxed">
+                      Your payment was not completed or has expired. Please try placing your order again.
+                    </p>
+                  </div>
                 </div>
+                <Link
+                  href="/menu"
+                  className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-2xl bg-[#BA1A1A] text-white text-xs font-bold hover:bg-[#93000A] transition-colors"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Try again</span>
+                </Link>
               </div>
             )}
 
-            {isPaymentFailed && (
-              <div className="bg-[#FDF0F0] border border-[#BA1A1A]/30 text-[#BA1A1A] p-4 rounded-2xl flex items-center gap-3">
-                <AlertCircle className="w-6 h-6 shrink-0" />
-                <div>
-                  <h3 className="font-bold text-sm">Payment failed</h3>
-                  <p className="text-xs opacity-90 mt-0.5">
-                    Your payment was not completed. Please try again.
-                  </p>
+            {/* Order Cancelled by Outlet Banner */}
+            {isCancelled && (
+              <div className="bg-[#FDF0F0] border border-[#BA1A1A]/30 p-5 rounded-3xl space-y-2.5">
+                <div className="flex items-start gap-3">
+                  <XCircle className="w-6 h-6 shrink-0 text-[#BA1A1A] mt-0.5" />
+                  <div className="space-y-1">
+                    <h3 className="font-bold text-sm text-[#2B1A12]">Order cancelled by outlet</h3>
+                    {order.cancel_reason && (
+                      <p className="text-xs font-semibold text-[#BA1A1A]">
+                        Reason: {order.cancel_reason}
+                      </p>
+                    )}
+                    <p className="text-xs text-[#75604F] leading-relaxed pt-1 border-t border-[#BA1A1A]/15">
+                      No automatic refund. Please contact the outlet for assistance.
+                    </p>
+                  </div>
                 </div>
               </div>
             )}
@@ -188,53 +313,70 @@ function TrackOrderContent() {
               <span className="text-[11px] font-black uppercase tracking-wider text-[#75604F] block mb-1">
                 Your Pickup Code
               </span>
-              <div className="font-display font-black text-5xl text-[#CE5535] tracking-widest my-1">
+              <div className="font-display font-black text-5xl text-[#CE5535] tracking-widest my-1 select-all">
                 {order.pickup_code}
               </div>
               <p className="text-xs text-[#75604F] font-medium mt-1">
                 Show this code when collecting your order
               </p>
+
+              {/* Highlighted Tip Card */}
+              <div className="mt-4 p-3 rounded-2xl bg-[#FBEDE3] border border-[#CE5535]/30 flex items-center gap-2.5 text-left">
+                <Camera className="w-5 h-5 text-[#CE5535] shrink-0" />
+                <p className="text-[11px] font-bold text-[#CE5535] leading-tight">
+                  Take a screenshot or remember your code. You will need it to collect your order.
+                </p>
+              </div>
             </div>
 
-            {/* Vertical Stepper / Timeline */}
-            {!isCancelled && !isPaymentFailed && (
+            {/* Live Progress Tracker */}
+            {!isCancelled && !isPaymentCancelled && (
               <div className="bg-[#FFFEF7] rounded-3xl border border-[#EADFC7] p-6 shadow-xs">
-                <h2 className="font-display font-black text-sm uppercase tracking-wider text-[#75604F] mb-6">
-                  Live Order Status
-                </h2>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="font-display font-black text-sm uppercase tracking-wider text-[#75604F]">
+                    Live Order Progress
+                  </h2>
+                  <span className="flex items-center gap-1.5 text-[11px] font-bold text-[#2F7A3E]">
+                    <span className="w-2 h-2 rounded-full bg-[#2F7A3E] animate-pulse" />
+                    Live Tracker
+                  </span>
+                </div>
 
                 <div className="space-y-0 relative">
-                  {/* Step 1: Order Confirmed */}
-                  {(() => {
-                    const state = getStepState(1);
+                  {stages.map((st, idx) => {
+                    const state = getStageState(st.num);
+                    const isLast = idx === stages.length - 1;
+
                     return (
-                      <div className="flex items-start gap-4 relative pb-8">
-                        {/* Connecting Line to next step */}
-                        <div
-                          className={`absolute left-4 top-8 -bottom-0 w-0.5 ${
-                            state === 'completed' ? 'bg-[#2F7A3E]' : 'bg-[#D4D4D4]'
-                          }`}
-                        />
+                      <div key={st.num} className={`flex items-start gap-4 relative ${isLast ? '' : 'pb-7'}`}>
+                        {/* Connecting Line */}
+                        {!isLast && (
+                          <div
+                            className={`absolute left-4 top-8 -bottom-0 w-0.5 ${
+                              state === 'completed' ? 'bg-[#2F7A3E]' : 'bg-[#EADFC7]'
+                            }`}
+                          />
+                        )}
 
                         {/* Step Circle */}
                         <div
                           className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 transition-all ${
                             state === 'completed'
-                              ? 'bg-[#2F7A3E] text-white shadow-sm'
+                              ? 'bg-[#2F7A3E] text-white shadow-xs'
                               : state === 'current'
                               ? 'bg-[#CE5535] text-white ring-4 ring-[#CE5535]/20 animate-pulse'
-                              : 'bg-[#D4D4D4] text-white'
+                              : 'bg-[#EADFC7] text-[#75604F]'
                           }`}
                         >
                           {state === 'completed' ? (
                             <Check className="w-4 h-4 stroke-[3]" />
                           ) : (
-                            <span className="text-xs font-black">1</span>
+                            <span className="text-xs font-black">{st.num}</span>
                           )}
                         </div>
 
-                        {/* Step Label */}
-                        <div className="pt-1">
+                        {/* Step Details */}
+                        <div className="pt-0.5">
                           <h3
                             className={`font-bold text-sm leading-tight ${
                               state === 'current'
@@ -244,158 +386,21 @@ function TrackOrderContent() {
                                 : 'text-[#75604F]/60'
                             }`}
                           >
-                            Order Confirmed
+                            {st.title}
                           </h3>
-                          <p className="text-xs text-[#75604F]/70 mt-0.5">
-                            Order received & sent to the counter
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Step 2: Preparing your order */}
-                  {(() => {
-                    const state = getStepState(2);
-                    return (
-                      <div className="flex items-start gap-4 relative pb-8">
-                        {/* Connecting Line */}
-                        <div
-                          className={`absolute left-4 top-8 -bottom-0 w-0.5 ${
-                            state === 'completed' ? 'bg-[#2F7A3E]' : 'bg-[#D4D4D4]'
-                          }`}
-                        />
-
-                        {/* Step Circle */}
-                        <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 transition-all ${
-                            state === 'completed'
-                              ? 'bg-[#2F7A3E] text-white shadow-sm'
-                              : state === 'current'
-                              ? 'bg-[#CE5535] text-white ring-4 ring-[#CE5535]/20 animate-pulse'
-                              : 'bg-[#D4D4D4] text-white'
-                          }`}
-                        >
-                          {state === 'completed' ? (
-                            <Check className="w-4 h-4 stroke-[3]" />
-                          ) : state === 'current' ? (
-                            <Clock className="w-4 h-4 animate-spin stroke-[2.5]" />
-                          ) : (
-                            <span className="text-xs font-black">2</span>
-                          )}
-                        </div>
-
-                        {/* Step Label */}
-                        <div className="pt-1">
-                          <h3
-                            className={`font-bold text-sm leading-tight ${
+                          <p
+                            className={`text-xs mt-0.5 leading-relaxed ${
                               state === 'current'
-                                ? 'text-[#CE5535]'
-                                : state === 'completed'
-                                ? 'text-[#2F7A3E]'
-                                : 'text-[#75604F]/60'
+                                ? 'text-[#2B1A12] font-medium'
+                                : 'text-[#75604F]/70'
                             }`}
                           >
-                            Preparing your order
-                          </h3>
-                          <p className="text-xs text-[#75604F]/70 mt-0.5">
-                            Freshly brewing your chai & frying bites
+                            {st.desc}
                           </p>
                         </div>
                       </div>
                     );
-                  })()}
-
-                  {/* Step 3: Ready for pickup! */}
-                  {(() => {
-                    const state = getStepState(3);
-                    return (
-                      <div className="flex items-start gap-4 relative pb-8">
-                        {/* Connecting Line */}
-                        <div
-                          className={`absolute left-4 top-8 -bottom-0 w-0.5 ${
-                            state === 'completed' ? 'bg-[#2F7A3E]' : 'bg-[#D4D4D4]'
-                          }`}
-                        />
-
-                        {/* Step Circle */}
-                        <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 transition-all ${
-                            state === 'completed'
-                              ? 'bg-[#2F7A3E] text-white shadow-sm'
-                              : state === 'current'
-                              ? 'bg-[#CE5535] text-white ring-4 ring-[#CE5535]/20 animate-bounce'
-                              : 'bg-[#D4D4D4] text-white'
-                          }`}
-                        >
-                          {state === 'completed' ? (
-                            <Check className="w-4 h-4 stroke-[3]" />
-                          ) : state === 'current' ? (
-                            <Sparkles className="w-4 h-4 stroke-[2.5]" />
-                          ) : (
-                            <span className="text-xs font-black">3</span>
-                          )}
-                        </div>
-
-                        {/* Step Label */}
-                        <div className="pt-1">
-                          <h3
-                            className={`font-bold text-sm leading-tight ${
-                              state === 'current'
-                                ? 'text-[#CE5535] font-black'
-                                : state === 'completed'
-                                ? 'text-[#2F7A3E]'
-                                : 'text-[#75604F]/60'
-                            }`}
-                          >
-                            Ready for pickup!
-                          </h3>
-                          <p className="text-xs text-[#75604F]/70 mt-0.5">
-                            Head to the counter and show code #{order.pickup_code}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Step 4: Completed */}
-                  {(() => {
-                    const state = getStepState(4);
-                    return (
-                      <div className="flex items-start gap-4 relative">
-                        {/* Step Circle */}
-                        <div
-                          className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 z-10 transition-all ${
-                            state === 'completed' || state === 'current'
-                              ? 'bg-[#2F7A3E] text-white shadow-sm'
-                              : 'bg-[#D4D4D4] text-white'
-                          }`}
-                        >
-                          {state === 'completed' || state === 'current' ? (
-                            <Check className="w-4 h-4 stroke-[3]" />
-                          ) : (
-                            <span className="text-xs font-black">4</span>
-                          )}
-                        </div>
-
-                        {/* Step Label */}
-                        <div className="pt-1">
-                          <h3
-                            className={`font-bold text-sm leading-tight ${
-                              state === 'completed' || state === 'current'
-                                ? 'text-[#2F7A3E]'
-                                : 'text-[#75604F]/60'
-                            }`}
-                          >
-                            Completed
-                          </h3>
-                          <p className="text-xs text-[#75604F]/70 mt-0.5">
-                            Enjoy your Zécha! One cup every day.
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })()}
+                  })}
                 </div>
               </div>
             )}

@@ -39,16 +39,19 @@ export interface MenuItem {
 }
 
 export type OrderStatus =
-  | 'pending'
-  | 'accepted'
-  | 'preparing'
-  | 'ready'
-  | 'picked_up'
-  | 'cancelled'
   | 'pending_payment'
+  | 'pending'
   | 'confirmed'
+  | 'preparing'
+  | 'packaging'
+  | 'ready'
   | 'completed'
-  | 'payment_failed';
+  | 'received'
+  | 'cancelled'
+  | 'payment_failed'
+  | 'payment_cancelled'
+  | 'accepted'
+  | 'picked_up';
 
 export interface OrderItem {
   id?: string;
@@ -73,6 +76,20 @@ export interface Order {
   status: OrderStatus;
   pickup_code: string;
   payment_id: string | null;
+  cf_order_id?: string | null;
+  cf_payment_id?: string | null;
+  payment_status?: string | null;
+  payment_method?: string | null;
+  paid_at?: string | null;
+  confirmed_at?: string | null;
+  making_at?: string | null;
+  packaging_at?: string | null;
+  ready_at?: string | null;
+  received_at?: string | null;
+  cancelled_at?: string | null;
+  cancel_reason?: string | null;
+  cancelled_by?: string | null;
+  refund_required?: boolean | null;
   kitchen_note?: string | null;
   created_at: string;
   updated_at: string;
@@ -109,6 +126,20 @@ export type Database = {
           status?: OrderStatus | string;
           pickup_code?: string;
           payment_id?: string | null;
+          cf_order_id?: string | null;
+          cf_payment_id?: string | null;
+          payment_status?: string | null;
+          payment_method?: string | null;
+          paid_at?: string | null;
+          confirmed_at?: string | null;
+          making_at?: string | null;
+          packaging_at?: string | null;
+          ready_at?: string | null;
+          received_at?: string | null;
+          cancelled_at?: string | null;
+          cancel_reason?: string | null;
+          cancelled_by?: string | null;
+          refund_required?: boolean | null;
           kitchen_note?: string | null;
           created_at?: string;
           updated_at?: string;
@@ -122,6 +153,20 @@ export type Database = {
           status?: OrderStatus | string;
           pickup_code?: string;
           payment_id?: string | null;
+          cf_order_id?: string | null;
+          cf_payment_id?: string | null;
+          payment_status?: string | null;
+          payment_method?: string | null;
+          paid_at?: string | null;
+          confirmed_at?: string | null;
+          making_at?: string | null;
+          packaging_at?: string | null;
+          ready_at?: string | null;
+          received_at?: string | null;
+          cancelled_at?: string | null;
+          cancel_reason?: string | null;
+          cancelled_by?: string | null;
+          refund_required?: boolean | null;
           kitchen_note?: string | null;
           updated_at?: string;
         };

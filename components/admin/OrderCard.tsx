@@ -1,82 +1,105 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Order, OrderStatus } from '@/types/supabase';
 import { StatusBadge } from './StatusBadge';
 import { formatPrice } from '@/lib/utils';
-import { Phone, Clock, ArrowRight, Ban, CheckCircle2, Flame, PackageCheck, Check } from 'lucide-react';
+import { normalizeOrderStatus } from '@/lib/order-flow';
+import { useToast } from '@/components/ui/Toast';
+import {
+  Phone,
+  Clock,
+  Check,
+  Ban,
+  Copy,
+  AlertCircle,
+  Package,
+  Flame,
+  CheckCircle2,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface OrderCardProps {
   order: Order;
   onUpdateStatus: (orderId: string, nextStatus: OrderStatus) => Promise<void>;
+  onRequestCancel: (order: Order) => void;
+  onGiveToCustomer?: (order: Order) => void;
+  isSaving?: boolean;
   isNew?: boolean;
 }
 
-export function OrderCard({ order, onUpdateStatus, isNew = false }: OrderCardProps) {
-  // Compute time since order
-  const timeSince = useMemo(() => {
+export function OrderCard({
+  order,
+  onUpdateStatus,
+  onRequestCancel,
+  onGiveToCustomer,
+  isSaving = false,
+  isNew = false,
+}: OrderCardProps) {
+  const { showToast } = useToast();
+  const [copied, setCopied] = useState(false);
+
+  const canonicalStatus = normalizeOrderStatus(order.status);
+
+  // Compute elapsed time in minutes
+  const elapsedMinutes = useMemo(() => {
     const elapsedMs = Date.now() - new Date(order.created_at).getTime();
-    const minutes = Math.floor(elapsedMs / (60 * 1000));
-    if (minutes < 1) return 'Just now';
-    if (minutes === 1) return '1 min ago';
-    if (minutes < 60) return `${minutes} mins ago`;
-    const hours = Math.floor(minutes / 60);
-    return `${hours}h ${minutes % 60}m ago`;
+    return Math.floor(elapsedMs / (60 * 1000));
   }, [order.created_at]);
 
-  const itemsList = Array.isArray(order.items) ? order.items : [];
+  const timeSince = useMemo(() => {
+    if (elapsedMinutes < 1) return 'Just now';
+    if (elapsedMinutes === 1) return '1 min ago';
+    if (elapsedMinutes < 60) return `${elapsedMinutes} mins ago`;
+    const hours = Math.floor(elapsedMinutes / 60);
+    return `${hours}h ${elapsedMinutes % 60}m ago`;
+  }, [elapsedMinutes]);
 
-  const getActionConfig = (status: OrderStatus) => {
-    switch (status) {
-      case 'pending':
-        return {
-          nextStatus: 'accepted' as OrderStatus,
-          label: 'Accept Order',
-          color: 'bg-espresso text-cream hover:bg-espresso-dark',
-          icon: Check,
-        };
-      case 'accepted':
-        return {
-          nextStatus: 'preparing' as OrderStatus,
-          label: 'Start Preparing',
-          color: 'bg-orange text-cream hover:bg-orange-dark shadow-orange-sm',
-          icon: Flame,
-        };
-      case 'preparing':
-        return {
-          nextStatus: 'ready' as OrderStatus,
-          label: 'Mark as Ready',
-          color: 'bg-brandGreen text-cream hover:bg-[#256332]',
-          icon: PackageCheck,
-        };
-      case 'ready':
-        return {
-          nextStatus: 'picked_up' as OrderStatus,
-          label: 'Complete Pickup',
-          color: 'bg-sand text-espresso hover:bg-[#ebd9b8] border border-border',
-          icon: CheckCircle2,
-        };
-      default:
-        return null;
+  // Urgency check: Pending orders older than 2 minutes
+  const isUrgentPending = canonicalStatus === 'pending' && elapsedMinutes >= 2;
+
+  const handleCopyPhone = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (order.customer_phone) {
+      navigator.clipboard.writeText(order.customer_phone);
+      setCopied(true);
+      showToast('Phone number copied to clipboard', 'info');
+      setTimeout(() => setCopied(false), 2000);
     }
   };
 
-  const action = getActionConfig(order.status);
+  const itemsList = Array.isArray(order.items) ? order.items : [];
 
   return (
     <div
       className={cn(
-        'bg-card rounded-2xl border border-border p-4 flex flex-col justify-between shadow-xs transition-all relative overflow-hidden',
+        'bg-card rounded-2xl border p-4 flex flex-col justify-between shadow-xs transition-all relative overflow-hidden',
+        isUrgentPending
+          ? 'border-2 border-brandRed ring-2 ring-brandRed/20 bg-[#FFFDFD]'
+          : 'border-border',
         isNew && 'ring-2 ring-orange animate-pulse shadow-orange',
-        order.status === 'ready' && 'border-brandGreen/40 bg-[#FCFDF9]'
+        canonicalStatus === 'ready' && 'border-brandGreen/40 bg-[#FCFDF9]'
       )}
     >
-      {/* Top row: Status Badge + Time elapsed */}
       <div>
+        {/* Top row: Status Badge + Urgency / Elapsed Time */}
         <div className="flex items-center justify-between gap-2 pb-3 border-b border-border/60">
-          <StatusBadge status={order.status} size="sm" />
-          <div className="flex items-center gap-1 text-[11px] font-semibold text-espresso/60">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <StatusBadge status={order.status} size="sm" />
+            {isUrgentPending && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brandRed text-white text-[10px] font-black uppercase tracking-wider animate-pulse">
+                <AlertCircle className="w-3 h-3" />
+                <span>Waiting 2+ min</span>
+              </span>
+            )}
+            {order.refund_required && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange text-white text-[10px] font-bold">
+                Refund needs manual processing
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1 text-[11px] font-semibold text-espresso/60 shrink-0">
             <Clock className="w-3.5 h-3.5" />
             <span>{timeSince}</span>
           </div>
@@ -88,7 +111,7 @@ export function OrderCard({ order, onUpdateStatus, isNew = false }: OrderCardPro
             <span className="text-[10px] font-black uppercase tracking-widest text-orange block">
               PICKUP CODE
             </span>
-            <span className="font-display text-3xl font-black tracking-widest text-espresso">
+            <span className="font-display text-3xl font-black tracking-widest text-espresso select-all">
               {order.pickup_code}
             </span>
           </div>
@@ -103,18 +126,32 @@ export function OrderCard({ order, onUpdateStatus, isNew = false }: OrderCardPro
           </div>
         </div>
 
-        {/* Customer details */}
+        {/* Customer Details: selectable text, copy button, tel link */}
         <div className="bg-sand/30 rounded-xl p-2.5 mb-3 flex items-center justify-between text-xs">
           <div>
             <span className="font-bold text-espresso block">{order.customer_name}</span>
-            <a
-              href={`tel:${order.customer_phone}`}
-              className="text-espresso/70 flex items-center gap-1 hover:text-orange transition-colors"
-            >
-              <Phone className="w-3 h-3 text-orange" />
-              <span>{order.customer_phone}</span>
-            </a>
+            <div className="flex items-center gap-2 pt-0.5">
+              <span className="select-text text-espresso font-semibold">
+                {order.customer_phone}
+              </span>
+              <button
+                type="button"
+                onClick={handleCopyPhone}
+                className="p-1 rounded-md hover:bg-sand/70 text-espresso/60 hover:text-espresso transition-colors"
+                title="Copy phone number"
+              >
+                <Copy className="w-3 h-3" />
+              </button>
+              <a
+                href={`tel:${order.customer_phone}`}
+                className="p-1 rounded-md hover:bg-sand/70 text-orange hover:text-orange-dark transition-colors"
+                title="Call customer"
+              >
+                <Phone className="w-3 h-3" />
+              </a>
+            </div>
           </div>
+
           {order.outlet && (
             <span className="text-[10px] font-semibold text-espresso/60 max-w-[120px] text-right truncate">
               {order.outlet.name}
@@ -122,8 +159,8 @@ export function OrderCard({ order, onUpdateStatus, isNew = false }: OrderCardPro
           )}
         </div>
 
-        {/* Items List */}
-        <div className="space-y-1.5 py-1 mb-4">
+        {/* Order Items List */}
+        <div className="space-y-1.5 py-1 mb-3">
           <span className="text-[10px] font-black uppercase tracking-wider text-espresso/50 block">
             ORDER ITEMS ({itemsList.reduce((acc, i) => acc + (i.qty || 1), 0)})
           </span>
@@ -141,36 +178,116 @@ export function OrderCard({ order, onUpdateStatus, isNew = false }: OrderCardPro
             ))}
           </div>
         </div>
-      </div>
 
-      {/* Action Buttons */}
-      <div className="pt-2 border-t border-border/60 flex items-center gap-2">
-        {action && (
-          <button
-            onClick={() => onUpdateStatus(order.id, action.nextStatus)}
-            className={cn(
-              'flex-1 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition-all duration-150 active:scale-95',
-              action.color
-            )}
-          >
-            <action.icon className="w-4 h-4" />
-            <span>{action.label}</span>
-          </button>
+        {/* Kitchen Note */}
+        {order.kitchen_note && (
+          <div className="bg-[#FBEDE3]/50 border border-orange/20 rounded-xl p-2 mb-3 text-[11px] text-espresso/80">
+            <span className="font-bold text-orange block">Note:</span>
+            {order.kitchen_note}
+          </div>
         )}
 
-        {order.status !== 'cancelled' && order.status !== 'picked_up' && (
-          <button
-            onClick={() => {
-              if (confirm('Are you sure you want to cancel this order?')) {
-                onUpdateStatus(order.id, 'cancelled');
-              }
-            }}
-            className="p-2.5 rounded-xl border border-border text-espresso/50 hover:text-brandRed hover:border-brandRed/40 hover:bg-[#FDF0F0] transition-colors"
-            title="Cancel order"
-            aria-label="Cancel order"
-          >
-            <Ban className="w-4 h-4" />
-          </button>
+        {/* Cancellation Reason if cancelled */}
+        {canonicalStatus === 'cancelled' && order.cancel_reason && (
+          <div className="bg-[#FDF0F0] border border-brandRed/20 rounded-xl p-2.5 mb-3 text-xs text-brandRed">
+            <span className="font-bold block">Reason:</span>
+            {order.cancel_reason}
+            {order.cancelled_by && (
+              <span className="text-[10px] opacity-80 block mt-0.5">
+                Cancelled by: {order.cancelled_by}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Action Buttons Section */}
+      <div className="pt-2 border-t border-border/60 flex items-center gap-2">
+        {/* Pending Stage: Green tick "Confirm Order" moves to preparing + Cancel */}
+        {canonicalStatus === 'pending' && (
+          <>
+            <button
+              onClick={() => onUpdateStatus(order.id, 'preparing')}
+              disabled={isSaving}
+              className="flex-1 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 bg-[#2F7A3E] text-white hover:bg-[#256332] active:scale-95 disabled:opacity-50 transition-all shadow-xs"
+            >
+              <Check className="w-4 h-4 stroke-[3]" />
+              <span>Confirm Order</span>
+            </button>
+            <button
+              onClick={() => onRequestCancel(order)}
+              disabled={isSaving}
+              className="py-2.5 px-3 rounded-xl border border-border text-xs font-bold text-espresso/60 hover:text-brandRed hover:border-brandRed/40 hover:bg-[#FDF0F0] disabled:opacity-50 transition-colors"
+            >
+              Cancel Order
+            </button>
+          </>
+        )}
+
+        {/* Making Stage (preparing): Green tick "Done Making" moves to packaging + Cancel */}
+        {canonicalStatus === 'preparing' && (
+          <>
+            <button
+              onClick={() => onUpdateStatus(order.id, 'packaging')}
+              disabled={isSaving}
+              className="flex-1 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 bg-[#2F7A3E] text-white hover:bg-[#256332] active:scale-95 disabled:opacity-50 transition-all shadow-xs"
+            >
+              <Check className="w-4 h-4 stroke-[3]" />
+              <span>Done Making</span>
+            </button>
+            <button
+              onClick={() => onRequestCancel(order)}
+              disabled={isSaving}
+              className="p-2.5 rounded-xl border border-border text-espresso/50 hover:text-brandRed hover:border-brandRed/40 hover:bg-[#FDF0F0] disabled:opacity-50 transition-colors"
+              title="Cancel order"
+            >
+              <Ban className="w-4 h-4" />
+            </button>
+          </>
+        )}
+
+        {/* Packaging Stage: Green tick "Done Packaging" moves to ready + Cancel */}
+        {canonicalStatus === 'packaging' && (
+          <>
+            <button
+              onClick={() => onUpdateStatus(order.id, 'ready')}
+              disabled={isSaving}
+              className="flex-1 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 bg-[#2F7A3E] text-white hover:bg-[#256332] active:scale-95 disabled:opacity-50 transition-all shadow-xs"
+            >
+              <Check className="w-4 h-4 stroke-[3]" />
+              <span>Done Packaging</span>
+            </button>
+            <button
+              onClick={() => onRequestCancel(order)}
+              disabled={isSaving}
+              className="p-2.5 rounded-xl border border-border text-espresso/50 hover:text-brandRed hover:border-brandRed/40 hover:bg-[#FDF0F0] disabled:opacity-50 transition-colors"
+              title="Cancel order"
+            >
+              <Ban className="w-4 h-4" />
+            </button>
+          </>
+        )}
+
+        {/* Completed Stage (ready): Prominent GREEN "Give to Customer" (5s undo toast) + Cancel */}
+        {canonicalStatus === 'ready' && (
+          <>
+            <button
+              onClick={() => (onGiveToCustomer ? onGiveToCustomer(order) : onUpdateStatus(order.id, 'received'))}
+              disabled={isSaving}
+              className="flex-1 py-3 px-4 rounded-xl font-display font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 bg-[#2F7A3E] text-white hover:bg-[#256332] active:scale-95 disabled:opacity-50 transition-all shadow-md"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Give to Customer</span>
+            </button>
+            <button
+              onClick={() => onRequestCancel(order)}
+              disabled={isSaving}
+              className="p-3 rounded-xl border border-border text-espresso/50 hover:text-brandRed hover:border-brandRed/40 hover:bg-[#FDF0F0] disabled:opacity-50 transition-colors"
+              title="Cancel order"
+            >
+              <Ban className="w-4 h-4" />
+            </button>
+          </>
         )}
       </div>
     </div>

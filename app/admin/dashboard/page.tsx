@@ -5,7 +5,10 @@ import Link from 'next/link';
 import { useAdminStore, getUserScope } from '@/stores/admin-store';
 import { RoleGuard } from '@/components/admin/RoleGuard';
 import { Outlet, Order } from '@/types/supabase';
+import { StatusBadge } from '@/components/admin/StatusBadge';
 import { formatPrice, cn } from '@/lib/utils';
+import { normalizeOrderStatus } from '@/lib/order-flow';
+import { useToast } from '@/components/ui/Toast';
 import {
   Store,
   ShoppingBag,
@@ -17,16 +20,29 @@ import {
   CalendarCheck,
   Receipt,
   CheckCircle2,
+  Package,
+  Flame,
+  Phone,
+  Copy,
+  Check,
+  CreditCard,
+  Search,
 } from 'lucide-react';
 
 export default function AdminDashboardPage() {
   const { currentUser, syncTrigger } = useAdminStore();
   const { isAdmin, isManager } = getUserScope(currentUser);
+  const { showToast } = useToast();
 
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOutletId, setSelectedOutletId] = useState<string>('all');
   const [loading, setLoading] = useState(true);
+
+  // Table filters
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [paymentFilter, setPaymentFilter] = useState<string>('all');
+  const [tableSearch, setTableSearch] = useState<string>('');
 
   const loadData = useCallback(async () => {
     try {
@@ -61,7 +77,7 @@ export default function AdminDashboardPage() {
     }
   }, [currentUser, loadData, syncTrigger]);
 
-  // Filter orders (admin can select 'all' or specific outlet; manager is always locked to their outlet)
+  // Filter orders by outlet
   const filteredOrders = useMemo(() => {
     if (isManager && currentUser?.outlet_id) {
       return orders.filter((o) => o.outlet_id === currentUser.outlet_id);
@@ -72,33 +88,44 @@ export default function AdminDashboardPage() {
     return orders.filter((o) => o.outlet_id === selectedOutletId);
   }, [orders, selectedOutletId, isManager, currentUser?.outlet_id]);
 
-  // Metrics computation
+  // Metrics computation: Count ONLY orders with payment_status === 'success' and not cancelled-with-refund_required
   const metrics = useMemo(() => {
+    const isPaidAndValid = (o: Order) => {
+      const isPaid = o.payment_status === 'success';
+      const isCancelledRefund = o.status === 'cancelled' && !!o.refund_required;
+      return isPaid && !isCancelledRefund;
+    };
+
+    const validPaidOrders = filteredOrders.filter(isPaidAndValid);
     const todayStr = new Date().toISOString().slice(0, 10);
-    const todayOrders = filteredOrders.filter(
+    const todayPaidOrders = validPaidOrders.filter(
       (o) => new Date(o.created_at).toISOString().slice(0, 10) === todayStr
     );
 
-    const revenueToday = todayOrders
-      .filter((o) => o.status !== 'cancelled')
-      .reduce((sum, o) => sum + Number(o.total || 0), 0);
+    const revenueToday = todayPaidOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
+    const totalRevenue = validPaidOrders.reduce((sum, o) => sum + Number(o.total || 0), 0);
 
-    const totalRevenue = filteredOrders
-      .filter((o) => o.status !== 'cancelled')
-      .reduce((sum, o) => sum + Number(o.total || 0), 0);
+    const pendingOrders = filteredOrders.filter(
+      (o) => normalizeOrderStatus(o.status) === 'pending'
+    ).length;
 
-    const pendingOrders = filteredOrders.filter((o) => o.status === 'pending').length;
-    const preparingOrders = filteredOrders.filter(
-      (o) => o.status === 'preparing' || o.status === 'accepted'
-    );
+    // Two distinct cards: Making and Packaging
+    const makingOrders = filteredOrders.filter(
+      (o) => normalizeOrderStatus(o.status) === 'preparing'
+    ).length;
+
+    const packagingOrders = filteredOrders.filter(
+      (o) => normalizeOrderStatus(o.status) === 'packaging'
+    ).length;
 
     return {
-      ordersToday: todayOrders.length,
+      ordersToday: todayPaidOrders.length,
       revenueToday,
-      totalOrders: filteredOrders.length,
+      totalOrders: validPaidOrders.length,
       totalRevenue,
       pendingOrders,
-      preparingOrders: preparingOrders.length,
+      makingOrders,
+      packagingOrders,
     };
   }, [filteredOrders]);
 
@@ -111,9 +138,44 @@ export default function AdminDashboardPage() {
     return found ? found.name : 'Selected Outlet';
   }, [outlets, selectedOutletId, isManager, currentUser]);
 
+  // Filtered orders for the Table
+  const tableOrders = useMemo(() => {
+    return filteredOrders.filter((o) => {
+      // Status filter
+      if (statusFilter !== 'all') {
+        const canon = normalizeOrderStatus(o.status);
+        if (statusFilter === 'pending_payment' && o.status !== 'pending_payment') return false;
+        if (statusFilter !== 'pending_payment' && canon !== statusFilter) return false;
+      }
+
+      // Payment filter
+      if (paymentFilter === 'paid') {
+        if (o.payment_status !== 'success') return false;
+      } else if (paymentFilter === 'unpaid') {
+        if (o.payment_status === 'success') return false;
+      }
+
+      // Search filter (pickup code or phone)
+      if (tableSearch.trim()) {
+        const q = tableSearch.toLowerCase().trim();
+        const codeMatch = (o.pickup_code || '').toLowerCase().includes(q);
+        const phoneMatch = (o.customer_phone || '').includes(q);
+        const nameMatch = (o.customer_name || '').toLowerCase().includes(q);
+        if (!codeMatch && !phoneMatch && !nameMatch) return false;
+      }
+
+      return true;
+    });
+  }, [filteredOrders, statusFilter, paymentFilter, tableSearch]);
+
+  const handleCopyPhone = (phone: string) => {
+    navigator.clipboard.writeText(phone);
+    showToast('Phone number copied to clipboard', 'info');
+  };
+
   return (
     <RoleGuard allowedRoles={['admin', 'manager']}>
-      <div className="space-y-6 max-w-7xl mx-auto">
+      <div className="space-y-6 max-w-7xl mx-auto pb-12">
         {/* Welcome Banner */}
         <div className="bg-espresso text-cream rounded-[28px] p-6 sm:p-8 relative overflow-hidden shadow-lg border border-espresso-dark">
           <div className="relative z-10 max-w-xl">
@@ -131,7 +193,7 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* Outlet Selector (Pills / Chips) - ADMIN ONLY */}
+        {/* Outlet Selector (Pills) - ADMIN ONLY */}
         {isAdmin && (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -144,7 +206,6 @@ export default function AdminDashboardPage() {
             </div>
 
             <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-              {/* All Outlets Pill (Default) */}
               <button
                 onClick={() => setSelectedOutletId('all')}
                 className={cn(
@@ -157,7 +218,6 @@ export default function AdminDashboardPage() {
                 All Outlets
               </button>
 
-              {/* Individual Outlet Pills */}
               {outlets.map((outlet) => {
                 const isSelected = selectedOutletId === outlet.id;
                 return (
@@ -185,7 +245,7 @@ export default function AdminDashboardPage() {
           </div>
         )}
 
-        {/* Stats Metric Cards Grid (4 Cards: Orders Today, Revenue Today, Total Orders, Total Revenue) */}
+        {/* Stats Metric Cards Grid (Paid Orders Today, Revenue Today, Total Paid Orders, Total Revenue) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {/* 1. Orders Today */}
           <div className="bg-card rounded-2xl border border-border p-5 shadow-xs flex items-center justify-between">
@@ -198,7 +258,7 @@ export default function AdminDashboardPage() {
               </span>
               <span className="text-[11px] text-brandGreen font-bold flex items-center gap-1 mt-1">
                 <CalendarCheck className="w-3.5 h-3.5" />
-                <span>Today's pickup queue</span>
+                <span>Paid orders today</span>
               </span>
             </div>
             <div className="w-12 h-12 rounded-2xl bg-orange/15 text-orange flex items-center justify-center">
@@ -217,7 +277,7 @@ export default function AdminDashboardPage() {
               </span>
               <span className="text-[11px] text-brandGreen font-bold flex items-center gap-1 mt-1">
                 <TrendingUp className="w-3.5 h-3.5" />
-                <span>Prepaid orders today</span>
+                <span>Settled revenue today</span>
               </span>
             </div>
             <div className="w-12 h-12 rounded-2xl bg-mustard/20 text-[#8B6400] flex items-center justify-center">
@@ -236,7 +296,7 @@ export default function AdminDashboardPage() {
               </span>
               <span className="text-[11px] text-espresso/60 font-semibold flex items-center gap-1 mt-1">
                 <Receipt className="w-3.5 h-3.5 text-espresso/40" />
-                <span>All-time order count</span>
+                <span>Paid orders settled</span>
               </span>
             </div>
             <div className="w-12 h-12 rounded-2xl bg-sand text-espresso flex items-center justify-center">
@@ -255,7 +315,7 @@ export default function AdminDashboardPage() {
               </span>
               <span className="text-[11px] text-brandGreen font-bold flex items-center gap-1 mt-1">
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>All-time settled revenue</span>
+                <span>All-time net revenue</span>
               </span>
             </div>
             <div className="w-12 h-12 rounded-2xl bg-[#EBF7EE] text-brandGreen flex items-center justify-center">
@@ -264,103 +324,223 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {/* Live Queue Notice (Filtered by Selected Outlet / Manager's Outlet) */}
-        <div className="bg-card rounded-2xl border border-border p-5 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-xl bg-mustard/20 text-[#8B6400] flex items-center justify-center shrink-0">
-              <Clock className="w-5 h-5" />
-            </div>
+        {/* Live Kitchen Queue Stats: Making & Packaging Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Making Stat Card */}
+          <div className="bg-card rounded-2xl border border-border p-5 shadow-xs flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="font-display font-black text-base text-espresso">
-                  Live Kitchen Dispatch Queue
-                </h3>
-                <span className="text-[10px] bg-sand px-2 py-0.5 rounded-full font-bold text-espresso/80">
-                  {selectedOutletName}
+                <span className="text-xs font-bold text-espresso/60 uppercase tracking-wider">
+                  Making
                 </span>
+                <span className="w-2 h-2 rounded-full bg-orange animate-pulse" />
               </div>
-              <p className="text-xs text-espresso/70 mt-0.5">
-                {metrics.pendingOrders} pending orders awaiting acceptance · {metrics.preparingOrders} in preparation
-              </p>
+              <span className="font-display text-3xl font-black text-espresso mt-1 block">
+                {metrics.makingOrders}
+              </span>
+              <span className="text-[11px] text-espresso/60 font-medium">
+                Orders actively being prepared in the kitchen
+              </span>
+            </div>
+            <div className="w-12 h-12 rounded-2xl bg-orange-soft text-orange-dark flex items-center justify-center">
+              <Flame className="w-6 h-6" />
             </div>
           </div>
-          <Link
-            href="/admin/orders"
-            className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-full bg-orange text-cream font-bold text-xs shadow-orange hover:bg-orange-dark transition-all active:scale-95"
-          >
-            <span>Open Order Dispatch Board</span>
-            <ArrowRight className="w-4 h-4" />
-          </Link>
+
+          {/* Packaging Stat Card */}
+          <div className="bg-card rounded-2xl border border-border p-5 shadow-xs flex items-center justify-between">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-espresso/60 uppercase tracking-wider">
+                  Packaging
+                </span>
+                <span className="w-2 h-2 rounded-full bg-[#1D4ED8] animate-pulse" />
+              </div>
+              <span className="font-display text-3xl font-black text-espresso mt-1 block">
+                {metrics.packagingOrders}
+              </span>
+              <span className="text-[11px] text-espresso/60 font-medium">
+                Orders being packed and checked for handover
+              </span>
+            </div>
+            <div className="w-12 h-12 rounded-2xl bg-[#EFF6FF] text-[#1D4ED8] flex items-center justify-center">
+              <Package className="w-6 h-6" />
+            </div>
+          </div>
         </div>
 
-        {/* Quick Links Grid */}
-        <div>
-          <h2 className="font-display font-black text-lg text-espresso mb-3">
-            Quick Navigation
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {/* Table of ALL Orders (Any Status) */}
+        <div className="bg-card rounded-3xl border border-border p-6 shadow-xs space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="font-display font-black text-lg text-espresso tracking-tight">
+                All Orders Overview
+              </h2>
+              <p className="text-xs text-espresso/60">
+                Full order book with payment status from Cashfree data
+              </p>
+            </div>
+
             <Link
               href="/admin/orders"
-              className="p-4 rounded-2xl bg-card border border-border hover:border-orange hover:shadow-orange-sm transition-all flex items-center gap-3.5 group"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-orange text-white text-xs font-bold hover:bg-orange-dark transition-colors self-start sm:self-auto"
             >
-              <div className="w-10 h-10 rounded-xl bg-orange/15 text-orange flex items-center justify-center group-hover:scale-105 transition-transform">
-                <ShoppingBag className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="font-display font-black text-sm text-espresso block">
-                  Orders
-                </span>
-                <span className="text-[11px] text-espresso/60">Live status & actions</span>
-              </div>
+              <span>Manage in Orders</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </Link>
+          </div>
 
-            <Link
-              href="/admin/menu"
-              className="p-4 rounded-2xl bg-card border border-border hover:border-orange hover:shadow-orange-sm transition-all flex items-center gap-3.5 group"
-            >
-              <div className="w-10 h-10 rounded-xl bg-mustard/20 text-[#8B6400] flex items-center justify-center group-hover:scale-105 transition-transform">
-                <UtensilsCrossed className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="font-display font-black text-sm text-espresso block">
-                  Menu Items
-                </span>
-                <span className="text-[11px] text-espresso/60">Prices & availability</span>
-              </div>
-            </Link>
+          {/* Filters Bar: Search, Status, Payment */}
+          <div className="flex flex-wrap items-center gap-3 pt-2 border-t border-border/60">
+            {/* Search */}
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="w-4 h-4 text-espresso/40 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                placeholder="Search pickup code, phone, or name..."
+                value={tableSearch}
+                onChange={(e) => setTableSearch(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 rounded-xl bg-sand/20 border border-border text-xs text-espresso focus:outline-none focus:ring-2 focus:ring-orange"
+              />
+            </div>
 
-            <Link
-              href="/admin/users"
-              className="p-4 rounded-2xl bg-card border border-border hover:border-orange hover:shadow-orange-sm transition-all flex items-center gap-3.5 group"
-            >
-              <div className="w-10 h-10 rounded-xl bg-sand text-espresso flex items-center justify-center group-hover:scale-105 transition-transform">
-                <Users className="w-5 h-5" />
-              </div>
-              <div>
-                <span className="font-display font-black text-sm text-espresso block">
-                  Staff & Users
-                </span>
-                <span className="text-[11px] text-espresso/60">Accounts & permissions</span>
-              </div>
-            </Link>
-
-            {/* Outlets Link - ADMIN ONLY */}
-            {isAdmin && (
-              <Link
-                href="/admin/outlets"
-                className="p-4 rounded-2xl bg-card border border-border hover:border-orange hover:shadow-orange-sm transition-all flex items-center gap-3.5 group"
+            {/* Status Filter */}
+            <div className="flex items-center gap-1.5 bg-sand/20 px-3 py-1.5 rounded-xl border border-border">
+              <span className="text-[11px] font-bold text-espresso/50 uppercase">Status:</span>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="bg-transparent text-xs font-bold text-espresso focus:outline-none cursor-pointer"
               >
-                <div className="w-10 h-10 rounded-xl bg-[#EBF7EE] text-brandGreen flex items-center justify-center group-hover:scale-105 transition-transform">
-                  <Store className="w-5 h-5" />
-                </div>
-                <div>
-                  <span className="font-display font-black text-sm text-espresso block">
-                    Outlets
-                  </span>
-                  <span className="text-[11px] text-espresso/60">Store branches & hours</span>
-                </div>
-              </Link>
-            )}
+                <option value="all">All Statuses</option>
+                <option value="pending_payment">Awaiting Payment</option>
+                <option value="pending">Pending (Paid)</option>
+                <option value="preparing">Making</option>
+                <option value="packaging">Packaging</option>
+                <option value="ready">Completed (Ready)</option>
+                <option value="received">Customer Received</option>
+                <option value="cancelled">Cancelled</option>
+                <option value="payment_cancelled">Payment Cancelled</option>
+              </select>
+            </div>
+
+            {/* Payment Filter */}
+            <div className="flex items-center gap-1.5 bg-sand/20 px-3 py-1.5 rounded-xl border border-border">
+              <span className="text-[11px] font-bold text-espresso/50 uppercase">Payment:</span>
+              <select
+                value={paymentFilter}
+                onChange={(e) => setPaymentFilter(e.target.value)}
+                className="bg-transparent text-xs font-bold text-espresso focus:outline-none cursor-pointer"
+              >
+                <option value="all">All Payments</option>
+                <option value="paid">Payment Processed</option>
+                <option value="unpaid">Not Paid</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Table */}
+          <div className="overflow-x-auto rounded-2xl border border-border/80">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-sand/30 border-b border-border text-[10px] font-black uppercase tracking-wider text-espresso/60">
+                <tr>
+                  <th className="py-3 px-4">Pickup Code</th>
+                  <th className="py-3 px-4">Customer</th>
+                  <th className="py-3 px-4">Items</th>
+                  <th className="py-3 px-4">Total</th>
+                  <th className="py-3 px-4">Order Status</th>
+                  <th className="py-3 px-4">Payment</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border/60">
+                {tableOrders.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-espresso/50">
+                      No orders found matching the filters.
+                    </td>
+                  </tr>
+                ) : (
+                  tableOrders.map((order) => {
+                    const itemsList = Array.isArray(order.items) ? order.items : [];
+                    const isPaid = order.payment_status === 'success';
+                    const shortPaymentId = order.cf_payment_id
+                      ? `...${String(order.cf_payment_id).slice(-6)}`
+                      : '';
+
+                    return (
+                      <tr key={order.id} className="hover:bg-sand/20 transition-colors">
+                        {/* Pickup Code */}
+                        <td className="py-3.5 px-4 font-display font-black text-sm text-espresso select-all">
+                          #{order.pickup_code}
+                        </td>
+
+                        {/* Customer Phone & Name */}
+                        <td className="py-3.5 px-4">
+                          <span className="font-bold text-espresso block">{order.customer_name}</span>
+                          <div className="flex items-center gap-1.5 pt-0.5">
+                            <span className="select-text text-espresso/80 font-medium">
+                              {order.customer_phone}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyPhone(order.customer_phone)}
+                              className="text-espresso/40 hover:text-espresso p-0.5"
+                              title="Copy phone"
+                            >
+                              <Copy className="w-3 h-3" />
+                            </button>
+                            <a
+                              href={`tel:${order.customer_phone}`}
+                              className="text-orange hover:text-orange-dark p-0.5"
+                              title="Call"
+                            >
+                              <Phone className="w-3 h-3" />
+                            </a>
+                          </div>
+                        </td>
+
+                        {/* Items */}
+                        <td className="py-3.5 px-4 max-w-xs">
+                          <span className="text-espresso/80 line-clamp-2">
+                            {itemsList.map((i) => `${i.qty || 1}x ${i.name}`).join(', ')}
+                          </span>
+                        </td>
+
+                        {/* Total */}
+                        <td className="py-3.5 px-4 font-bold text-espresso">
+                          {formatPrice(Number(order.total))}
+                        </td>
+
+                        {/* Order Status */}
+                        <td className="py-3.5 px-4">
+                          <StatusBadge status={order.status} size="sm" />
+                        </td>
+
+                        {/* Payment Column */}
+                        <td className="py-3.5 px-4">
+                          {isPaid ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#EBF7EE] text-brandGreen border border-brandGreen/30 text-[10px] font-bold">
+                              <CheckCircle2 className="w-3 h-3 shrink-0" />
+                              <span>Payment processed</span>
+                              {order.payment_method && (
+                                <span className="opacity-80 uppercase text-[9px] font-black">
+                                  ({order.payment_method}
+                                  {shortPaymentId ? ` ${shortPaymentId}` : ''})
+                                </span>
+                              )}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-sand/40 text-espresso/60 border border-border text-[10px] font-bold">
+                              <span>Not paid</span>
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>

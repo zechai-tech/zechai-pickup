@@ -41,7 +41,7 @@ export function ActiveOrderBanner() {
           .limit(1)
           .single();
 
-        if (order && ['confirmed', 'preparing', 'ready'].includes(order.status)) {
+        if (order && ['pending', 'confirmed', 'preparing', 'packaging', 'ready'].includes(order.status)) {
           setActiveCode(order.pickup_code);
           setActiveStatus(order.status);
         } else {
