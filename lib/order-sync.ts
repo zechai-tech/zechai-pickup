@@ -4,9 +4,15 @@ export interface SyncResult {
   orderId: string;
   updated: boolean;
   paid: boolean;
+  pending?: boolean;
   expired?: boolean;
   status: string;
+  payment_status?: string;
   message?: string;
+}
+
+export interface VerifyOptions {
+  isReturnCheck?: boolean;
 }
 
 /**
@@ -37,10 +43,13 @@ export function getCashfreeConfig() {
 }
 
 /**
- * Verifies an order against Cashfree GET /pg/orders/{order_id}/payments.
- * Applies success updates or 20-minute auto-expiry.
+ * Verifies an order against Cashfree GET /pg/orders/{order_id} and GET /pg/orders/{order_id}/payments.
+ * Applies success updates, pending state, failed/dropped/abandoned transitions, or 20-minute auto-expiry.
  */
-export async function verifyAndSyncOrder(orderIdOrRow: string | any): Promise<SyncResult> {
+export async function verifyAndSyncOrder(
+  orderIdOrRow: string | any,
+  options?: VerifyOptions
+): Promise<SyncResult> {
   try {
     let order = typeof orderIdOrRow === 'object' && orderIdOrRow ? orderIdOrRow : null;
 
@@ -62,12 +71,18 @@ export async function verifyAndSyncOrder(orderIdOrRow: string | any): Promise<Sy
     const currentStatus = order.status;
 
     // If order is already paid and moved past pending_payment, return as paid
-    if (order.payment_status === 'success' || (currentStatus !== 'pending_payment' && currentStatus !== 'payment_cancelled' && currentStatus !== 'payment_failed')) {
+    if (
+      order.payment_status === 'success' ||
+      (currentStatus !== 'pending_payment' &&
+        currentStatus !== 'payment_cancelled' &&
+        currentStatus !== 'payment_failed')
+    ) {
       return {
         orderId,
         updated: false,
-        paid: order.payment_status === 'success',
+        paid: order.payment_status === 'success' || currentStatus !== 'pending_payment',
         status: currentStatus,
+        payment_status: order.payment_status || 'success',
       };
     }
 
@@ -90,6 +105,7 @@ export async function verifyAndSyncOrder(orderIdOrRow: string | any): Promise<Sy
           paid: false,
           expired: true,
           status: 'payment_cancelled',
+          payment_status: 'expired',
         };
       }
       return {
@@ -97,6 +113,7 @@ export async function verifyAndSyncOrder(orderIdOrRow: string | any): Promise<Sy
         updated: false,
         paid: false,
         status: currentStatus,
+        payment_status: order.payment_status || 'unpaid',
       };
     }
 
@@ -111,46 +128,52 @@ export async function verifyAndSyncOrder(orderIdOrRow: string | any): Promise<Sy
       };
     }
 
-    // Call Cashfree GET /pg/orders/{order_id}/payments
-    const response = await fetch(`${cfConfig.baseUrl}/pg/orders/${encodeURIComponent(cfOrderId)}/payments`, {
-      method: 'GET',
-      headers: {
-        'x-client-id': cfConfig.appId,
-        'x-client-secret': cfConfig.secretKey,
-        'x-api-version': '2023-08-01',
-      },
-    });
+    // Call Cashfree in parallel: GET /pg/orders/{order_id} AND GET /pg/orders/{order_id}/payments
+    const [orderRes, paymentsRes] = await Promise.all([
+      fetch(`${cfConfig.baseUrl}/pg/orders/${encodeURIComponent(cfOrderId)}`, {
+        method: 'GET',
+        headers: {
+          'x-client-id': cfConfig.appId,
+          'x-client-secret': cfConfig.secretKey,
+          'x-api-version': '2023-08-01',
+        },
+      }).catch((e) => {
+        console.warn('Cashfree order fetch error:', e);
+        return null;
+      }),
+      fetch(`${cfConfig.baseUrl}/pg/orders/${encodeURIComponent(cfOrderId)}/payments`, {
+        method: 'GET',
+        headers: {
+          'x-client-id': cfConfig.appId,
+          'x-client-secret': cfConfig.secretKey,
+          'x-api-version': '2023-08-01',
+        },
+      }).catch((e) => {
+        console.warn('Cashfree payments fetch error:', e);
+        return null;
+      }),
+    ]);
 
-    if (!response.ok) {
-      // If Cashfree returns 404 and order is older than 20 min, auto-expire
-      if (response.status === 404 && isOlderThan20Min && currentStatus === 'pending_payment') {
-        await query(
-          `UPDATE public.orders
-           SET status = 'payment_cancelled', payment_status = 'expired', updated_at = now()
-           WHERE id = $1`,
-          [orderId]
-        );
-        return {
-          orderId,
-          updated: true,
-          paid: false,
-          expired: true,
-          status: 'payment_cancelled',
-        };
+    let cfOrder: any = null;
+    if (orderRes && orderRes.ok) {
+      try {
+        cfOrder = await orderRes.json();
+      } catch (e) {
+        console.warn('Error parsing cfOrder JSON:', e);
       }
-
-      return {
-        orderId,
-        updated: false,
-        paid: false,
-        status: currentStatus,
-        message: `Cashfree check returned status ${response.status}`,
-      };
     }
 
-    const payments = await response.json();
-    const paymentsList = Array.isArray(payments) ? payments : [];
+    let paymentsList: any[] = [];
+    if (paymentsRes && paymentsRes.ok) {
+      try {
+        const paymentsData = await paymentsRes.json();
+        paymentsList = Array.isArray(paymentsData) ? paymentsData : [];
+      } catch (e) {
+        console.warn('Error parsing paymentsData JSON:', e);
+      }
+    }
 
+    // 1. Check for SUCCESS / PAID payment
     const successfulPayment = paymentsList.find(
       (p: any) => p.payment_status === 'SUCCESS' || p.payment_status === 'PAID'
     );
@@ -173,6 +196,7 @@ export async function verifyAndSyncOrder(orderIdOrRow: string | any): Promise<Sy
           updated: true,
           paid: false,
           status: 'amount_mismatch',
+          payment_status: 'amount_mismatch',
           message: 'Payment amount mismatch',
         };
       }
@@ -204,10 +228,94 @@ export async function verifyAndSyncOrder(orderIdOrRow: string | any): Promise<Sy
         paid: true,
         expired: false,
         status: 'pending',
+        payment_status: 'success',
       };
     }
 
-    // Not paid
+    // 2. Check for PENDING payment (e.g. UPI request waiting)
+    const hasPendingPayment = paymentsList.some((p: any) => p.payment_status === 'PENDING');
+    if (hasPendingPayment) {
+      // Never expire or cancel an order that has a payment currently PENDING
+      return {
+        orderId,
+        updated: false,
+        paid: false,
+        pending: true,
+        status: currentStatus,
+        payment_status: 'pending',
+      };
+    }
+
+    // 3. Payments exist and latest is FAILED, USER_DROPPED or CANCELLED (none is PENDING)
+    if (paymentsList.length > 0) {
+      const sortedPayments = [...paymentsList].sort((a: any, b: any) => {
+        const tA = new Date(a.payment_time || 0).getTime();
+        const tB = new Date(b.payment_time || 0).getTime();
+        return tA - tB;
+      });
+      const latestPayment = sortedPayments[sortedPayments.length - 1];
+      const rawStatus = String(latestPayment?.payment_status || '');
+      const paymentStatus =
+        rawStatus === 'USER_DROPPED' ? 'dropped' : rawStatus === 'FAILED' ? 'failed' : 'failed';
+
+      if (currentStatus === 'pending_payment') {
+        await query(
+          `UPDATE public.orders
+           SET status = 'payment_cancelled', payment_status = $1, updated_at = now()
+           WHERE id = $2`,
+          [paymentStatus, orderId]
+        );
+      }
+
+      return {
+        orderId,
+        updated: true,
+        paid: false,
+        status: 'payment_cancelled',
+        payment_status: paymentStatus,
+      };
+    }
+
+    // 4. Cashfree order_status is EXPIRED or TERMINATED
+    if (cfOrder?.order_status === 'EXPIRED' || cfOrder?.order_status === 'TERMINATED') {
+      if (currentStatus === 'pending_payment') {
+        await query(
+          `UPDATE public.orders
+           SET status = 'payment_cancelled', payment_status = 'expired', updated_at = now()
+           WHERE id = $1`,
+          [orderId]
+        );
+      }
+      return {
+        orderId,
+        updated: true,
+        paid: false,
+        expired: true,
+        status: 'payment_cancelled',
+        payment_status: 'expired',
+      };
+    }
+
+    // 5. Customer returned to return URL and Cashfree shows no attempts and order is ACTIVE
+    if (options?.isReturnCheck && paymentsList.length === 0 && (cfOrder?.order_status === 'ACTIVE' || !cfOrder)) {
+      if (currentStatus === 'pending_payment') {
+        await query(
+          `UPDATE public.orders
+           SET status = 'payment_cancelled', payment_status = 'abandoned', updated_at = now()
+           WHERE id = $1`,
+          [orderId]
+        );
+      }
+      return {
+        orderId,
+        updated: true,
+        paid: false,
+        status: 'payment_cancelled',
+        payment_status: 'abandoned',
+      };
+    }
+
+    // 6. 20-minute auto-expiry for background cleanup
     if (isOlderThan20Min && currentStatus === 'pending_payment') {
       await query(
         `UPDATE public.orders
@@ -221,6 +329,7 @@ export async function verifyAndSyncOrder(orderIdOrRow: string | any): Promise<Sy
         paid: false,
         expired: true,
         status: 'payment_cancelled',
+        payment_status: 'expired',
       };
     }
 
@@ -228,8 +337,8 @@ export async function verifyAndSyncOrder(orderIdOrRow: string | any): Promise<Sy
       orderId,
       updated: false,
       paid: false,
-      expired: false,
       status: currentStatus,
+      payment_status: order.payment_status || 'unpaid',
     };
   } catch (err: any) {
     console.error(`Error verifying order ${orderIdOrRow}:`, err);

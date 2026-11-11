@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { Sparkles, ArrowRight } from 'lucide-react';
+import { getCustomerStageState } from '@/lib/order-flow';
 
 export function ActiveOrderBanner() {
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -53,13 +54,17 @@ export function ActiveOrderBanner() {
       const data = await res.json();
       const order = data?.order;
 
-      if (
-        order &&
-        ['pending', 'confirmed', 'preparing', 'packaging', 'ready'].includes(order.status)
-      ) {
-        setActiveId(order.id);
-        setActiveCode(order.pickup_code);
-        setActiveStatus(order.status);
+      if (order) {
+        const stageProgress = getCustomerStageState(order.status);
+        if (
+          ['pending', 'preparing', 'packaging', 'ready'].includes(stageProgress.canonicalStatus)
+        ) {
+          setActiveId(order.id);
+          setActiveCode(order.pickup_code);
+          setActiveStatus(stageProgress.bannerStatusText);
+        } else {
+          setActiveCode(null);
+        }
       } else {
         setActiveCode(null);
       }
@@ -113,12 +118,8 @@ export function ActiveOrderBanner() {
           <Sparkles className="w-3 h-3 text-[#FDFBEA]" />
         </div>
         <span className="font-semibold truncate">
-          Active order <strong className="font-black">#{activeCode}</strong>
-          {activeStatus === 'ready'
-            ? ' is ready!'
-            : activeStatus === 'preparing'
-            ? ' is being prepared'
-            : ' is confirmed'}
+          Active order <strong className="font-black">#{activeCode}</strong>{' '}
+          {activeStatus}
         </span>
       </div>
 

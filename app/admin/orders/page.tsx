@@ -303,12 +303,78 @@ export default function AdminOrdersPage() {
     }
   };
 
+  // Silent auto-sync payments: runs on load and every 60s while visible
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
+
+    const runSilentSync = async () => {
+      try {
+        const res = await fetch('/api/admin/orders/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ outletId: activeOutletId }),
+        });
+        const data = await res.json();
+        // Only show toast when something actually changed
+        if (data.paid > 0 || data.expired > 0) {
+          showToast(
+            `Payments synced: ${data.paid} marked paid, ${data.expired} expired`,
+            'info'
+          );
+          fetchOrders();
+        }
+      } catch (err) {
+        console.warn('Silent payment sync notice:', err);
+      }
+    };
+
+    runSilentSync();
+
+    const startTimer = () => {
+      if (!intervalId) {
+        intervalId = setInterval(runSilentSync, 60000);
+      }
+    };
+
+    const stopTimer = () => {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        stopTimer();
+      } else {
+        runSilentSync();
+        startTimer();
+      }
+    };
+
+    startTimer();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      stopTimer();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [activeOutletId, fetchOrders, showToast]);
+
   // Compute Live Counts (NEVER show pending_payment in operational tabs)
   const counts = useMemo(() => {
-    const pending = orders.filter((o) => normalizeOrderStatus(o.status) === 'pending').length;
-    const making = orders.filter((o) => normalizeOrderStatus(o.status) === 'preparing').length;
-    const packaging = orders.filter((o) => normalizeOrderStatus(o.status) === 'packaging').length;
-    const completed = orders.filter((o) => normalizeOrderStatus(o.status) === 'ready').length;
+    const pending = orders.filter(
+      (o) => o.payment_status === 'success' && normalizeOrderStatus(o.status) === 'pending'
+    ).length;
+    const making = orders.filter(
+      (o) => o.payment_status === 'success' && normalizeOrderStatus(o.status) === 'preparing'
+    ).length;
+    const packaging = orders.filter(
+      (o) => o.payment_status === 'success' && normalizeOrderStatus(o.status) === 'packaging'
+    ).length;
+    const completed = orders.filter(
+      (o) => o.payment_status === 'success' && normalizeOrderStatus(o.status) === 'ready'
+    ).length;
     const cancelled = orders.filter(
       (o) =>
         normalizeOrderStatus(o.status) === 'cancelled' ||
@@ -330,16 +396,16 @@ export default function AdminOrdersPage() {
       const canon = normalizeOrderStatus(o.status);
 
       if (activeTab === 'pending') {
-        return canon === 'pending';
+        return o.payment_status === 'success' && canon === 'pending';
       }
       if (activeTab === 'making') {
-        return canon === 'preparing';
+        return o.payment_status === 'success' && canon === 'preparing';
       }
       if (activeTab === 'packaging') {
-        return canon === 'packaging';
+        return o.payment_status === 'success' && canon === 'packaging';
       }
       if (activeTab === 'completed') {
-        return canon === 'ready';
+        return o.payment_status === 'success' && canon === 'ready';
       }
       if (activeTab === 'cancelled') {
         return canon === 'cancelled' || canon === 'payment_cancelled';
@@ -349,7 +415,12 @@ export default function AdminOrdersPage() {
         if (!includeCancelled && canon !== 'received') {
           return false;
         }
-        if (includeCancelled && canon !== 'received' && canon !== 'cancelled' && canon !== 'payment_cancelled') {
+        if (
+          includeCancelled &&
+          canon !== 'received' &&
+          canon !== 'cancelled' &&
+          canon !== 'payment_cancelled'
+        ) {
           return false;
         }
 

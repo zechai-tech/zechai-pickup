@@ -2,13 +2,31 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { query } from '@/lib/db';
 
+export async function GET() {
+  return new NextResponse('ok', {
+    status: 200,
+    headers: { 'Content-Type': 'text/plain' },
+  });
+}
+
 export async function POST(req: NextRequest) {
+  let eventType = 'unknown';
+  let cfOrderId = 'unknown';
+
   try {
     const rawBody = await req.text();
     const timestamp = req.headers.get('x-webhook-timestamp') || '';
     const signature = req.headers.get('x-webhook-signature') || '';
 
+    // Safely parse eventType & cfOrderId early for logging
+    try {
+      const parsedEarly = JSON.parse(rawBody);
+      eventType = parsedEarly.type || parsedEarly.event_type || 'unknown';
+      cfOrderId = parsedEarly.data?.order?.order_id || 'unknown';
+    } catch {}
+
     if (!timestamp || !signature) {
+      console.log(`[Cashfree Webhook] Event: ${eventType} | Order: ${cfOrderId} | Result: bad signature`);
       return NextResponse.json({ error: 'Missing webhook verification headers' }, { status: 401 });
     }
 
@@ -37,7 +55,7 @@ export async function POST(req: NextRequest) {
       expectedBuffer.length !== signatureBuffer.length ||
       !crypto.timingSafeEqual(expectedBuffer, signatureBuffer)
     ) {
-      console.warn('Invalid Cashfree webhook signature');
+      console.log(`[Cashfree Webhook] Event: ${eventType} | Order: ${cfOrderId} | Result: bad signature`);
       return NextResponse.json({ error: 'Invalid webhook signature' }, { status: 401 });
     }
 
@@ -45,16 +63,17 @@ export async function POST(req: NextRequest) {
     try {
       payload = JSON.parse(rawBody);
     } catch {
+      console.log(`[Cashfree Webhook] Event: ${eventType} | Order: ${cfOrderId} | Result: ignored`);
       return NextResponse.json({ error: 'Invalid JSON payload' }, { status: 400 });
     }
 
-    const eventType = payload.type || payload.event_type;
+    eventType = payload.type || payload.event_type || 'unknown';
     const orderData = payload.data?.order;
     const paymentData = payload.data?.payment;
-    const cfOrderId = orderData?.order_id;
+    cfOrderId = orderData?.order_id || 'unknown';
 
-    if (!cfOrderId) {
-      // Return 200 so Cashfree does not retry unknown payload
+    if (!cfOrderId || cfOrderId === 'unknown') {
+      console.log(`[Cashfree Webhook] Event: ${eventType} | Order: ${cfOrderId} | Result: ignored`);
       return NextResponse.json({ received: true, note: 'No cf_order_id found' });
     }
 
@@ -65,7 +84,7 @@ export async function POST(req: NextRequest) {
     );
 
     if (res.rows.length === 0) {
-      // Order may belong to a test or alternate environment
+      console.log(`[Cashfree Webhook] Event: ${eventType} | Order: ${cfOrderId} | Result: order not found`);
       return NextResponse.json({ received: true, note: 'Order not found in DB' });
     }
 
@@ -86,6 +105,7 @@ export async function POST(req: NextRequest) {
           `UPDATE public.orders SET payment_status = 'amount_mismatch', updated_at = now() WHERE id = $1`,
           [orderId]
         );
+        console.log(`[Cashfree Webhook] Event: ${eventType} | Order: ${cfOrderId} | Result: processed (amount_mismatch)`);
         return NextResponse.json({
           status: 'amount_mismatch',
           orderId,
@@ -117,6 +137,8 @@ export async function POST(req: NextRequest) {
           [cfPaymentId, paymentMethod, paidAt, orderId]
         );
       }
+
+      console.log(`[Cashfree Webhook] Event: ${eventType} | Order: ${cfOrderId} | Result: processed`);
       return NextResponse.json({ status: 'ok', event: eventType, orderId });
     }
 
@@ -133,10 +155,12 @@ export async function POST(req: NextRequest) {
           [paymentStatus, orderId]
         );
       }
+
+      console.log(`[Cashfree Webhook] Event: ${eventType} | Order: ${cfOrderId} | Result: processed`);
       return NextResponse.json({ status: 'ok', event: eventType, orderId });
     }
 
-    // Return 200 for any other unhandled event
+    console.log(`[Cashfree Webhook] Event: ${eventType} | Order: ${cfOrderId} | Result: ignored`);
     return NextResponse.json({ received: true, event: eventType });
   } catch (error: any) {
     console.error('Cashfree webhook error:', error);

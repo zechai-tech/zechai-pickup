@@ -14,7 +14,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { formatPrice } from '@/lib/utils';
-import { normalizeOrderStatus } from '@/lib/order-flow';
+import { getCustomerStageState } from '@/lib/order-flow';
 
 interface OrderItem {
   id?: string;
@@ -130,47 +130,9 @@ function TrackOrderContent() {
     };
   }, [urlId, urlCode]);
 
-  const canonicalStatus = normalizeOrderStatus(order?.status);
-  const isCancelled = canonicalStatus === 'cancelled';
-  const isPaymentCancelled =
-    canonicalStatus === 'payment_cancelled' || order?.status === 'payment_failed';
-
-  // 6 Stages:
-  // 1. Payment received (pending)
-  // 2. Order confirmed (confirmed / preparing)
-  // 3. Being made (preparing)
-  // 4. Packing (packaging)
-  // 5. Ready for pickup (ready)
-  // 6. Received (received)
-  const getStageState = (stageNumber: number): 'completed' | 'current' | 'future' => {
-    if (!order) return 'future';
-
-    let currentStage = 1;
-    switch (canonicalStatus) {
-      case 'pending':
-        currentStage = 1;
-        break;
-      case 'preparing':
-        // If order had confirmed_at and is in making
-        currentStage = 3;
-        break;
-      case 'packaging':
-        currentStage = 4;
-        break;
-      case 'ready':
-        currentStage = 5;
-        break;
-      case 'received':
-        currentStage = 6;
-        break;
-      default:
-        currentStage = 1;
-    }
-
-    if (stageNumber < currentStage) return 'completed';
-    if (stageNumber === currentStage) return 'current';
-    return 'future';
-  };
+  const stageProgress = getCustomerStageState(order?.status);
+  const { canonicalStatus, isCancelled, isPaymentCancelled, isReady, isReceived } = stageProgress;
+  const getStageState = (stageNumber: number) => stageProgress.getStage(stageNumber);
 
   const stages = [
     {
@@ -310,17 +272,38 @@ function TrackOrderContent() {
                 {order.pickup_code}
               </div>
               <p className="text-xs text-[#75604F] font-medium mt-1">
-                Show this code when collecting your order
+                {isReady
+                  ? 'Your order is ready. Show this code to collect it.'
+                  : isReceived
+                  ? 'Order collected. Thank you for visiting!'
+                  : 'Show this code when collecting your order'}
               </p>
 
               {/* Highlighted Tip Card */}
               <div className="mt-4 p-3 rounded-2xl bg-[#FBEDE3] border border-[#CE5535]/30 flex items-center gap-2.5 text-left">
                 <Camera className="w-5 h-5 text-[#CE5535] shrink-0" />
                 <p className="text-[11px] font-bold text-[#CE5535] leading-tight">
-                  Take a screenshot or remember your code. You will need it to collect your order.
+                  {isReady
+                    ? 'Show this code at the pickup counter to collect your order.'
+                    : 'Take a screenshot or remember your code. You will need it to collect your order.'}
                 </p>
               </div>
             </div>
+
+            {/* Thank you message when order is received */}
+            {isReceived && (
+              <div className="bg-[#EBF7EE] border border-[#2F7A3E]/30 rounded-3xl p-5 text-center space-y-1.5 shadow-xs animate-in zoom-in-95 duration-200">
+                <div className="w-12 h-12 rounded-full bg-[#2F7A3E] text-white flex items-center justify-center mx-auto shadow-xs">
+                  <Check className="w-6 h-6 stroke-[3]" />
+                </div>
+                <h3 className="font-display font-black text-base text-[#2F7A3E]">
+                  Thank you for your order!
+                </h3>
+                <p className="text-xs text-[#75604F] font-medium leading-relaxed">
+                  Your order has been handed over. Enjoy every sip of your Zécha!
+                </p>
+              </div>
+            )}
 
             {/* Live Progress Tracker */}
             {!isCancelled && !isPaymentCancelled && (

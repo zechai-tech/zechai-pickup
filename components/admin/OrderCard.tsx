@@ -187,7 +187,7 @@ export function OrderCard({
           </div>
         )}
 
-        {/* Cancellation Reason if cancelled */}
+        {/* Cancellation Reason if cancelled by staff */}
         {canonicalStatus === 'cancelled' && order.cancel_reason && (
           <div className="bg-[#FDF0F0] border border-brandRed/20 rounded-xl p-2.5 mb-3 text-xs text-brandRed">
             <span className="font-bold block">Reason:</span>
@@ -197,6 +197,28 @@ export function OrderCard({
                 Cancelled by: {order.cancelled_by}
               </span>
             )}
+          </div>
+        )}
+
+        {/* Payment Cancellation Reason for unpaid orders */}
+        {(canonicalStatus === 'payment_cancelled' ||
+          order.status === 'payment_cancelled' ||
+          order.status === 'payment_failed') && (
+          <div className="bg-[#F3F4F6] border border-[#D1D5DB] rounded-xl p-2.5 mb-3 text-xs text-[#4B5563]">
+            <span className="font-bold block text-espresso/70">Payment Reason:</span>
+            <span className="font-medium">
+              {order.payment_status === 'dropped'
+                ? 'Payment dropped / cancelled by customer'
+                : order.payment_status === 'failed'
+                ? 'Payment failed at gateway'
+                : order.payment_status === 'expired'
+                ? 'Checkout session expired (20 min)'
+                : order.payment_status === 'abandoned'
+                ? 'Customer abandoned checkout'
+                : order.payment_status === 'amount_mismatch'
+                ? 'Payment amount mismatch'
+                : order.payment_status || 'Payment not completed'}
+            </span>
           </div>
         )}
       </div>

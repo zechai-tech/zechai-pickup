@@ -144,11 +144,7 @@ export default function CartPage() {
       const orderId = createData.order_id;
       const verifiedTotal = Number(createData.total);
 
-      // Save to storage for banner and status tracking
-      localStorage.setItem('activeOrderId', orderId);
-      localStorage.setItem('activeOrderTime', Date.now().toString());
-      localStorage.setItem('activeOrderOutlet', selectedOutletName);
-
+      // Save to sessionStorage for checkout redirect reference
       sessionStorage.setItem(
         'pendingOrder',
         JSON.stringify({
@@ -202,7 +198,6 @@ export default function CartPage() {
           .then((result: any) => {
             if (result.paymentDetails) {
               isNavigatingToSuccessRef.current = true;
-              clearCart();
               sessionStorage.removeItem('pendingOrder');
               window.location.href = `/order-success?id=${orderId}&outlet=${encodeURIComponent(
                 selectedOutletName
@@ -251,7 +246,6 @@ export default function CartPage() {
               console.error('Post-payment error:', err);
             }
 
-            clearCart();
             sessionStorage.removeItem('pendingOrder');
             window.location.href = `/order-success?id=${orderId}&outlet=${encodeURIComponent(
               selectedOutletName

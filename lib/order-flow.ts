@@ -160,6 +160,116 @@ export function isValidSystemTransition(currentStatus: string, nextStatus: strin
   return allowed.includes(next);
 }
 
+export type CustomerStageState = 'completed' | 'current' | 'future';
+
+export interface CustomerStageProgress {
+  canonicalStatus: CanonicalStatus;
+  stageMap: Record<number, CustomerStageState>;
+  getStage: (stageNum: number) => CustomerStageState;
+  activeStageNum: number | null;
+  isReady: boolean;
+  isReceived: boolean;
+  isCancelled: boolean;
+  isPaymentCancelled: boolean;
+  bannerStatusText: string;
+}
+
+/**
+ * Single source of truth for the 6 customer tracker stages:
+ * 1. Payment received
+ * 2. Order confirmed
+ * 3. Being made
+ * 4. Packing
+ * 5. Ready for pickup
+ * 6. Received
+ *
+ * Ticked stages (green circle with check) per status:
+ * - pending: stage 1 ticked. Stage 2 ACTIVE (orange pulse). Others grey.
+ * - preparing: stages 1-2 ticked. Stage 3 ACTIVE.
+ * - packaging: stages 1-3 ticked. Stage 4 ACTIVE.
+ * - ready: stages 1-5 ALL ticked. No pulsing stage. Stage 6 grey.
+ * - received: ALL 6 ticked.
+ */
+export function getCustomerStageState(status: string | null | undefined): CustomerStageProgress {
+  const canonical = normalizeOrderStatus(status);
+
+  const stageMap: Record<number, CustomerStageState> = {
+    1: 'future',
+    2: 'future',
+    3: 'future',
+    4: 'future',
+    5: 'future',
+    6: 'future',
+  };
+
+  let activeStageNum: number | null = null;
+
+  switch (canonical) {
+    case 'pending':
+      stageMap[1] = 'completed';
+      stageMap[2] = 'current';
+      activeStageNum = 2;
+      break;
+    case 'preparing':
+      stageMap[1] = 'completed';
+      stageMap[2] = 'completed';
+      stageMap[3] = 'current';
+      activeStageNum = 3;
+      break;
+    case 'packaging':
+      stageMap[1] = 'completed';
+      stageMap[2] = 'completed';
+      stageMap[3] = 'completed';
+      stageMap[4] = 'current';
+      activeStageNum = 4;
+      break;
+    case 'ready':
+      stageMap[1] = 'completed';
+      stageMap[2] = 'completed';
+      stageMap[3] = 'completed';
+      stageMap[4] = 'completed';
+      stageMap[5] = 'completed';
+      // ready is an end state waiting collection: stages 1-5 ticked, stage 6 grey, no active pulse
+      activeStageNum = null;
+      break;
+    case 'received':
+      stageMap[1] = 'completed';
+      stageMap[2] = 'completed';
+      stageMap[3] = 'completed';
+      stageMap[4] = 'completed';
+      stageMap[5] = 'completed';
+      stageMap[6] = 'completed';
+      // received is final state: ALL 6 ticked, no active pulse
+      activeStageNum = null;
+      break;
+    default:
+      break;
+  }
+
+  let bannerStatusText = 'is confirmed';
+  if (canonical === 'ready') {
+    bannerStatusText = 'is ready!';
+  } else if (canonical === 'received') {
+    bannerStatusText = 'is received';
+  } else if (canonical === 'packaging') {
+    bannerStatusText = 'is being packed';
+  } else if (canonical === 'preparing') {
+    bannerStatusText = 'is being prepared';
+  }
+
+  return {
+    canonicalStatus: canonical,
+    stageMap,
+    getStage: (stageNum: number) => stageMap[stageNum] || 'future',
+    activeStageNum,
+    isReady: canonical === 'ready',
+    isReceived: canonical === 'received',
+    isCancelled: canonical === 'cancelled',
+    isPaymentCancelled: canonical === 'payment_cancelled',
+    bannerStatusText,
+  };
+}
+
 /**
  * Determines which timestamp column should be populated for a given target status.
  */
