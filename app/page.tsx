@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useZechaStore } from '@/lib/store';
 import { useToast } from '@/components/ui/Toast';
 import { getOutlets, getMenu } from '@/lib/api';
 import { SafeImage } from '@/components/ui/SafeImage';
+import { CupMarkSvg } from '@/components/ui/CupMarkSvg';
 import { warmImagesInIdle } from '@/lib/images';
 
 export default function WelcomePage() {
@@ -14,6 +16,7 @@ export default function WelcomePage() {
   const { activeOrder } = useZechaStore();
   const { showToast } = useToast();
   const [anyOutletOpen, setAnyOutletOpen] = useState(true);
+  const [logoFailed, setLogoFailed] = useState(false);
 
   useEffect(() => {
     router.prefetch('/outlets');
@@ -58,130 +61,172 @@ export default function WelcomePage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#FDFBEA] flex flex-col items-center px-6 pt-5 pb-8 page-transition select-none">
-      {/* Hero area 372px tall: Plain soft circle (#F4E7CC, 280px) centered with 3 product images */}
-      <div className="w-full h-[372px] relative flex items-center justify-center shrink-0">
-        {/* Soft Circle Background */}
-        <div className="w-[280px] h-[280px] rounded-full bg-[#F4E7CC] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 -z-0" />
+    <main
+      className="min-h-[100dvh] w-full bg-[#FDFBEA] flex flex-col items-center page-transition select-none"
+      style={{
+        paddingTop: 'clamp(12px, 3dvh, 26px)',
+        paddingLeft: 'clamp(16px, 5vw, 32px)',
+        paddingRight: 'clamp(16px, 5vw, 32px)',
+        paddingBottom: 'calc(24px + env(safe-area-inset-bottom))',
+        gap: 'clamp(8px, 1.5dvh, 16px)',
+      }}
+    >
+      {/* Fluid square hero box: shrinks proportionally on short screens, never pushes content off-screen */}
+      <div
+        className="relative shrink-0"
+        style={{
+          width: 'min(100%, 330px, 35dvh)',
+          aspectRatio: '1 / 1',
+        }}
+      >
+        {/* Plain Soft Circle Background (#F4E7CC) */}
+        <div
+          className="rounded-full bg-[#F4E7CC] absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+          style={{ width: '82%', height: '82%' }}
+        />
 
-        {/* Product Collage (Two iced teas center, Crispy chicken left, Loaded fries right) */}
-        <div className="relative z-10 w-[320px] h-[340px]">
-          {/* Crispy Chicken (Left, rotated -12deg, 140px) */}
-          <div className="absolute left-1 top-[135px] w-[140px] h-[135px] transform -rotate-12 z-10">
-            <SafeImage
-              src="/assets/chicken.v1.webp"
-              alt="Crispy Chicken"
-              width={140}
-              height={135}
-              sizes="140px"
-              priority
-              transparent
-              className="object-contain w-full h-full drop-shadow-[0_12px_24px_rgba(43,26,18,0.2)]"
-            />
-          </div>
-
-          {/* Two Iced Teas (Centre, 198px wide) */}
-          <div className="absolute left-1/2 -translate-x-1/2 top-4 w-[198px] h-[240px] z-20">
-            <SafeImage
-              src="/assets/iced.v1.webp"
-              alt="Zécha Iced Coolers"
-              variant="thumb"
-              width={198}
-              height={240}
-              sizes="198px"
-              priority
-              transparent
-              className="object-contain w-full h-full drop-shadow-[0_16px_32px_rgba(43,26,18,0.25)]"
-            />
-          </div>
-
-          {/* Loaded Fries Cup (Right, rotated 8deg, 104px) */}
-          <div className="absolute right-0 top-[120px] w-[104px] h-[145px] transform rotate-8 z-30">
-            <SafeImage
-              src="/assets/loaded-cup.v1.webp"
-              alt="Loaded Fries"
-              width={104}
-              height={145}
-              sizes="104px"
-              priority
-              transparent
-              className="object-contain w-full h-full drop-shadow-[0_12px_24px_rgba(43,26,18,0.22)]"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Directly below hero (no big empty gap) */}
-      <div className="w-full flex flex-col items-center text-center mt-1 max-w-[340px]">
-        {/* Status Pill: Green dot + Open now · Pickup only */}
-        <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#FFFEF7] border border-[#EADFC7] shadow-xs mb-3">
-          <span
-            className={`w-2 h-2 rounded-full ${
-              anyOutletOpen ? 'bg-[#2F7A3E]' : 'bg-[#BA1A1A]'
-            }`}
-          />
-          <span className="text-xs font-bold text-[#2B1A12]">
-            {anyOutletOpen ? 'Open now · Pickup only' : 'Closed right now'}
-          </span>
-        </div>
-
-        {/* Zécha! Logo (200px wide) */}
-        <div className="relative w-[200px] h-[68px] mb-3">
+        {/* Decorative product collage positioned in percentages inside hero box */}
+        <div
+          className="absolute z-10 transform -rotate-12"
+          style={{ left: '2%', top: '38%', width: '42%', height: '40%' }}
+        >
           <SafeImage
-            src="/assets/logo-orange.v1.webp"
-            alt="Zécha! One Cup Every Day"
-            width={200}
-            height={68}
-            sizes="200px"
+            src="/assets/chicken.v1.webp"
+            alt="Crispy Chicken"
+            fill
+            sizes="(max-width: 430px) 42vw, 150px"
             priority
             transparent
-            className="object-contain w-full h-full"
+            className="object-contain drop-shadow-[0_12px_24px_rgba(43,26,18,0.2)]"
           />
         </div>
 
-        {/* Tagline (16px, muted #75604F, centred) */}
-        <p className="text-[16px] text-[#75604F] font-medium leading-[1.4] mb-4">
-          Skip the queue. Order ahead, pay online and collect it hot the moment it is ready.
-        </p>
-
-        {/* Three white outlined pills */}
-        <div className="flex flex-wrap items-center justify-center gap-2 mb-5">
-          <span className="px-3.5 py-1.5 rounded-full border border-[#EADFC7] text-[13px] font-semibold text-[#2B1A12] bg-[#FFFEF7] shadow-2xs">
-            Ready in 15-20 min
-          </span>
-          <span className="px-3.5 py-1.5 rounded-full border border-[#EADFC7] text-[13px] font-semibold text-[#2B1A12] bg-[#FFFEF7] shadow-2xs">
-            Pay via UPI
-          </span>
-          <span className="px-3.5 py-1.5 rounded-full border border-[#EADFC7] text-[13px] font-semibold text-[#2B1A12] bg-[#FFFEF7] shadow-2xs">
-            Live order status
-          </span>
+        <div
+          className="absolute left-1/2 -translate-x-1/2 z-20"
+          style={{ top: '4%', width: '58%', height: '72%' }}
+        >
+          <SafeImage
+            src="/assets/iced.v1.webp"
+            alt="Zécha Iced Coolers"
+            variant="thumb"
+            fill
+            sizes="(max-width: 430px) 58vw, 210px"
+            priority
+            transparent
+            className="object-contain drop-shadow-[0_16px_32px_rgba(43,26,18,0.25)]"
+          />
         </div>
 
-        {/* 20px below pills: CTA button (58px tall, 20px radius, accent bg #CE5535, cream text, soft shadow) */}
-        <div className="w-full space-y-3.5">
-          <Link
-            href="/outlets"
-            prefetch={true}
-            className="w-full h-[58px] rounded-[20px] bg-[#CE5535] text-[#FDFBEA] font-extrabold text-[17px] flex items-center justify-center gap-2 shadow-[0_10px_24px_rgba(206,85,53,0.25)] hover:bg-[#A8401F] active:scale-[0.98] transition-all"
-          >
-            <span>Order now</span>
-            <span className="text-xl">→</span>
-          </Link>
-
-          {/* Already ordered? Track my order (underlined accent) */}
-          <div>
-            <span className="text-sm font-semibold text-[#2B1A12]">
-              Already ordered?{' '}
-            </span>
-            <button
-              onClick={handleTrackClick}
-              className="text-sm font-bold text-[#CE5535] underline hover:text-[#A8401F] transition-colors"
-            >
-              Track my order
-            </button>
-          </div>
+        <div
+          className="absolute z-30 transform rotate-8"
+          style={{ right: '1%', top: '34%', width: '32%', height: '43%' }}
+        >
+          <SafeImage
+            src="/assets/loaded-cup.v1.webp"
+            alt="Loaded Fries"
+            fill
+            sizes="(max-width: 430px) 32vw, 115px"
+            priority
+            transparent
+            className="object-contain drop-shadow-[0_12px_24px_rgba(43,26,18,0.22)]"
+          />
         </div>
       </div>
-    </div>
+
+      {/* Status Pill: Green/red dot + Open now · Pickup only */}
+      <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#FFFEF7] border border-[#EADFC7] shadow-xs max-w-full">
+        <span
+          className={`w-2 h-2 rounded-full shrink-0 ${
+            anyOutletOpen ? 'bg-[#2F7A3E]' : 'bg-[#BA1A1A]'
+          }`}
+        />
+        <span
+          className="font-bold text-[#2B1A12] leading-tight"
+          style={{ fontSize: 'clamp(0.75rem, 3.2vw, 0.85rem)' }}
+        >
+          {anyOutletOpen ? 'Open now · Pickup only' : 'Closed right now'}
+        </span>
+      </div>
+
+      {/* Zécha! Logo: rendered with REAL intrinsic aspect ratio (400x201) and height: auto */}
+      {logoFailed ? (
+        <div className="py-2 flex items-center justify-center">
+          <CupMarkSvg variant="orange" className="w-12 h-12" aria-hidden={false} />
+        </div>
+      ) : (
+        <Image
+          src="/assets/logo-orange.v1.webp"
+          alt="Zécha! One Cup Every Day"
+          width={400}
+          height={201}
+          priority
+          unoptimized
+          onError={() => setLogoFailed(true)}
+          style={{
+            width: 'clamp(150px, 52vw, 210px)',
+            height: 'auto',
+            display: 'block',
+          }}
+        />
+      )}
+
+      {/* Tagline: fluid rem/clamp font size, natural wrap, never overlaps */}
+      <p
+        className="w-full max-w-[360px] text-center text-[#75604F] font-medium"
+        style={{
+          fontSize: 'clamp(0.95rem, 3.9vw, 1.125rem)',
+          lineHeight: 1.45,
+        }}
+      >
+        Skip the queue. Order ahead, pay online and collect it hot the moment it is ready.
+      </p>
+
+      {/* Three white outlined pills */}
+      <div className="w-full max-w-[380px] flex flex-wrap items-center justify-center gap-2">
+        <span
+          className="px-3.5 py-1.5 rounded-full border border-[#EADFC7] font-semibold text-[#2B1A12] bg-[#FFFEF7] shadow-2xs leading-snug"
+          style={{ fontSize: 'clamp(0.75rem, 3.2vw, 0.85rem)' }}
+        >
+          Ready in 15-20 min
+        </span>
+        <span
+          className="px-3.5 py-1.5 rounded-full border border-[#EADFC7] font-semibold text-[#2B1A12] bg-[#FFFEF7] shadow-2xs leading-snug"
+          style={{ fontSize: 'clamp(0.75rem, 3.2vw, 0.85rem)' }}
+        >
+          Pay via UPI
+        </span>
+        <span
+          className="px-3.5 py-1.5 rounded-full border border-[#EADFC7] font-semibold text-[#2B1A12] bg-[#FFFEF7] shadow-2xs leading-snug"
+          style={{ fontSize: 'clamp(0.75rem, 3.2vw, 0.85rem)' }}
+        >
+          Live order status
+        </span>
+      </div>
+
+      {/* Primary CTA Button: min 56px tall, full width up to 420px, wraps cleanly */}
+      <Link
+        href="/outlets"
+        prefetch={true}
+        className="w-full max-w-[420px] min-h-[56px] px-5 py-3 rounded-[20px] bg-[#CE5535] text-[#FDFBEA] font-extrabold flex items-center justify-center gap-2 shadow-[0_10px_24px_rgba(206,85,53,0.25)] hover:bg-[#A8401F] active:scale-[0.98] transition-all text-center"
+        style={{ fontSize: 'clamp(1rem, 4.3vw, 1.15rem)' }}
+      >
+        <span>Order now</span>
+        <span aria-hidden="true">→</span>
+      </Link>
+
+      {/* Already ordered? Track my order */}
+      <div
+        className="text-center leading-relaxed"
+        style={{ fontSize: 'clamp(0.82rem, 3.4vw, 0.95rem)' }}
+      >
+        <span className="font-semibold text-[#2B1A12]">Already ordered? </span>
+        <button
+          onClick={handleTrackClick}
+          className="font-bold text-[#CE5535] underline hover:text-[#A8401F] transition-colors min-h-[44px] inline-flex items-center"
+        >
+          Track my order
+        </button>
+      </div>
+    </main>
   );
 }
