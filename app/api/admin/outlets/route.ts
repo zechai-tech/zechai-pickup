@@ -21,7 +21,7 @@ function revalidateOutletViews() {
 export async function GET() {
   try {
     const res = await query(
-      `SELECT id, name, address, phone, opening_time, closing_time, is_active, created_at
+      `SELECT id, name, address, phone, opening_time, closing_time, is_active, menu_theme, created_at
        FROM public.outlets
        ORDER BY created_at ASC`
     );

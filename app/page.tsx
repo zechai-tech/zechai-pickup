@@ -42,17 +42,12 @@ export default function WelcomePage() {
 
   const handleTrackClick = (e: React.MouseEvent) => {
     e.preventDefault();
-    const storedCode =
-      (typeof window !== 'undefined' ? sessionStorage.getItem('activeOrderCode') : null) ||
-      activeOrder?.code;
-
     const storedId =
       (typeof window !== 'undefined' ? sessionStorage.getItem('activeOrderId') : null) ||
       activeOrder?.id;
 
-    if (storedCode || storedId) {
-      const param = storedId ? `id=${storedId}` : `code=${storedCode}`;
-      router.push(`/track-order?${param}`);
+    if (storedId) {
+      router.push(`/track-order?id=${encodeURIComponent(storedId)}`);
     } else {
       showToast('No active order. Please place an order first.', 'info');
     }

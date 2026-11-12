@@ -1,12 +1,13 @@
 'use client';
 
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useAdminStore } from '@/stores/admin-store';
+import { supabase } from '@/lib/supabase';
 import { SafeImage } from '@/components/ui/SafeImage';
 import { DEFAULT_MENU_IMAGE } from '@/lib/images';
 import { FIXED_MENU_CATEGORIES } from '@/lib/menu-categories';
 import { RoleGuard } from '@/components/admin/RoleGuard';
-import { MenuItem, Outlet } from '@/types/supabase';
+import { MenuItem, MenuTheme, Outlet } from '@/types/supabase';
 import { MenuItemForm } from '@/components/admin/MenuItemForm';
 import { Button } from '@/components/ui/Button';
 import { VegBadge } from '@/components/ui/VegBadge';
@@ -21,14 +22,21 @@ import {
   XCircle,
   Store,
   AlertTriangle,
+  Palette,
+  Eye,
+  X,
+  Check,
+  ChevronDown,
 } from 'lucide-react';
 
 type CategoryFilter = 'all' | 'no-category' | string;
 
 export default function AdminMenuPage() {
-  const { currentUser, selectedOutletId, setSelectedOutletId, syncTrigger } = useAdminStore();
+  const { currentUser, sessionToken, selectedOutletId, setSelectedOutletId, syncTrigger } =
+    useAdminStore();
   const { showToast } = useToast();
   const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
+  const canManageTheme = isAdmin || currentUser?.role === 'manager';
 
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [items, setItems] = useState<MenuItem[]>([]);
@@ -37,9 +45,23 @@ export default function AdminMenuPage() {
   const [itemToEdit, setItemToEdit] = useState<MenuItem | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
 
+  // Menu Theme picker & preview state
+  const [isThemePickerOpen, setIsThemePickerOpen] = useState(false);
+  const [applyThemeToAll, setApplyThemeToAll] = useState(false);
+  const [isSavingTheme, setIsSavingTheme] = useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
+  const themePickerRef = useRef<HTMLDivElement>(null);
+
   const activeOutletId = isAdmin
     ? selectedOutletId || (outlets.length > 0 ? outlets[0].id : '')
     : currentUser?.outlet_id || '';
+
+  const activeOutlet = useMemo(
+    () => outlets.find((o) => o.id === activeOutletId) || null,
+    [outlets, activeOutletId]
+  );
+  const activeMenuTheme: MenuTheme = activeOutlet?.menu_theme === 'grid' ? 'grid' : 'classic';
 
   useEffect(() => {
     async function loadOutlets() {
@@ -175,6 +197,63 @@ export default function AdminMenuPage() {
     setIsModalOpen(true);
   };
 
+  useEffect(() => {
+    const handleOutside = (e: MouseEvent) => {
+      if (themePickerRef.current && !themePickerRef.current.contains(e.target as Node)) {
+        setIsThemePickerOpen(false);
+      }
+    };
+    if (isThemePickerOpen) {
+      document.addEventListener('mousedown', handleOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleOutside);
+  }, [isThemePickerOpen]);
+
+  const handleSelectMenuTheme = async (nextTheme: MenuTheme) => {
+    if (!canManageTheme || isSavingTheme) return;
+    if (!applyThemeToAll && !activeOutletId) return;
+
+    const prevOutlets = outlets;
+    // Optimistic update
+    setOutlets((curr) =>
+      curr.map((o) =>
+        applyThemeToAll || o.id === activeOutletId ? { ...o, menu_theme: nextTheme } : o
+      )
+    );
+    setPreviewRefreshKey((k) => k + 1);
+    setIsSavingTheme(true);
+
+    try {
+      const token =
+        sessionToken || (await supabase.auth.getSession()).data.session?.access_token || '';
+      const res = await fetch('/api/admin/outlets/menu-theme', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          outlet_id: activeOutletId,
+          menu_theme: nextTheme,
+          apply_to_all: isAdmin ? applyThemeToAll : false,
+        }),
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to update menu theme');
+      }
+
+      showToast('Menu theme updated. Customers will see it within a few seconds.', 'success');
+    } catch (err: any) {
+      setOutlets(prevOutlets);
+      setPreviewRefreshKey((k) => k + 1);
+      showToast(err?.message || 'Could not update menu theme', 'error');
+    } finally {
+      setIsSavingTheme(false);
+    }
+  };
+
   return (
     <RoleGuard allowedRoles={['admin', 'manager']}>
       <div className="space-y-6 max-w-7xl mx-auto">
@@ -269,6 +348,145 @@ export default function AdminMenuPage() {
               </option>
             ))}
           </select>
+
+          {canManageTheme && (
+            <div className="relative" ref={themePickerRef}>
+              <button
+                type="button"
+                data-testid="menu-theme-button"
+                onClick={() => setIsThemePickerOpen((o) => !o)}
+                className={cn(
+                  'h-9 px-3.5 rounded-full border text-xs font-bold flex items-center gap-1.5 transition-colors',
+                  isThemePickerOpen
+                    ? 'bg-espresso text-cream border-espresso'
+                    : 'bg-card border-border text-espresso hover:bg-sand/40'
+                )}
+              >
+                <Palette className="w-3.5 h-3.5 text-orange" />
+                <span>Menu Theme: {activeMenuTheme === 'grid' ? 'Grid' : 'Classic'}</span>
+                <ChevronDown
+                  className={cn(
+                    'w-3.5 h-3.5 transition-transform',
+                    isThemePickerOpen && 'rotate-180'
+                  )}
+                />
+              </button>
+
+              {isThemePickerOpen && (
+                <div
+                  data-testid="menu-theme-picker"
+                  className="absolute left-0 top-11 z-40 w-[300px] sm:w-[320px] bg-card rounded-2xl border border-border shadow-xl p-3.5 space-y-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-black uppercase tracking-wider text-espresso">
+                      Customer Menu Theme
+                    </span>
+                    <button
+                      type="button"
+                      data-testid="menu-theme-preview-btn"
+                      onClick={() => {
+                        setIsThemePickerOpen(false);
+                        setIsPreviewOpen(true);
+                      }}
+                      disabled={!activeOutletId}
+                      className="px-2.5 py-1 rounded-full bg-sand/70 hover:bg-sand text-[11px] font-extrabold text-espresso flex items-center gap-1 transition-colors disabled:opacity-50"
+                    >
+                      <Eye className="w-3 h-3 text-orange" />
+                      <span>Preview</span>
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2.5">
+                    {/* Classic Option Card */}
+                    <button
+                      type="button"
+                      data-testid="menu-theme-option-classic"
+                      onClick={() => handleSelectMenuTheme('classic')}
+                      disabled={isSavingTheme}
+                      className={cn(
+                        'text-left rounded-xl border-2 p-2.5 transition-all relative',
+                        activeMenuTheme === 'classic'
+                          ? 'border-orange bg-[#FBEDE3]/50'
+                          : 'border-border bg-white hover:border-espresso/30'
+                      )}
+                    >
+                      {activeMenuTheme === 'classic' && (
+                        <span className="absolute top-2 right-2 w-4 h-4 rounded-full bg-orange text-white flex items-center justify-center">
+                          <Check className="w-2.5 h-2.5 stroke-[3]" />
+                        </span>
+                      )}
+                      {/* Mini wireframe: photo-row cards */}
+                      <div className="h-16 rounded-lg bg-white border border-border/80 p-1.5 space-y-1.5 mb-2">
+                        <div className="flex items-center justify-between gap-1.5">
+                          <div className="space-y-1 flex-1">
+                            <div className="h-1.5 w-10 bg-espresso/70 rounded" />
+                            <div className="h-1 w-6 bg-espresso/35 rounded" />
+                          </div>
+                          <div className="w-6 h-5 rounded bg-sand" />
+                        </div>
+                        <div className="flex items-center justify-between gap-1.5">
+                          <div className="space-y-1 flex-1">
+                            <div className="h-1.5 w-12 bg-espresso/70 rounded" />
+                            <div className="h-1 w-7 bg-espresso/35 rounded" />
+                          </div>
+                          <div className="w-6 h-5 rounded bg-sand" />
+                        </div>
+                      </div>
+                      <span className="block text-xs font-extrabold text-espresso">Classic</span>
+                      <span className="block text-[10px] text-espresso/60">Photo-row cards</span>
+                    </button>
+
+                    {/* Grid Option Card */}
+                    <button
+                      type="button"
+                      data-testid="menu-theme-option-grid"
+                      onClick={() => handleSelectMenuTheme('grid')}
+                      disabled={isSavingTheme}
+                      className={cn(
+                        'text-left rounded-xl border-2 p-2.5 transition-all relative',
+                        activeMenuTheme === 'grid'
+                          ? 'border-orange bg-[#FBEDE3]/50'
+                          : 'border-border bg-white hover:border-espresso/30'
+                      )}
+                    >
+                      {activeMenuTheme === 'grid' && (
+                        <span className="absolute top-2 right-2 w-4 h-4 rounded-full bg-orange text-white flex items-center justify-center">
+                          <Check className="w-2.5 h-2.5 stroke-[3]" />
+                        </span>
+                      )}
+                      {/* Mini wireframe: 2-column photo grid + yellow tag */}
+                      <div className="h-16 rounded-lg bg-white border border-border/80 p-1.5 grid grid-cols-2 gap-1.5 mb-2">
+                        <div className="flex flex-col gap-1">
+                          <div className="flex-1 rounded bg-sand" />
+                          <div className="h-1.5 w-6 bg-[#FFD23F] rounded-xs" />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex-1 rounded bg-sand" />
+                          <div className="h-1.5 w-6 bg-[#FFD23F] rounded-xs" />
+                        </div>
+                      </div>
+                      <span className="block text-xs font-extrabold text-espresso">Grid</span>
+                      <span className="block text-[10px] text-espresso/60">2-col photo grid</span>
+                    </button>
+                  </div>
+
+                  {isAdmin && (
+                    <label className="flex items-center gap-2 pt-1 border-t border-border/60 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={applyThemeToAll}
+                        onChange={(e) => setApplyThemeToAll(e.target.checked)}
+                        className="w-3.5 h-3.5 accent-orange rounded"
+                      />
+                      <span className="text-[11px] font-bold text-espresso">
+                        Apply to all outlets
+                      </span>
+                    </label>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Uncategorized warning banner */}
@@ -551,6 +769,71 @@ export default function AdminMenuPage() {
           itemToEdit={itemToEdit}
           outletId={activeOutletId}
         />
+
+        {/* Phone-sized Customer Menu Preview Modal */}
+        {isPreviewOpen && activeOutletId && (
+          <div
+            data-testid="menu-theme-preview-modal"
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-espresso/60 backdrop-blur-xs"
+            onClick={() => setIsPreviewOpen(false)}
+          >
+            <div
+              className="bg-card rounded-[28px] border border-border shadow-2xl p-4 flex flex-col items-center gap-3 max-h-[92vh]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="w-full flex items-center justify-between gap-3 px-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-black text-espresso">
+                    Preview ({activeOutlet?.name || 'Outlet'})
+                  </span>
+                  <div className="inline-flex rounded-full bg-sand/70 p-0.5 border border-border">
+                    <button
+                      type="button"
+                      onClick={() => handleSelectMenuTheme('classic')}
+                      className={cn(
+                        'px-2.5 py-0.5 rounded-full text-[11px] font-extrabold transition-colors',
+                        activeMenuTheme === 'classic'
+                          ? 'bg-espresso text-cream'
+                          : 'text-espresso/70 hover:text-espresso'
+                      )}
+                    >
+                      Classic
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSelectMenuTheme('grid')}
+                      className={cn(
+                        'px-2.5 py-0.5 rounded-full text-[11px] font-extrabold transition-colors',
+                        activeMenuTheme === 'grid'
+                          ? 'bg-espresso text-cream'
+                          : 'text-espresso/70 hover:text-espresso'
+                      )}
+                    >
+                      Grid
+                    </button>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsPreviewOpen(false)}
+                  aria-label="Close preview"
+                  className="w-8 h-8 rounded-full bg-sand/60 hover:bg-sand flex items-center justify-center text-espresso"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="w-[390px] max-w-[88vw] h-[720px] max-h-[78vh] rounded-[24px] overflow-hidden border-2 border-espresso/15 bg-white shadow-inner">
+                <iframe
+                  key={`${activeOutletId}-${activeMenuTheme}-${previewRefreshKey}`}
+                  src={`/menu?outlet=${encodeURIComponent(activeOutletId)}&preview_theme=${activeMenuTheme}&preview=1`}
+                  title="Customer Menu Preview"
+                  className="w-full h-full border-0 bg-white"
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </RoleGuard>
   );

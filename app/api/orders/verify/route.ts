@@ -7,33 +7,32 @@ const isUuid = (val: string) =>
 
 export async function POST(req: NextRequest) {
   try {
-    const { orderId, pickupCode, isReturnCheck } = await req.json().catch(() => ({}));
+    const { orderId, isReturnCheck, source } = await req.json().catch(() => ({}));
 
-    if (!orderId && !pickupCode) {
-      return NextResponse.json({ error: 'Order ID or pickup code is required' }, { status: 400 });
+    if (!orderId || typeof orderId !== 'string') {
+      return NextResponse.json({ error: 'Order ID is required' }, { status: 400 });
     }
 
-    let targetOrderId = orderId;
+    let targetOrderId = orderId.trim();
 
-    if (orderId && !isUuid(orderId)) {
+    if (!isUuid(targetOrderId)) {
       const res = await query(
         `SELECT id FROM public.orders WHERE cf_order_id = $1 LIMIT 1`,
-        [orderId]
-      );
-      if (res.rows.length > 0) {
-        targetOrderId = res.rows[0].id;
-      }
-    }
-
-    if (!targetOrderId && pickupCode) {
-      const res = await query(
-        `SELECT id, status, payment_status, cf_order_id, created_at 
-         FROM public.orders 
-         WHERE pickup_code = $1 
-         ORDER BY created_at DESC LIMIT 1`,
-        [pickupCode]
+        [targetOrderId]
       );
       if (res.rows.length === 0) {
+        console.log(
+          JSON.stringify({
+            event: 'order_verify',
+            source: source || (isReturnCheck ? 'payment_return' : 'client_verify'),
+            order_id: targetOrderId,
+            cf_order_status: null,
+            row_updated: false,
+            final_status: 'not_found',
+            paid: false,
+            redirect_target: null,
+          })
+        );
         return NextResponse.json({ error: 'Order not found' }, { status: 404 });
       }
       targetOrderId = res.rows[0].id;
@@ -42,6 +41,27 @@ export async function POST(req: NextRequest) {
     const result = await verifyAndSyncOrder(targetOrderId, {
       isReturnCheck: !!isReturnCheck,
     });
+
+    const redirectTarget = result.paid
+      ? `/order-success?id=${targetOrderId}`
+      : ['cancelled', 'payment_cancelled', 'payment_failed'].includes(result.status)
+        ? 'failed'
+        : 'confirming_poll';
+
+    console.log(
+      JSON.stringify({
+        event: 'order_verify',
+        source: source || (isReturnCheck ? 'payment_return' : 'client_verify'),
+        order_id: targetOrderId,
+        cf_order_id: result.cfOrderId || null,
+        cf_order_status: result.cfOrderStatus || null,
+        cf_payment_status: result.cfPaymentStatus || null,
+        row_updated: result.updated,
+        final_status: result.status,
+        paid: result.paid,
+        redirect_target: redirectTarget,
+      })
+    );
 
     // Fetch refreshed order details
     const orderRes = await query(

@@ -228,16 +228,25 @@ export function MenuItemForm({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-espresso uppercase tracking-wider mb-1">
-              Description
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-bold text-espresso uppercase tracking-wider">
+                Description
+              </label>
+              <span className="text-[11px] font-bold text-espresso/60 tabular-nums">
+                {description.length}/200
+              </span>
+            </div>
             <textarea
               rows={2}
+              maxLength={200}
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={(e) => setDescription(e.target.value.slice(0, 200))}
               placeholder="Short appetizing description..."
               className="w-full p-3 rounded-xl bg-sand/30 border border-border text-xs font-medium text-espresso focus:outline-none focus:border-orange"
             />
+            <p className="text-[11px] text-espresso/60 mt-1">
+              Shown when the customer taps the photo (Grid theme)
+            </p>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

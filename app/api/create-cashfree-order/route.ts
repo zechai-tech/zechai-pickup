@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { verifyAndSyncOrder } from '@/lib/order-sync';
 
 export async function POST(req: NextRequest) {
   try {
@@ -32,7 +33,7 @@ export async function POST(req: NextRequest) {
 
     // Load order and verified total strictly from the database
     const orderRes = await query(
-      'SELECT id, total, customer_phone, customer_name, status FROM public.orders WHERE id = $1 LIMIT 1',
+      'SELECT id, total, customer_phone, customer_name, status, payment_status, cf_order_id FROM public.orders WHERE id = $1 LIMIT 1',
       [orderId]
     );
 
@@ -41,6 +42,18 @@ export async function POST(req: NextRequest) {
     }
 
     const order = orderRes.rows[0];
+
+    if (
+      order.payment_status === 'success' ||
+      ['pending', 'preparing', 'packaging', 'ready', 'received', 'confirmed', 'completed'].includes(
+        String(order.status || '').toLowerCase()
+      )
+    ) {
+      return NextResponse.json({
+        already_paid: true,
+        order_id: order.id,
+      });
+    }
 
     if (order.status !== 'pending_payment') {
       return NextResponse.json(
@@ -54,6 +67,45 @@ export async function POST(req: NextRequest) {
         ? 'https://api.cashfree.com/pg/orders'
         : 'https://sandbox.cashfree.com/pg/orders';
 
+    // If a Cashfree order already exists on this order row, verify it first
+    if (order.cf_order_id) {
+      try {
+        const existingCfRes = await fetch(
+          `${baseUrl}/${encodeURIComponent(order.cf_order_id)}`,
+          {
+            method: 'GET',
+            headers: {
+              'x-client-id': appId,
+              'x-client-secret': secretKey,
+              'x-api-version': '2023-08-01',
+            },
+          }
+        );
+        if (existingCfRes.ok) {
+          const existingCf = await existingCfRes.json();
+          if (existingCf?.order_status === 'PAID') {
+            await verifyAndSyncOrder(order.id);
+            return NextResponse.json({
+              already_paid: true,
+              order_id: order.id,
+            });
+          }
+          if (existingCf?.order_status === 'ACTIVE' && existingCf?.payment_session_id) {
+            console.log(
+              JSON.stringify({
+                event: 'cashfree_order_reused',
+                order_id: order.id,
+                cf_order_id: existingCf.order_id,
+              })
+            );
+            return NextResponse.json(existingCf);
+          }
+        }
+      } catch (reuseErr) {
+        console.warn('Error checking existing Cashfree order:', reuseErr);
+      }
+    }
+
     // Format clean phone number from database record
     const cleanPhone = (order.customer_phone || '').replace(/\D/g, '').slice(-10) || '9999999999';
 
@@ -64,7 +116,14 @@ export async function POST(req: NextRequest) {
     const expiryTime = new Date(Date.now() + 20 * 60 * 1000).toISOString();
 
     const gatewayAmount = Math.round(Number(order.total));
-    console.log(`[Cashfree Order] orderId=${order.id} order_amount=${gatewayAmount}`);
+    console.log(
+      JSON.stringify({
+        event: 'cashfree_order_create',
+        order_id: order.id,
+        cf_order_id: cfOrderId,
+        order_amount: gatewayAmount,
+      })
+    );
 
     const response = await fetch(baseUrl, {
       method: 'POST',
@@ -84,7 +143,8 @@ export async function POST(req: NextRequest) {
           customer_name: order.customer_name || 'Customer',
         },
         order_meta: {
-          return_url: `https://pickup.zechai.in/order-success?order_id={order_id}`,
+          return_url: 'https://pickup.zechai.in/payment/return?order_id={order_id}',
+          notify_url: 'https://pickup.zechai.in/api/cashfree-webhook',
         },
         order_expiry_time: expiryTime,
       }),

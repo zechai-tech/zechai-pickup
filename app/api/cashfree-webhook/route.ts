@@ -115,6 +115,8 @@ export async function POST(req: NextRequest) {
       }
 
       // If status is pending_payment (or payment_cancelled/payment_failed for late success)
+      let rowUpdated = false;
+      let finalStatus = currentStatus;
       if (['pending_payment', 'payment_cancelled', 'payment_failed'].includes(currentStatus)) {
         const cfPaymentId = String(paymentData?.cf_payment_id || '');
         const paymentMethod =
@@ -124,39 +126,68 @@ export async function POST(req: NextRequest) {
           'cashfree';
         const paidAt = paymentData?.payment_time || new Date().toISOString();
 
-        await query(
+        const updRes = await query(
           `UPDATE public.orders
            SET status = 'pending',
                payment_status = 'success',
-               cf_payment_id = $1,
-               payment_id = COALESCE(payment_id, $1),
-               payment_method = $2,
-               paid_at = $3,
+               cf_payment_id = COALESCE(NULLIF($1, ''), cf_payment_id),
+               payment_id = COALESCE(payment_id, NULLIF($1, '')),
+               payment_method = COALESCE(payment_method, $2),
+               paid_at = COALESCE(paid_at, $3),
                updated_at = now()
-           WHERE id = $4`,
+           WHERE id = $4
+             AND status IN ('pending_payment', 'payment_cancelled', 'payment_failed')
+           RETURNING status`,
           [cfPaymentId, paymentMethod, paidAt, orderId]
         );
+        rowUpdated = updRes.rows.length > 0;
+        if (rowUpdated) finalStatus = updRes.rows[0].status;
       }
 
-      console.log(`[Cashfree Webhook] Event: ${eventType} | Order: ${cfOrderId} | Result: processed`);
+      console.log(
+        JSON.stringify({
+          event: 'cashfree_webhook',
+          webhook_type: eventType,
+          cf_order_id: cfOrderId,
+          order_id: orderId,
+          cashfree_payment_status: paymentData?.payment_status || 'SUCCESS',
+          row_updated: rowUpdated,
+          final_status: finalStatus,
+        })
+      );
       return NextResponse.json({ status: 'ok', event: eventType, orderId });
     }
 
     if (eventType === 'PAYMENT_FAILED_WEBHOOK' || eventType === 'PAYMENT_USER_DROPPED_WEBHOOK') {
+      let rowUpdated = false;
+      let finalStatus = currentStatus;
       // Only transition if status is still pending_payment
       if (currentStatus === 'pending_payment') {
         const paymentStatus = eventType === 'PAYMENT_USER_DROPPED_WEBHOOK' ? 'dropped' : 'failed';
-        await query(
+        const updRes = await query(
           `UPDATE public.orders
            SET status = 'payment_cancelled',
                payment_status = $1,
                updated_at = now()
-           WHERE id = $2`,
+           WHERE id = $2 AND status = 'pending_payment'
+           RETURNING status`,
           [paymentStatus, orderId]
         );
+        rowUpdated = updRes.rows.length > 0;
+        if (rowUpdated) finalStatus = updRes.rows[0].status;
       }
 
-      console.log(`[Cashfree Webhook] Event: ${eventType} | Order: ${cfOrderId} | Result: processed`);
+      console.log(
+        JSON.stringify({
+          event: 'cashfree_webhook',
+          webhook_type: eventType,
+          cf_order_id: cfOrderId,
+          order_id: orderId,
+          cashfree_payment_status: paymentData?.payment_status || eventType,
+          row_updated: rowUpdated,
+          final_status: finalStatus,
+        })
+      );
       return NextResponse.json({ status: 'ok', event: eventType, orderId });
     }
 

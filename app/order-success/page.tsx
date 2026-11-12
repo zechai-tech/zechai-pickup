@@ -59,28 +59,17 @@ function OrderSuccessContent() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const isTerminatedRef = useRef<boolean>(false);
 
-  const targetOrderId =
+  // Identify order strictly from URL (no sessionStorage, localStorage, Zustand, or cookies)
+  const targetOrderId = (
     searchParams.get('id') ||
     searchParams.get('order_id') ||
-    (typeof window !== 'undefined' ? sessionStorage.getItem('pendingOrder') : null);
-
-  const parsedSessionOrderId = React.useMemo(() => {
-    if (!targetOrderId) return null;
-    try {
-      if (targetOrderId.startsWith('{')) {
-        const parsed = JSON.parse(targetOrderId);
-        return parsed.orderId || null;
-      }
-    } catch {}
-    return targetOrderId;
-  }, [targetOrderId]);
-
-  const targetCode = searchParams.get('code');
+    ''
+  ).trim();
 
   const verifyOrder = useCallback(
-    async (isReturn = true) => {
+    async () => {
       if (isTerminatedRef.current) return;
-      if (!parsedSessionOrderId && !targetCode) {
+      if (!targetOrderId) {
         setVerifyStatus('failed');
         setFailReason('No order identifier found.');
         isTerminatedRef.current = true;
@@ -91,10 +80,11 @@ function OrderSuccessContent() {
         const res = await fetch('/api/orders/verify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
           body: JSON.stringify({
-            orderId: parsedSessionOrderId,
-            pickupCode: targetCode,
-            isReturnCheck: isReturn,
+            orderId: targetOrderId,
+            isReturnCheck: false,
+            source: 'order_success',
           }),
         });
 
@@ -111,8 +101,8 @@ function OrderSuccessContent() {
           isTerminatedRef.current = true;
           setVerifyStatus('success');
 
-          const finalId = data.orderId || order?.id || parsedSessionOrderId || '';
-          const finalCode = data.pickup_code || order?.pickup_code || targetCode || '7309';
+          const finalId = data.orderId || order?.id || targetOrderId || '';
+          const finalCode = data.pickup_code || order?.pickup_code || '7309';
           const finalTotal = Number(order?.total ?? data.total ?? 0);
           const finalOutlet = order?.outlet_name || data.outlet_name || 'Deleted outlet';
           const effectivePaidAt = order?.paid_at || order?.created_at || null;
@@ -130,51 +120,55 @@ function OrderSuccessContent() {
           });
 
           clearCart();
-          sessionStorage.removeItem('pendingOrder');
-          sessionStorage.setItem('activeOrderCode', finalCode);
-          if (finalId) sessionStorage.setItem('activeOrderId', finalId);
-          localStorage.removeItem('activeOrderCode');
-          localStorage.removeItem('activeOrderId');
+          try {
+            sessionStorage.removeItem('zc_pending_order');
+            sessionStorage.removeItem('pendingOrder');
+            sessionStorage.setItem('activeOrderCode', finalCode);
+            if (finalId) sessionStorage.setItem('activeOrderId', finalId);
+            localStorage.removeItem('activeOrderCode');
+            localStorage.removeItem('activeOrderId');
+          } catch {}
           return;
         }
 
         if (
           ['cancelled', 'payment_cancelled', 'payment_failed'].includes(status) ||
-          paymentStatus === 'failed' ||
-          paymentStatus === 'cancelled'
+          ['failed', 'dropped', 'cancelled', 'expired', 'abandoned'].includes(paymentStatus)
         ) {
           isTerminatedRef.current = true;
           setVerifyStatus('failed');
           setFailReason('Payment was cancelled or could not be completed.');
-          sessionStorage.removeItem('pendingOrder');
+          try {
+            sessionStorage.removeItem('zc_pending_order');
+            sessionStorage.removeItem('pendingOrder');
+          } catch {}
           return;
         }
 
         const elapsed = (Date.now() - startTimeRef.current) / 1000;
-        if (elapsed > 20) {
+        if (elapsed >= 60) {
+          isTerminatedRef.current = true;
           setVerifyStatus('processing_long');
         }
       } catch (err: any) {
         console.error('Verify error:', err);
       }
     },
-    [parsedSessionOrderId, targetCode, clearCart]
+    [targetOrderId, clearCart]
   );
 
   useEffect(() => {
     isTerminatedRef.current = false;
     startTimeRef.current = Date.now();
 
-    verifyOrder(true);
+    verifyOrder();
 
     const scheduleNextPoll = () => {
       if (isTerminatedRef.current) return;
-      const elapsedSeconds = (Date.now() - startTimeRef.current) / 1000;
-      const delay = elapsedSeconds >= 20 ? 4000 : 2000;
       timerRef.current = setTimeout(async () => {
-        await verifyOrder(false);
+        await verifyOrder();
         scheduleNextPoll();
-      }, delay);
+      }, 2000);
     };
 
     scheduleNextPoll();
@@ -222,7 +216,10 @@ function OrderSuccessContent() {
           Your payment might take a few moments to confirm with your bank. Please don&apos;t pay again.
         </p>
         <button
-          onClick={() => verifyOrder(false)}
+          onClick={() => {
+            isTerminatedRef.current = false;
+            verifyOrder();
+          }}
           className="h-11 px-6 rounded-full bg-[#CE5535] text-[#FDFBEA] font-bold text-xs flex items-center gap-2 shadow-xs hover:bg-[#A8401F]"
         >
           <RefreshCw className="w-3.5 h-3.5" />
@@ -444,7 +441,7 @@ function OrderSuccessContent() {
       {/* Bottom Buttons in normal scrollable flow */}
       <div className="relative z-10 w-full space-y-2.5 pt-4 pb-3 mt-auto print:hidden">
         <Link
-          href={`/track-order?id=${orderData?.id || ''}&code=${displayCode}`}
+          href={`/track-order?id=${encodeURIComponent(orderData?.id || '')}`}
           className="w-full h-[52px] rounded-[20px] bg-[#CE5535] text-[#FDFBEA] font-extrabold text-[16px] flex items-center justify-center shadow-[0_10px_24px_rgba(206,85,53,0.25)] hover:bg-[#A8401F] active:scale-[0.98] transition-transform duration-150"
         >
           Track my order

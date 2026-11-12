@@ -48,8 +48,7 @@ function TrackOrderContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const resetAll = useZechaStore((s) => s.resetAll);
-  const urlId = searchParams.get('id');
-  const urlCode = searchParams.get('code');
+  const urlId = (searchParams.get('id') || searchParams.get('order_id') || '').trim();
 
   const [order, setOrder] = useState<OrderData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -60,6 +59,7 @@ function TrackOrderContent() {
   const sawPrePickupDuringSessionRef = useRef(false);
   const pickedUpSequenceStartedRef = useRef(false);
   const isRedirectingHomeRef = useRef(false);
+  const verifiedPendingOnceRef = useRef(false);
 
   const clearCustomerOrderState = useCallback(() => {
     resetAll();
@@ -69,6 +69,7 @@ function TrackOrderContent() {
         sessionStorage.removeItem('activeOrderCode');
         sessionStorage.removeItem('activeOrderTime');
         sessionStorage.removeItem('pendingOrder');
+        sessionStorage.removeItem('zc_pending_order');
         localStorage.removeItem('zecha_store_storage');
         localStorage.removeItem('activeOrderId');
         localStorage.removeItem('activeOrderCode');
@@ -84,13 +85,10 @@ function TrackOrderContent() {
 
   const fetchOrder = useCallback(
     async (isSilent = false) => {
-      const targetId =
-        urlId || (typeof window !== 'undefined' ? sessionStorage.getItem('activeOrderId') : null);
-      const targetCode =
-        urlCode ||
-        (!targetId && typeof window !== 'undefined' ? sessionStorage.getItem('activeOrderCode') : null);
+      // Identify order strictly from URL (never sessionStorage, localStorage, Zustand, or cookies)
+      const targetId = urlId;
 
-      if (!targetId && !targetCode) {
+      if (!targetId) {
         if (!isSilent) {
           setError('No order identifier provided');
           setLoading(false);
@@ -99,11 +97,7 @@ function TrackOrderContent() {
       }
 
       try {
-        const param = targetId
-          ? `id=${encodeURIComponent(targetId)}`
-          : `code=${encodeURIComponent(targetCode!)}`;
-
-        const res = await fetch(`/api/orders/track?${param}`, {
+        const res = await fetch(`/api/orders/track?id=${encodeURIComponent(targetId)}`, {
           cache: 'no-store',
         });
         const data = await res.json();
@@ -111,8 +105,36 @@ function TrackOrderContent() {
         if (!res.ok || !data.order) {
           if (!isSilent) setError(data.error || 'Order not found');
         } else {
-          const nextOrder: OrderData = data.order;
-          const canon = normalizeOrderStatus(nextOrder.status);
+          let nextOrder: OrderData = data.order;
+          let canon = normalizeOrderStatus(nextOrder.status);
+
+          // If still pending_payment, trigger server verification once and re-render
+          if (canon === 'pending_payment' && !verifiedPendingOnceRef.current) {
+            verifiedPendingOnceRef.current = true;
+            try {
+              const verifyRes = await fetch('/api/orders/verify', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                cache: 'no-store',
+                body: JSON.stringify({
+                  orderId: nextOrder.id,
+                  isReturnCheck: false,
+                  source: 'track_order',
+                }),
+              });
+              if (verifyRes.ok) {
+                const verifyData = await verifyRes.json().catch(() => ({}));
+                if (verifyData?.order) {
+                  nextOrder = {
+                    ...nextOrder,
+                    ...verifyData.order,
+                  };
+                  canon = normalizeOrderStatus(nextOrder.status);
+                }
+              }
+            } catch {}
+          }
+
           if (['pending', 'preparing', 'packaging', 'ready'].includes(canon)) {
             sawPrePickupDuringSessionRef.current = true;
           }
@@ -131,6 +153,7 @@ function TrackOrderContent() {
             sessionStorage.removeItem('activeOrderCode');
             sessionStorage.removeItem('activeOrderTime');
             sessionStorage.removeItem('pendingOrder');
+            sessionStorage.removeItem('zc_pending_order');
           }
         }
       } catch (e: any) {
@@ -139,7 +162,7 @@ function TrackOrderContent() {
         if (!isSilent) setLoading(false);
       }
     },
-    [urlId, urlCode]
+    [urlId]
   );
 
   // Initial load + 5s polling fallback + focus/visibility refetch

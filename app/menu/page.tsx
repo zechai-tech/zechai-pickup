@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import React, { Suspense, useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ChevronLeft,
   ChevronDown,
@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { getOutletMenuData, getOutlets } from '@/lib/api';
 import { MenuCategoryDef } from '@/lib/menu-categories';
-import { MenuItem, Outlet } from '@/types';
+import { MenuItem, MenuTheme, Outlet } from '@/types';
 import { useZechaStore, getCartSummary } from '@/lib/store';
 import { useToast } from '@/components/ui/Toast';
 import { VegBadge } from '@/components/ui/VegBadge';
@@ -25,11 +25,17 @@ import { SafeImage } from '@/components/ui/SafeImage';
 import { DEFAULT_MENU_IMAGE } from '@/lib/images';
 import { formatPrice } from '@/lib/utils';
 
-export default function MenuPage() {
+function MenuPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlOutletId = (searchParams.get('outlet') || '').trim();
+  const previewThemeParam = searchParams.get('preview_theme');
+  const isPreviewMode = searchParams.get('preview') === '1';
+
   const { outlet, setOutlet, cart, addItem, updateCartQty, clearCart } = useZechaStore();
   const { showToast } = useToast();
 
+  const [menuTheme, setMenuTheme] = useState<MenuTheme>('classic');
   const [categories, setCategories] = useState<MenuCategoryDef[]>([]);
   const [bestsellers, setBestsellers] = useState<MenuItem[]>([]);
   const [bestsellerIds, setBestsellerIds] = useState<string[]>([]);
@@ -37,6 +43,12 @@ export default function MenuPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [previewOutletName, setPreviewOutletName] = useState<string>('');
+
+  // Grid theme item detail bottom sheet
+  const [detailItem, setDetailItem] = useState<MenuItem | null>(null);
+  const sheetTouchStartY = useRef<number | null>(null);
+  const [sheetDragY, setSheetDragY] = useState(0);
 
   // Top outlet switcher dropdown state
   const [availableOutlets, setAvailableOutlets] = useState<Outlet[]>([]);
@@ -45,22 +57,49 @@ export default function MenuPage() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const listTopRef = useRef<HTMLDivElement>(null);
 
+  const activeOutletId = urlOutletId || outlet?.id || '';
+  const effectiveTheme: MenuTheme =
+    previewThemeParam === 'grid' || previewThemeParam === 'classic'
+      ? previewThemeParam
+      : menuTheme;
+
   const { count, toPay } = getCartSummary(cart);
 
-  // Guard: if no outlet selected, send user to /outlets
+  // Guard: if no outlet selected (and not previewing an outlet), send user to /outlets
   useEffect(() => {
-    if (!outlet?.id) {
+    if (!activeOutletId) {
       router.push('/outlets');
     }
-  }, [outlet?.id, router]);
+  }, [activeOutletId, router]);
 
-  // Load menu + per-outlet bestsellers from no-store server route
+  // Load outlet name when opened via ?outlet=... in preview mode
+  useEffect(() => {
+    if (!urlOutletId) return;
+    getOutlets().then((list) => {
+      const matched = list.find((o) => o.id === urlOutletId);
+      if (matched) setPreviewOutletName(matched.name);
+    });
+  }, [urlOutletId]);
+
+  // Lock background scroll when Grid item bottom sheet is open
+  useEffect(() => {
+    if (detailItem) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = prev;
+      };
+    }
+  }, [detailItem]);
+
+  // Load menu + per-outlet bestsellers + menu_theme from no-store server route
   const fetchMenuData = useCallback(
     async (targetOutletId: string, isBackground = false) => {
       if (!targetOutletId) return;
       if (!isBackground) setLoading(true);
       try {
         const data = await getOutletMenuData(targetOutletId);
+        setMenuTheme(data.menu_theme === 'grid' ? 'grid' : 'classic');
         setCategories(data.categories);
         setBestsellers(data.bestsellers);
         setBestsellerIds(data.bestseller_ids);
@@ -79,30 +118,30 @@ export default function MenuPage() {
     []
   );
 
-  // Refetch on mount / outlet switch, focus, visibilitychange, and every 60s
+  // Refetch on mount / outlet switch, focus, visibilitychange, and every 15s
   useEffect(() => {
-    if (!outlet?.id) return;
-    fetchMenuData(outlet.id, false);
+    if (!activeOutletId) return;
+    fetchMenuData(activeOutletId, false);
 
-    const onFocus = () => fetchMenuData(outlet.id, true);
+    const onFocus = () => fetchMenuData(activeOutletId, true);
     const onVisibilityChange = () => {
       if (!document.hidden) {
-        fetchMenuData(outlet.id, true);
+        fetchMenuData(activeOutletId, true);
       }
     };
 
     window.addEventListener('focus', onFocus);
     document.addEventListener('visibilitychange', onVisibilityChange);
     const interval = setInterval(() => {
-      fetchMenuData(outlet.id, true);
-    }, 60000);
+      fetchMenuData(activeOutletId, true);
+    }, 15000);
 
     return () => {
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisibilityChange);
       clearInterval(interval);
     };
-  }, [outlet?.id, fetchMenuData]);
+  }, [activeOutletId, fetchMenuData]);
 
   // Close outlet switcher dropdown when clicking outside
   useEffect(() => {
@@ -315,10 +354,108 @@ export default function MenuPage() {
     );
   };
 
+  const renderGridCard = (item: MenuItem, isPriority: boolean, isCarousel = false) => {
+    const qty = getItemQty(item.id);
+    const lineId = getItemLineId(item.id);
+    const isVeg = item.isVeg ?? item.is_veg ?? true;
+
+    return (
+      <div
+        key={item.id}
+        data-testid={isCarousel ? `grid-bestseller-card-${item.id}` : `grid-item-card-${item.id}`}
+        className={
+          isCarousel
+            ? 'w-[46%] shrink-0 snap-start bg-white rounded-[22px] border border-[#EADFC7]/80 p-2 flex flex-col justify-between shadow-2xs'
+            : 'bg-white rounded-[22px] border border-[#EADFC7]/80 p-2 flex flex-col justify-between shadow-2xs'
+        }
+      >
+        <div>
+          {/* Photo only — no text or badge on the photo; tapping opens bottom sheet */}
+          <button
+            type="button"
+            onClick={() => {
+              setSheetDragY(0);
+              setDetailItem(item);
+            }}
+            className="block w-full aspect-[4/5] rounded-[20px] overflow-hidden relative bg-[#FAF4E6] focus:outline-none"
+            aria-label={`View details for ${item.name}`}
+          >
+            <SafeImage
+              src={item.image || item.image_url || DEFAULT_MENU_IMAGE}
+              alt={item.name}
+              variant="tile"
+              fill
+              sizes="(max-width: 430px) 46vw, 198px"
+              priority={isPriority}
+              preloadNearViewport={!isPriority}
+              className="object-cover"
+            />
+          </button>
+
+          {/* Veg mark + Item name (regular weight, max 2 lines, no description) */}
+          <div className="mt-2 px-0.5 flex items-start gap-1.5">
+            <div className="pt-0.5 shrink-0">
+              <VegBadge isVeg={isVeg} size="sm" />
+            </div>
+            <h3 className="font-normal text-[14px] text-[#2B1A12] leading-snug line-clamp-2">
+              {item.name}
+            </h3>
+          </div>
+        </div>
+
+        {/* Price inside yellow slanted highlighter tag + ADD / stepper */}
+        <div className="mt-2.5 px-0.5 flex items-center justify-between gap-2">
+          <span
+            className="inline-block bg-[#FFD23F] text-[#2B1A12] font-extrabold text-[13px] px-2 py-0.5 rounded-[5px] tabular-nums shrink-0"
+            style={{ transform: 'skewX(-8deg)' }}
+          >
+            <span className="inline-block" style={{ transform: 'skewX(8deg)' }}>
+              {formatPrice(item.price)}
+            </span>
+          </span>
+
+          {qty === 0 ? (
+            <button
+              type="button"
+              onClick={() => handleAddItem(item)}
+              className="h-[32px] px-3.5 rounded-[10px] bg-white border border-[#EADFC7] text-[#CE5535] font-black text-xs tracking-wider shadow-2xs hover:bg-[#FFFEF7] active:scale-95 transition-transform duration-150 flex items-center justify-center uppercase"
+            >
+              ADD
+            </button>
+          ) : (
+            <div className="h-[32px] min-w-[82px] rounded-[10px] bg-white border border-[#CE5535] text-[#2B1A12] font-black text-xs shadow-2xs flex items-center justify-between px-1.5">
+              <button
+                type="button"
+                onClick={() => updateCartQty(lineId, -1)}
+                className="w-6 h-6 flex items-center justify-center text-[#CE5535] hover:bg-[#FBEDE3] rounded"
+                aria-label="Decrease quantity"
+              >
+                <Minus className="w-3.5 h-3.5 stroke-[3]" />
+              </button>
+              <span className="font-extrabold text-xs px-1">{qty}</span>
+              <button
+                type="button"
+                onClick={() => updateCartQty(lineId, 1)}
+                className="w-6 h-6 flex items-center justify-center text-[#CE5535] hover:bg-[#FBEDE3] rounded"
+                aria-label="Increase quantity"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[3]" />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-[#FDFBEA] flex flex-col page-transition relative pb-28 select-none">
-      {/* Sticky Header */}
-      <header className="sticky top-0 z-30 bg-[#FDFBEA]/95 backdrop-blur-md px-4 pt-3 pb-2 border-b border-[#EADFC7]/60">
+    <div
+      data-testid="customer-menu-page"
+      data-menu-theme={effectiveTheme}
+      className="min-h-screen bg-white flex flex-col page-transition relative pb-28 select-none"
+    >
+      {/* Sticky Header (white background in both themes) */}
+      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md px-4 pt-3 pb-2 border-b border-[#EADFC7]/60">
         <div className="flex items-center justify-between relative" ref={dropdownRef}>
           {/* Back button */}
           <Link
@@ -341,12 +478,16 @@ export default function MenuPage() {
               PICKUP FROM
             </span>
             <div className="flex items-center gap-1 text-[15px] font-extrabold text-[#2B1A12] group-hover:text-[#CE5535] transition-colors leading-tight">
-              <span className="truncate">{outlet?.name || 'Choose Outlet'}</span>
-              <ChevronDown
-                className={`w-4 h-4 stroke-[2.8] text-[#2B1A12] shrink-0 transition-transform duration-150 ${
-                  isOutletMenuOpen ? 'rotate-180' : ''
-                }`}
-              />
+              <span className="truncate">
+                {previewOutletName || outlet?.name || 'Choose Outlet'}
+              </span>
+              {!isPreviewMode && (
+                <ChevronDown
+                  className={`w-4 h-4 stroke-[2.8] text-[#2B1A12] shrink-0 transition-transform duration-150 ${
+                    isOutletMenuOpen ? 'rotate-180' : ''
+                  }`}
+                />
+              )}
             </div>
           </button>
 
@@ -492,24 +633,28 @@ export default function MenuPage() {
             </div>
           </div>
         ) : isSearching ? (
-          /* Search Results Flat List */
+          /* Search Results */
           <div>
             <h2 className="font-display text-[22px] font-extrabold text-[#2B1A12] mb-3 tracking-tight">
               Search Results
             </h2>
-            <div className="bg-[#FFFEF7] rounded-[22px] border border-[#EADFC7] divide-y divide-[#EADFC7]/70 overflow-hidden shadow-2xs">
-              {searchResults.length === 0 ? (
-                <div className="p-8 text-center text-[#75604F]">
-                  <p className="font-bold text-sm">No matching items found</p>
-                  <p className="text-xs mt-1">Try searching another dish or clear the search</p>
-                </div>
-              ) : (
-                searchResults.map((item, idx) => renderMenuRow(item, idx < 4))
-              )}
-            </div>
+            {searchResults.length === 0 ? (
+              <div className="bg-white rounded-[22px] border border-[#EADFC7] p-8 text-center text-[#75604F] shadow-2xs">
+                <p className="font-bold text-sm">No matching items found</p>
+                <p className="text-xs mt-1">Try searching another dish or clear the search</p>
+              </div>
+            ) : effectiveTheme === 'grid' ? (
+              <div data-testid="grid-search-results" className="grid grid-cols-2 gap-3">
+                {searchResults.map((item, idx) => renderGridCard(item, idx < 4))}
+              </div>
+            ) : (
+              <div className="bg-white rounded-[22px] border border-[#EADFC7] divide-y divide-[#EADFC7]/70 overflow-hidden shadow-2xs">
+                {searchResults.map((item, idx) => renderMenuRow(item, idx < 4))}
+              </div>
+            )}
           </div>
         ) : items.length === 0 ? (
-          <div className="bg-[#FFFEF7] rounded-[22px] border border-[#EADFC7] p-10 text-center text-[#75604F] mt-4">
+          <div className="bg-white rounded-[22px] border border-[#EADFC7] p-10 text-center text-[#75604F] mt-4">
             <p className="font-extrabold text-base text-[#2B1A12]">Menu coming soon</p>
             <p className="text-xs mt-1">No available items configured for this outlet yet.</p>
           </div>
@@ -526,89 +671,91 @@ export default function MenuPage() {
                   data-testid="bestsellers-carousel"
                   className="flex overflow-x-auto snap-x snap-mandatory gap-3 pb-1 scrollbar-none -mx-4 px-4 overscroll-x-contain touch-scroll"
                 >
-                  {bestsellers.map((item, idx) => {
-                    const qty = getItemQty(item.id);
-                    const lineId = getItemLineId(item.id);
+                  {effectiveTheme === 'grid'
+                    ? bestsellers.map((item, idx) => renderGridCard(item, idx < 2, true))
+                    : bestsellers.map((item, idx) => {
+                        const qty = getItemQty(item.id);
+                        const lineId = getItemLineId(item.id);
 
-                    return (
-                      <div
-                        key={item.id}
-                        className="w-[46%] shrink-0 snap-start bg-[#FFFEF7] rounded-[18px] border border-[#EADFC7] p-2 flex flex-col justify-between shadow-2xs hover:border-[#E3D7BC] transition-colors"
-                      >
-                        <div className="relative w-full h-[158px] rounded-[14px] overflow-visible mb-5">
-                          <Link
-                            href={`/menu/${item.id}`}
-                            className="block w-full h-full rounded-[14px] overflow-hidden relative"
+                        return (
+                          <div
+                            key={item.id}
+                            className="w-[46%] shrink-0 snap-start bg-white rounded-[18px] border border-[#EADFC7] p-2 flex flex-col justify-between shadow-2xs hover:border-[#E3D7BC] transition-colors"
                           >
-                            <SafeImage
-                              src={item.image || item.image_url || DEFAULT_MENU_IMAGE}
-                              alt={item.name}
-                              variant="tile"
-                              fill
-                              sizes="(max-width: 430px) 46vw, 198px"
-                              priority={idx < 2}
-                              className="object-cover"
-                            />
-                          </Link>
-
-                          <div className="absolute top-2 left-2 pointer-events-none z-10">
-                            <span className="px-2 py-0.5 rounded-[6px] bg-[#E8B125] text-[#2B1A12] text-[10px] font-black uppercase tracking-wider shadow-xs">
-                              BESTSELLER
-                            </span>
-                          </div>
-
-                          {qty > 0 && (
-                            <div className="absolute top-2 right-2 pointer-events-none z-10">
-                              <span className="px-2 py-0.5 rounded-[6px] bg-[#2B1A12] text-[#FDFBEA] text-[10px] font-black uppercase tracking-wider shadow-xs">
-                                IN CART
-                              </span>
-                            </div>
-                          )}
-
-                          <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 z-20">
-                            {qty === 0 ? (
-                              <button
-                                onClick={() => handleAddItem(item)}
-                                className="w-[96px] h-[36px] rounded-[10px] bg-white border border-[#EADFC7] text-[#CE5535] font-black text-xs tracking-wider shadow-md hover:bg-[#FFFEF7] active:scale-95 transition-transform duration-150 flex items-center justify-center uppercase"
+                            <div className="relative w-full h-[158px] rounded-[14px] overflow-visible mb-5">
+                              <Link
+                                href={`/menu/${item.id}`}
+                                className="block w-full h-full rounded-[14px] overflow-hidden relative"
                               >
-                                ADD
-                              </button>
-                            ) : (
-                              <div className="w-[96px] h-[36px] rounded-[10px] bg-white border border-[#CE5535] text-[#2B1A12] font-black text-xs shadow-md flex items-center justify-between px-2">
-                                <button
-                                  onClick={() => updateCartQty(lineId, -1)}
-                                  className="w-6 h-6 flex items-center justify-center text-[#CE5535] hover:bg-[#FBEDE3] rounded"
-                                  aria-label="Decrease quantity"
-                                >
-                                  <Minus className="w-3.5 h-3.5 stroke-[3]" />
-                                </button>
-                                <span className="font-extrabold text-sm">{qty}</span>
-                                <button
-                                  onClick={() => updateCartQty(lineId, 1)}
-                                  className="w-6 h-6 flex items-center justify-center text-[#CE5535] hover:bg-[#FBEDE3] rounded"
-                                  aria-label="Increase quantity"
-                                >
-                                  <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
+                                <SafeImage
+                                  src={item.image || item.image_url || DEFAULT_MENU_IMAGE}
+                                  alt={item.name}
+                                  variant="tile"
+                                  fill
+                                  sizes="(max-width: 430px) 46vw, 198px"
+                                  priority={idx < 2}
+                                  className="object-cover"
+                                />
+                              </Link>
 
-                        <Link href={`/menu/${item.id}`} className="block pt-1">
-                          <div className="flex items-center gap-1.5 mb-0.5">
-                            <VegBadge isVeg={item.isVeg ?? item.is_veg ?? true} size="sm" />
-                            <h3 className="font-extrabold text-sm text-[#2B1A12] truncate">
-                              {item.name}
-                            </h3>
+                              <div className="absolute top-2 left-2 pointer-events-none z-10">
+                                <span className="px-2 py-0.5 rounded-[6px] bg-[#E8B125] text-[#2B1A12] text-[10px] font-black uppercase tracking-wider shadow-xs">
+                                  BESTSELLER
+                                </span>
+                              </div>
+
+                              {qty > 0 && (
+                                <div className="absolute top-2 right-2 pointer-events-none z-10">
+                                  <span className="px-2 py-0.5 rounded-[6px] bg-[#2B1A12] text-[#FDFBEA] text-[10px] font-black uppercase tracking-wider shadow-xs">
+                                    IN CART
+                                  </span>
+                                </div>
+                              )}
+
+                              <div className="absolute -bottom-4 left-1/2 -translate-x-1/2 z-20">
+                                {qty === 0 ? (
+                                  <button
+                                    onClick={() => handleAddItem(item)}
+                                    className="w-[96px] h-[36px] rounded-[10px] bg-white border border-[#EADFC7] text-[#CE5535] font-black text-xs tracking-wider shadow-md hover:bg-[#FFFEF7] active:scale-95 transition-transform duration-150 flex items-center justify-center uppercase"
+                                  >
+                                    ADD
+                                  </button>
+                                ) : (
+                                  <div className="w-[96px] h-[36px] rounded-[10px] bg-white border border-[#CE5535] text-[#2B1A12] font-black text-xs shadow-md flex items-center justify-between px-2">
+                                    <button
+                                      onClick={() => updateCartQty(lineId, -1)}
+                                      className="w-6 h-6 flex items-center justify-center text-[#CE5535] hover:bg-[#FBEDE3] rounded"
+                                      aria-label="Decrease quantity"
+                                    >
+                                      <Minus className="w-3.5 h-3.5 stroke-[3]" />
+                                    </button>
+                                    <span className="font-extrabold text-sm">{qty}</span>
+                                    <button
+                                      onClick={() => updateCartQty(lineId, 1)}
+                                      className="w-6 h-6 flex items-center justify-center text-[#CE5535] hover:bg-[#FBEDE3] rounded"
+                                      aria-label="Increase quantity"
+                                    >
+                                      <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            <Link href={`/menu/${item.id}`} className="block pt-1">
+                              <div className="flex items-center gap-1.5 mb-0.5">
+                                <VegBadge isVeg={item.isVeg ?? item.is_veg ?? true} size="sm" />
+                                <h3 className="font-extrabold text-sm text-[#2B1A12] truncate">
+                                  {item.name}
+                                </h3>
+                              </div>
+                              <p className="font-extrabold text-[15px] text-[#2B1A12]">
+                                {formatPrice(item.price)}
+                              </p>
+                            </Link>
                           </div>
-                          <p className="font-extrabold text-[15px] text-[#2B1A12]">
-                            {formatPrice(item.price)}
-                          </p>
-                        </Link>
-                      </div>
-                    );
-                  })}
+                        );
+                      })}
                 </div>
               </section>
             )}
@@ -623,11 +770,19 @@ export default function MenuPage() {
                   {section.category.name}
                 </h2>
 
-                <div className="bg-[#FFFEF7] rounded-[22px] border border-[#EADFC7] divide-y divide-[#EADFC7]/70 overflow-hidden shadow-2xs">
-                  {section.items.map((item, itemIdx) =>
-                    renderMenuRow(item, sectionIdx === 0 && itemIdx < 3)
-                  )}
-                </div>
+                {effectiveTheme === 'grid' ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    {section.items.map((item, itemIdx) =>
+                      renderGridCard(item, sectionIdx === 0 && itemIdx < 4)
+                    )}
+                  </div>
+                ) : (
+                  <div className="bg-white rounded-[22px] border border-[#EADFC7] divide-y divide-[#EADFC7]/70 overflow-hidden shadow-2xs">
+                    {section.items.map((item, itemIdx) =>
+                      renderMenuRow(item, sectionIdx === 0 && itemIdx < 3)
+                    )}
+                  </div>
+                )}
               </section>
             ))}
           </>
@@ -661,6 +816,136 @@ export default function MenuPage() {
               <ArrowRight className="w-4 h-4 stroke-[2.5]" />
             </div>
           </Link>
+        </div>
+      )}
+
+      {/* Grid Theme Item Detail Bottom Sheet */}
+      {detailItem && (
+        <div
+          data-testid="grid-item-detail-sheet"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-[#2B1A12]/55 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={() => setDetailItem(null)}
+        >
+          <div
+            className="w-full max-w-[430px] bg-white rounded-t-[28px] p-5 pb-[max(24px,env(safe-area-inset-bottom))] shadow-2xl relative animate-in slide-in-from-bottom duration-200 max-h-[88dvh] overflow-y-auto"
+            style={{
+              transform: sheetDragY > 0 ? `translateY(${sheetDragY}px)` : undefined,
+              transition: sheetDragY === 0 ? 'transform 180ms ease-out' : undefined,
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onTouchStart={(e) => {
+              sheetTouchStartY.current = e.touches[0]?.clientY ?? null;
+            }}
+            onTouchMove={(e) => {
+              if (sheetTouchStartY.current === null) return;
+              const delta = e.touches[0].clientY - sheetTouchStartY.current;
+              if (delta > 0) setSheetDragY(delta);
+            }}
+            onTouchEnd={() => {
+              if (sheetDragY > 70) {
+                setDetailItem(null);
+              }
+              setSheetDragY(0);
+              sheetTouchStartY.current = null;
+            }}
+          >
+            {/* Top drag handle + close X button */}
+            <div className="flex items-center justify-between mb-3">
+              <div className="w-8" />
+              <div className="w-10 h-1.5 rounded-full bg-[#EADFC7]" />
+              <button
+                type="button"
+                data-testid="grid-detail-close"
+                onClick={() => setDetailItem(null)}
+                aria-label="Close item details"
+                className="w-8 h-8 rounded-full bg-[#FAF4E6] hover:bg-[#F4E7CC] flex items-center justify-center text-[#2B1A12]"
+              >
+                <X className="w-4 h-4 stroke-[2.5]" />
+              </button>
+            </div>
+
+            {/* Large Photo */}
+            <div className="relative w-full aspect-[4/3] rounded-[20px] overflow-hidden bg-[#FAF4E6] mb-4">
+              <SafeImage
+                src={detailItem.image || detailItem.image_url || DEFAULT_MENU_IMAGE}
+                alt={detailItem.name}
+                variant="tile"
+                fill
+                sizes="(max-width: 430px) 92vw, 390px"
+                className="object-cover"
+              />
+            </div>
+
+            {/* Veg mark + Name */}
+            <div className="flex items-start gap-2 mb-3">
+              <div className="pt-1 shrink-0">
+                <VegBadge isVeg={detailItem.isVeg ?? detailItem.is_veg ?? true} size="sm" />
+              </div>
+              <h3 className="font-display font-extrabold text-[20px] text-[#2B1A12] leading-snug">
+                {detailItem.name}
+              </h3>
+            </div>
+
+            {/* Yellow price tag + ADD / Stepper */}
+            <div className="flex items-center justify-between gap-3">
+              <span
+                className="inline-block bg-[#FFD23F] text-[#2B1A12] font-extrabold text-[15px] px-2.5 py-1 rounded-[6px] tabular-nums"
+                style={{ transform: 'skewX(-8deg)' }}
+              >
+                <span className="inline-block" style={{ transform: 'skewX(8deg)' }}>
+                  {formatPrice(detailItem.price)}
+                </span>
+              </span>
+
+              {(() => {
+                const sheetQty = getItemQty(detailItem.id);
+                const sheetLineId = getItemLineId(detailItem.id);
+                if (sheetQty === 0) {
+                  return (
+                    <button
+                      type="button"
+                      data-testid="grid-detail-add"
+                      onClick={() => handleAddItem(detailItem)}
+                      className="h-[40px] px-6 rounded-[12px] bg-white border border-[#EADFC7] text-[#CE5535] font-black text-xs tracking-wider shadow-xs hover:bg-[#FFFEF7] active:scale-95 transition-transform uppercase"
+                    >
+                      ADD
+                    </button>
+                  );
+                }
+                return (
+                  <div className="h-[40px] min-w-[112px] rounded-[12px] bg-white border border-[#CE5535] text-[#2B1A12] font-black text-xs shadow-xs flex items-center justify-between px-2.5">
+                    <button
+                      type="button"
+                      onClick={() => updateCartQty(sheetLineId, -1)}
+                      className="w-7 h-7 flex items-center justify-center text-[#CE5535] hover:bg-[#FBEDE3] rounded"
+                      aria-label="Decrease quantity"
+                    >
+                      <Minus className="w-4 h-4 stroke-[3]" />
+                    </button>
+                    <span className="font-extrabold text-sm">{sheetQty}</span>
+                    <button
+                      type="button"
+                      onClick={() => updateCartQty(sheetLineId, 1)}
+                      className="w-7 h-7 flex items-center justify-center text-[#CE5535] hover:bg-[#FBEDE3] rounded"
+                      aria-label="Increase quantity"
+                    >
+                      <Plus className="w-4 h-4 stroke-[3]" />
+                    </button>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Description block (only if non-empty) */}
+            {detailItem.description && detailItem.description.trim() && (
+              <p
+                data-testid="grid-detail-description"
+                className="mt-4 pt-3 border-t border-[#EADFC7]/70 text-[13px] text-[#75604F] leading-relaxed"
+              >
+                {detailItem.description}
+              </p>
+            )}
+          </div>
         </div>
       )}
 
@@ -702,5 +987,19 @@ export default function MenuPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function MenuPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-white flex items-center justify-center p-6">
+          <div className="w-10 h-10 border-3 border-[#CE5535] border-t-transparent rounded-full animate-spin" />
+        </div>
+      }
+    >
+      <MenuPageContent />
+    </Suspense>
   );
 }

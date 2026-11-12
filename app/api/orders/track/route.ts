@@ -48,17 +48,18 @@ export async function GET(req: NextRequest) {
       );
     }
 
-    // 2. Query param validation
+    // 2. Query param validation (unguessable UUID or cf_order_id only)
     const { searchParams } = new URL(req.url);
     const orderId = searchParams.get('id') || searchParams.get('order_id');
-    const pickupCode = searchParams.get('code');
 
-    if (!orderId && !pickupCode) {
+    if (!orderId || !orderId.trim()) {
       return NextResponse.json(
-        { error: 'Order id or pickup code is required' },
+        { error: 'Order id is required' },
         { status: 400 }
       );
     }
+
+    const cleanOrderId = orderId.trim();
 
     let sql = `
       SELECT o.id, o.status, o.pickup_code, o.items, o.total, o.cancel_reason, o.created_at,
@@ -68,18 +69,12 @@ export async function GET(req: NextRequest) {
       FROM public.orders o
       LEFT JOIN public.outlets ot ON o.outlet_id = ot.id
     `;
-    const params: unknown[] = [];
+    const params: unknown[] = [cleanOrderId];
 
-    if (orderId) {
-      params.push(orderId);
-      if (isUuid(orderId)) {
-        sql += ' WHERE o.id = $1 LIMIT 1';
-      } else {
-        sql += ' WHERE o.cf_order_id = $1 LIMIT 1';
-      }
+    if (isUuid(cleanOrderId)) {
+      sql += ' WHERE o.id = $1 LIMIT 1';
     } else {
-      params.push(pickupCode);
-      sql += ' WHERE o.pickup_code = $1 ORDER BY o.created_at DESC LIMIT 1';
+      sql += ' WHERE o.cf_order_id = $1 LIMIT 1';
     }
 
     let res = await query(sql, params);

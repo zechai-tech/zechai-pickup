@@ -13,10 +13,9 @@ export function ActiveOrderBanner() {
   const checkActiveOrder = useCallback(async () => {
     try {
       const storedId = sessionStorage.getItem('activeOrderId');
-      const storedCode = sessionStorage.getItem('activeOrderCode');
       const storedTime = sessionStorage.getItem('activeOrderTime');
 
-      if (!storedId && !storedCode) {
+      if (!storedId) {
         setActiveCode(null);
         return;
       }
@@ -33,11 +32,9 @@ export function ActiveOrderBanner() {
         }
       }
 
-      const param = storedId
-        ? `id=${encodeURIComponent(storedId)}`
-        : `code=${encodeURIComponent(storedCode!)}`;
-
-      const res = await fetch(`/api/orders/track?${param}`, { cache: 'no-store' });
+      const res = await fetch(`/api/orders/track?id=${encodeURIComponent(storedId)}`, {
+        cache: 'no-store',
+      });
       if (!res.ok) {
         if (res.status === 404) {
           setActiveCode(null);

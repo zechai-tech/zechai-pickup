@@ -42,6 +42,13 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // 0. Fetch outlet's active menu_theme ('classic' | 'grid')
+    const outletThemeRes = await query(
+      `SELECT menu_theme FROM public.outlets WHERE id = $1::uuid LIMIT 1`,
+      [outletId]
+    );
+    const menuTheme = outletThemeRes.rows[0]?.menu_theme === 'grid' ? 'grid' : 'classic';
+
     // 1. Fetch curated per-outlet bestsellers (only available + categorized items)
     const bsRes = await query(
       `SELECT m.id, m.outlet_id, m.name, m.description, m.price, m.category,
@@ -95,6 +102,7 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(
       {
+        menu_theme: menuTheme,
         categories,
         bestsellers,
         bestseller_ids: bestsellerIds,

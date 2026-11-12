@@ -2,6 +2,9 @@ import { query } from '@/lib/db';
 
 export interface SyncResult {
   orderId: string;
+  cfOrderId?: string | null;
+  cfOrderStatus?: string | null;
+  cfPaymentStatus?: string | null;
   updated: boolean;
   paid: boolean;
   pending?: boolean;
@@ -70,19 +73,27 @@ export async function verifyAndSyncOrder(
     const orderId = order.id;
     const currentStatus = order.status;
 
-    // If order is already paid and moved past pending_payment, return as paid
+    // If order is already paid and moved past pending_payment, return as paid (never overwrite later stages)
     if (
       order.payment_status === 'success' ||
       (currentStatus !== 'pending_payment' &&
         currentStatus !== 'payment_cancelled' &&
         currentStatus !== 'payment_failed')
     ) {
+      const isPaidStatus =
+        order.payment_status === 'success' ||
+        ['pending', 'preparing', 'packaging', 'ready', 'received', 'confirmed', 'completed'].includes(
+          String(currentStatus || '').toLowerCase()
+        );
       return {
         orderId,
+        cfOrderId: order.cf_order_id || null,
+        cfOrderStatus: isPaidStatus ? 'PAID' : null,
+        cfPaymentStatus: isPaidStatus ? 'SUCCESS' : null,
         updated: false,
-        paid: order.payment_status === 'success' || currentStatus !== 'pending_payment',
+        paid: isPaidStatus,
         status: currentStatus,
-        payment_status: order.payment_status || 'success',
+        payment_status: order.payment_status || (isPaidStatus ? 'success' : 'unpaid'),
       };
     }
 
@@ -173,13 +184,17 @@ export async function verifyAndSyncOrder(
       }
     }
 
-    // 1. Check for SUCCESS / PAID payment
+    const cfOrderStatus = cfOrder?.order_status ? String(cfOrder.order_status) : null;
+
+    // 1. Check for SUCCESS / PAID payment (either in /payments list or order_status === 'PAID')
     const successfulPayment = paymentsList.find(
       (p: any) => p.payment_status === 'SUCCESS' || p.payment_status === 'PAID'
     );
 
-    if (successfulPayment) {
-      const paidAmount = Number(successfulPayment.payment_amount || 0);
+    if (successfulPayment || cfOrderStatus === 'PAID') {
+      const paidAmount = Number(
+        successfulPayment?.payment_amount ?? cfOrder?.order_amount ?? 0
+      );
       const expectedTotal = Number(order.total);
 
       // Verify payment amount matches order total
@@ -188,11 +203,16 @@ export async function verifyAndSyncOrder(
           `Payment amount mismatch for order ${orderId}: expected ₹${expectedTotal}, received ₹${paidAmount}`
         );
         await query(
-          `UPDATE public.orders SET payment_status = 'amount_mismatch', updated_at = now() WHERE id = $1`,
+          `UPDATE public.orders
+           SET payment_status = 'amount_mismatch', updated_at = now()
+           WHERE id = $1 AND status IN ('pending_payment', 'payment_cancelled', 'payment_failed')`,
           [orderId]
         );
         return {
           orderId,
+          cfOrderId,
+          cfOrderStatus,
+          cfPaymentStatus: successfulPayment?.payment_status || 'PAID',
           updated: true,
           paid: false,
           status: 'amount_mismatch',
@@ -202,32 +222,37 @@ export async function verifyAndSyncOrder(
       }
 
       const paymentMethod =
-        successfulPayment.payment_group ||
-        (successfulPayment.payment_method?.upi ? 'upi' : null) ||
-        (successfulPayment.payment_method?.card ? 'card' : null) ||
+        successfulPayment?.payment_group ||
+        (successfulPayment?.payment_method?.upi ? 'upi' : null) ||
+        (successfulPayment?.payment_method?.card ? 'card' : null) ||
         'cashfree';
-      const cfPaymentId = String(successfulPayment.cf_payment_id || '');
-      const paidAt = successfulPayment.payment_time || new Date().toISOString();
+      const cfPaymentId = String(successfulPayment?.cf_payment_id || '');
+      const paidAt = successfulPayment?.payment_time || new Date().toISOString();
 
-      await query(
+      const updateRes = await query(
         `UPDATE public.orders
          SET status = 'pending',
              payment_status = 'success',
-             cf_payment_id = $1,
-             payment_id = COALESCE(payment_id, $1),
-             payment_method = $2,
-             paid_at = $3,
+             cf_payment_id = COALESCE(NULLIF($1, ''), cf_payment_id),
+             payment_id = COALESCE(payment_id, NULLIF($1, '')),
+             payment_method = COALESCE(payment_method, $2),
+             paid_at = COALESCE(paid_at, $3),
              updated_at = now()
-         WHERE id = $4`,
+         WHERE id = $4
+           AND status IN ('pending_payment', 'payment_cancelled', 'payment_failed')
+         RETURNING id, status`,
         [cfPaymentId, paymentMethod, paidAt, orderId]
       );
 
       return {
         orderId,
-        updated: true,
+        cfOrderId,
+        cfOrderStatus,
+        cfPaymentStatus: successfulPayment?.payment_status || 'PAID',
+        updated: updateRes.rows.length > 0,
         paid: true,
         expired: false,
-        status: 'pending',
+        status: updateRes.rows[0]?.status || currentStatus,
         payment_status: 'success',
       };
     }
@@ -238,6 +263,9 @@ export async function verifyAndSyncOrder(
       // Never expire or cancel an order that has a payment currently PENDING
       return {
         orderId,
+        cfOrderId,
+        cfOrderStatus,
+        cfPaymentStatus: 'PENDING',
         updated: false,
         paid: false,
         pending: true,
@@ -258,18 +286,24 @@ export async function verifyAndSyncOrder(
       const paymentStatus =
         rawStatus === 'USER_DROPPED' ? 'dropped' : rawStatus === 'FAILED' ? 'failed' : 'failed';
 
+      let didUpdate = false;
       if (currentStatus === 'pending_payment') {
-        await query(
+        const upd = await query(
           `UPDATE public.orders
            SET status = 'payment_cancelled', payment_status = $1, updated_at = now()
-           WHERE id = $2`,
+           WHERE id = $2 AND status = 'pending_payment'
+           RETURNING id`,
           [paymentStatus, orderId]
         );
+        didUpdate = upd.rows.length > 0;
       }
 
       return {
         orderId,
-        updated: true,
+        cfOrderId,
+        cfOrderStatus,
+        cfPaymentStatus: rawStatus || 'FAILED',
+        updated: didUpdate,
         paid: false,
         status: 'payment_cancelled',
         payment_status: paymentStatus,
@@ -277,18 +311,24 @@ export async function verifyAndSyncOrder(
     }
 
     // 4. Cashfree order_status is EXPIRED or TERMINATED
-    if (cfOrder?.order_status === 'EXPIRED' || cfOrder?.order_status === 'TERMINATED') {
+    if (cfOrderStatus === 'EXPIRED' || cfOrderStatus === 'TERMINATED') {
+      let didUpdate = false;
       if (currentStatus === 'pending_payment') {
-        await query(
+        const upd = await query(
           `UPDATE public.orders
            SET status = 'payment_cancelled', payment_status = 'expired', updated_at = now()
-           WHERE id = $1`,
+           WHERE id = $1 AND status = 'pending_payment'
+           RETURNING id`,
           [orderId]
         );
+        didUpdate = upd.rows.length > 0;
       }
       return {
         orderId,
-        updated: true,
+        cfOrderId,
+        cfOrderStatus,
+        cfPaymentStatus: null,
+        updated: didUpdate,
         paid: false,
         expired: true,
         status: 'payment_cancelled',
@@ -296,36 +336,21 @@ export async function verifyAndSyncOrder(
       };
     }
 
-    // 5. Customer returned to return URL and Cashfree shows no attempts and order is ACTIVE
-    if (options?.isReturnCheck && paymentsList.length === 0 && (cfOrder?.order_status === 'ACTIVE' || !cfOrder)) {
-      if (currentStatus === 'pending_payment') {
-        await query(
-          `UPDATE public.orders
-           SET status = 'payment_cancelled', payment_status = 'abandoned', updated_at = now()
-           WHERE id = $1`,
-          [orderId]
-        );
-      }
-      return {
-        orderId,
-        updated: true,
-        paid: false,
-        status: 'payment_cancelled',
-        payment_status: 'abandoned',
-      };
-    }
-
-    // 6. 20-minute auto-expiry for background cleanup
-    if (isOlderThan20Min && currentStatus === 'pending_payment') {
-      await query(
+    // 5. 20-minute auto-expiry for background cleanup (only when not an active return check)
+    if (!options?.isReturnCheck && isOlderThan20Min && currentStatus === 'pending_payment') {
+      const upd = await query(
         `UPDATE public.orders
          SET status = 'payment_cancelled', payment_status = 'expired', updated_at = now()
-         WHERE id = $1`,
+         WHERE id = $1 AND status = 'pending_payment'
+         RETURNING id`,
         [orderId]
       );
       return {
         orderId,
-        updated: true,
+        cfOrderId,
+        cfOrderStatus,
+        cfPaymentStatus: null,
+        updated: upd.rows.length > 0,
         paid: false,
         expired: true,
         status: 'payment_cancelled',
@@ -333,10 +358,15 @@ export async function verifyAndSyncOrder(
       };
     }
 
+    // Still ACTIVE / awaiting payment confirmation
     return {
       orderId,
+      cfOrderId,
+      cfOrderStatus,
+      cfPaymentStatus: null,
       updated: false,
       paid: false,
+      pending: currentStatus === 'pending_payment',
       status: currentStatus,
       payment_status: order.payment_status || 'unpaid',
     };

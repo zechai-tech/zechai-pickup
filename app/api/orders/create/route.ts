@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
 import { computeOrderTotal } from '@/lib/pricing';
+import { verifyAndSyncOrder } from '@/lib/order-sync';
+
+function normalizeCartSignature(rawItems: any[]): string {
+  if (!Array.isArray(rawItems)) return '';
+  return rawItems
+    .map((it) => `${String(it.id || it.menu_item_id || '')}:${Number(it.quantity ?? it.qty ?? 1)}`)
+    .sort()
+    .join('|');
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -176,6 +185,56 @@ export async function POST(req: NextRequest) {
         { error: 'Order total must be greater than zero' },
         { status: 400 }
       );
+    }
+
+    // Check for an existing pending_payment order in the last 15 minutes for the same phone & cart
+    const targetSig = normalizeCartSignature(verifiedOrderItems);
+    const recentRes = await query(
+      `SELECT *
+       FROM public.orders
+       WHERE outlet_id = $1
+         AND customer_phone = $2
+         AND total = $3
+         AND status = 'pending_payment'
+         AND created_at >= now() - interval '15 minutes'
+       ORDER BY created_at DESC
+       LIMIT 3`,
+      [outlet_id, cleanPhone, grandTotal]
+    );
+
+    for (const existingOrder of recentRes.rows) {
+      if (normalizeCartSignature(existingOrder.items) !== targetSig) continue;
+
+      const syncRes = await verifyAndSyncOrder(existingOrder);
+      if (syncRes.paid) {
+        console.log(
+          JSON.stringify({
+            event: 'order_create_dedup',
+            action: 'already_paid',
+            order_id: existingOrder.id,
+          })
+        );
+        return NextResponse.json({
+          already_paid: true,
+          order_id: existingOrder.id,
+          total: Number(existingOrder.total),
+        });
+      }
+
+      if (syncRes.status === 'pending_payment') {
+        console.log(
+          JSON.stringify({
+            event: 'order_create_dedup',
+            action: 'reuse_pending',
+            order_id: existingOrder.id,
+          })
+        );
+        return NextResponse.json({
+          order_id: existingOrder.id,
+          total: Number(existingOrder.total),
+          reused: true,
+        });
+      }
     }
 
     // Generate unique 4-digit pickup code per outlet per day on server

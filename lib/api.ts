@@ -1,8 +1,9 @@
-import { MenuItem, Outlet } from '@/types';
+import { MenuItem, MenuTheme, Outlet } from '@/types';
 import { getOutletAvailability } from './outlets';
 import { MenuCategoryDef } from './menu-categories';
 
 export interface CustomerMenuResponse {
+  menu_theme: MenuTheme;
   categories: MenuCategoryDef[];
   bestsellers: MenuItem[];
   bestseller_ids: string[];
@@ -51,7 +52,7 @@ export async function getOutletById(id: string): Promise<Outlet | null> {
 
 export async function getOutletMenuData(outletId: string): Promise<CustomerMenuResponse> {
   if (!outletId) {
-    return { categories: [], bestsellers: [], bestseller_ids: [], items: [] };
+    return { menu_theme: 'classic', categories: [], bestsellers: [], bestseller_ids: [], items: [] };
   }
 
   try {
@@ -60,10 +61,11 @@ export async function getOutletMenuData(outletId: string): Promise<CustomerMenuR
       headers: { 'Cache-Control': 'no-cache' },
     });
     if (!res.ok) {
-      return { categories: [], bestsellers: [], bestseller_ids: [], items: [] };
+      return { menu_theme: 'classic', categories: [], bestsellers: [], bestseller_ids: [], items: [] };
     }
     const data = await res.json();
     return {
+      menu_theme: data.menu_theme === 'grid' ? 'grid' : 'classic',
       categories: Array.isArray(data.categories) ? data.categories : [],
       bestsellers: Array.isArray(data.bestsellers) ? data.bestsellers : [],
       bestseller_ids: Array.isArray(data.bestseller_ids) ? data.bestseller_ids : [],
@@ -71,7 +73,7 @@ export async function getOutletMenuData(outletId: string): Promise<CustomerMenuR
     };
   } catch (err) {
     console.error('Error fetching menu data:', err);
-    return { categories: [], bestsellers: [], bestseller_ids: [], items: [] };
+    return { menu_theme: 'classic', categories: [], bestsellers: [], bestseller_ids: [], items: [] };
   }
 }
 

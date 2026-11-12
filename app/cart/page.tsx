@@ -156,14 +156,21 @@ export default function CartPage() {
       const orderId = createData.order_id;
       const verifiedTotal = Number(createData.total);
 
-      sessionStorage.setItem(
-        'pendingOrder',
-        JSON.stringify({
-          orderId,
-          outletName: selectedOutletName,
-          total: verifiedTotal,
-        })
-      );
+      if (createData.already_paid) {
+        isNavigatingToSuccessRef.current = true;
+        try {
+          sessionStorage.removeItem('zc_pending_order');
+          sessionStorage.removeItem('pendingOrder');
+        } catch {}
+        clearCart();
+        router.replace(`/order-success?id=${encodeURIComponent(orderId)}`);
+        return;
+      }
+
+      try {
+        sessionStorage.setItem('zc_pending_order', orderId);
+        sessionStorage.removeItem('pendingOrder');
+      } catch {}
 
       // 2. Fetch payment gateway configuration
       const { data: settings } = await (supabase.from('app_settings') as any)
@@ -190,6 +197,16 @@ export default function CartPage() {
 
         const cfOrder = await cfResponse.json();
 
+        if (cfOrder.already_paid) {
+          isNavigatingToSuccessRef.current = true;
+          try {
+            sessionStorage.removeItem('zc_pending_order');
+          } catch {}
+          clearCart();
+          router.replace(`/order-success?id=${encodeURIComponent(cfOrder.order_id || orderId)}`);
+          return;
+        }
+
         if (!cfOrder.payment_session_id) {
           showToast('Payment initialization failed.', 'error');
           setErrorMsg(cfOrder.error || 'Payment initialization failed.');
@@ -209,15 +226,16 @@ export default function CartPage() {
             redirectTarget: '_self',
           })
           .then((result: any) => {
-            if (result.paymentDetails) {
+            if (result?.paymentDetails) {
               isNavigatingToSuccessRef.current = true;
-              sessionStorage.removeItem('pendingOrder');
-              window.location.href = `/order-success?id=${orderId}&outlet=${encodeURIComponent(
-                selectedOutletName
-              )}&total=${verifiedTotal}`;
+              window.location.href = `/payment/return?order_id=${encodeURIComponent(
+                cfOrder.order_id || orderId
+              )}`;
             }
-            if (result.error) {
-              sessionStorage.removeItem('pendingOrder');
+            if (result?.error) {
+              try {
+                sessionStorage.removeItem('zc_pending_order');
+              } catch {}
               showToast('Payment failed.', 'error');
               setErrorMsg('Payment failed.');
               setSubmitting(false);
@@ -227,7 +245,9 @@ export default function CartPage() {
           })
           .catch((err: any) => {
             console.error('Cashfree checkout error:', err);
-            sessionStorage.removeItem('pendingOrder');
+            try {
+              sessionStorage.removeItem('zc_pending_order');
+            } catch {}
             showToast('Payment cancelled or failed.', 'info');
             setErrorMsg('Payment cancelled.');
             setSubmitting(false);
@@ -279,14 +299,17 @@ export default function CartPage() {
               console.error('Post-payment error:', err);
             }
 
-            sessionStorage.removeItem('pendingOrder');
-            window.location.href = `/order-success?id=${orderId}&outlet=${encodeURIComponent(
-              selectedOutletName
-            )}&total=${verifiedTotal}`;
+            try {
+              sessionStorage.removeItem('zc_pending_order');
+              sessionStorage.removeItem('pendingOrder');
+            } catch {}
+            window.location.href = `/order-success?id=${encodeURIComponent(orderId)}`;
           },
           modal: {
             ondismiss: function () {
-              sessionStorage.removeItem('pendingOrder');
+              try {
+                sessionStorage.removeItem('zc_pending_order');
+              } catch {}
               setSubmitting(false);
               setIsGatewayLoading(false);
               isSubmittingRef.current = false;
@@ -305,7 +328,9 @@ export default function CartPage() {
 
         const rzp = new (window as any).Razorpay(options);
         rzp.on('payment.failed', function () {
-          sessionStorage.removeItem('pendingOrder');
+          try {
+            sessionStorage.removeItem('zc_pending_order');
+          } catch {}
           setSubmitting(false);
           setIsGatewayLoading(false);
           isSubmittingRef.current = false;
@@ -550,8 +575,14 @@ export default function CartPage() {
       {/* Sticky Bottom CTA: "<total> Proceed to pay →" */}
       <div className="fixed bottom-0 left-0 right-0 max-w-[430px] mx-auto p-4 bg-[#FDFBEA]/95 backdrop-blur-md border-t border-[#EADFC7]/80 z-30">
         <button
-          onClick={() => setIsPhoneModalOpen(true)}
-          className="w-full h-[56px] rounded-[20px] bg-[#CE5535] text-[#FDFBEA] font-extrabold text-[16px] flex items-center justify-between px-5 shadow-[0_10px_24px_rgba(206,85,53,0.25)] hover:bg-[#A8401F] active:scale-[0.98] transition-all"
+          type="button"
+          disabled={submitting || isPhoneModalOpen}
+          onClick={() => {
+            if (!submitting && !isPhoneModalOpen) {
+              setIsPhoneModalOpen(true);
+            }
+          }}
+          className="w-full h-[56px] rounded-[20px] bg-[#CE5535] text-[#FDFBEA] font-extrabold text-[16px] flex items-center justify-between px-5 shadow-[0_10px_24px_rgba(206,85,53,0.25)] hover:bg-[#A8401F] active:scale-[0.98] transition-all disabled:opacity-60 disabled:pointer-events-none"
         >
           <span className="tabular-nums font-black text-[17px]">
             {formatPrice(toPay)}

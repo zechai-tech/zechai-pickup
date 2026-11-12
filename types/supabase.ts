@@ -1,5 +1,7 @@
 export type UserRole = 'super_admin' | 'admin' | 'manager' | 'staff' | 'ordering_staff';
 
+export type MenuTheme = 'classic' | 'grid';
+
 export interface Outlet {
   id: string;
   name: string;
@@ -8,6 +10,7 @@ export interface Outlet {
   opening_time: string; // e.g. '15:00:00'
   closing_time: string; // e.g. '00:00:00'
   is_active: boolean;
+  menu_theme?: MenuTheme;
   created_at: string;
 }
 

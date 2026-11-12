@@ -1,5 +1,7 @@
 export type OutletStatus = 'open' | 'closed';
 
+export type MenuTheme = 'classic' | 'grid';
+
 export interface Outlet {
   id: string;
   name: string;
@@ -10,6 +12,7 @@ export interface Outlet {
   openingTime?: string;
   address?: string;
   phone?: string | null;
+  menu_theme?: MenuTheme;
 }
 
 export interface MenuItemOption {
