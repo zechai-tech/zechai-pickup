@@ -8,7 +8,7 @@ import { formatPrice } from '@/lib/utils';
 
 export function CartFloatingBar() {
   const { cart } = useZechaStore();
-  const { count, grandTotal } = getCartSummary(cart);
+  const { count, toPay } = getCartSummary(cart);
 
   if (count === 0) return null;
 
@@ -27,7 +27,7 @@ export function CartFloatingBar() {
               {count} {count === 1 ? 'item' : 'items'}
             </span>
             <span className="font-extrabold text-[17px] text-cream tabular-nums">
-              {formatPrice(grandTotal)}
+              {formatPrice(toPay)}
             </span>
           </div>
         </div>

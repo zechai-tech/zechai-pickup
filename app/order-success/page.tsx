@@ -3,53 +3,62 @@
 import React, { Suspense, useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import { SafeImage } from '@/components/ui/SafeImage';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import {
   Check,
   XCircle,
   RotateCcw,
-  AlertCircle,
   Loader2,
   RefreshCw,
+  Download,
 } from 'lucide-react';
 import { useZechaStore } from '@/lib/store';
-import { formatPrice } from '@/lib/utils';
+import { useToast } from '@/components/ui/Toast';
+import { formatPrice, formatTimeIST } from '@/lib/utils';
 
 type VerifyStatus = 'checking' | 'processing_long' | 'success' | 'failed';
 
-function formatTime12(dateStr?: string | Date): string {
-  const d = dateStr ? new Date(dateStr) : new Date();
-  let hours = d.getHours();
-  const minutes = d.getMinutes();
-  const ampm = hours >= 12 ? 'PM' : 'AM';
-  hours = hours % 12;
-  hours = hours ? hours : 12;
-  const m = minutes < 10 ? '0' + minutes : minutes;
-  return `${hours}:${m} ${ampm}`;
+interface SuccessOrderItem {
+  name: string;
+  price?: number;
+  unitPrice?: number;
+  quantity?: number;
+  qty?: number;
+}
+
+interface SuccessOrderData {
+  id: string;
+  pickup_code: string;
+  total: number;
+  items: SuccessOrderItem[];
+  outlet_name: string;
+  outlet_address?: string | null;
+  paid_at?: string | null;
+  payment_method?: string | null;
+  created_at?: string | null;
+}
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function OrderSuccessContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const clearCart = useZechaStore((state) => state.clearCart);
+  const { showToast } = useToast();
 
   const [verifyStatus, setVerifyStatus] = useState<VerifyStatus>('checking');
   const [failReason, setFailReason] = useState<string>('');
-  const [orderData, setOrderData] = useState<{
-    id: string;
-    pickup_code: string;
-    total: number;
-    outlet_name: string;
-    paid_at?: string;
-    payment_method?: string;
-    created_at?: string;
-  } | null>(null);
+  const [orderData, setOrderData] = useState<SuccessOrderData | null>(null);
 
   const startTimeRef = useRef<number>(Date.now());
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const isTerminatedRef = useRef<boolean>(false);
 
-  // Target Order identifier (UUID, Cashfree order_id, or pickup code)
   const targetOrderId =
     searchParams.get('id') ||
     searchParams.get('order_id') ||
@@ -94,31 +103,32 @@ function OrderSuccessContent() {
         const status = data.status || order?.status;
         const paymentStatus = data.payment_status || order?.payment_status;
 
-        // 1. Success condition
         if (
           data.paid === true ||
           paymentStatus === 'success' ||
-          ['pending', 'preparing', 'packaging', 'ready', 'received'].includes(status)
+          ['pending', 'preparing', 'packaging', 'ready', 'received', 'confirmed', 'completed'].includes(status)
         ) {
           isTerminatedRef.current = true;
           setVerifyStatus('success');
 
           const finalId = data.orderId || order?.id || parsedSessionOrderId || '';
           const finalCode = data.pickup_code || order?.pickup_code || targetCode || '7309';
-          const finalTotal = data.total || order?.total || 0;
-          const finalOutlet = data.outlet_name || order?.outlet_name || 'Deleted outlet';
+          const finalTotal = Number(order?.total ?? data.total ?? 0);
+          const finalOutlet = order?.outlet_name || data.outlet_name || 'Deleted outlet';
+          const effectivePaidAt = order?.paid_at || order?.created_at || null;
 
           setOrderData({
             id: finalId,
             pickup_code: finalCode,
             total: finalTotal,
+            items: Array.isArray(order?.items) ? order.items : [],
             outlet_name: finalOutlet,
-            paid_at: order?.paid_at || new Date().toISOString(),
+            outlet_address: order?.outlet_address || null,
+            paid_at: effectivePaidAt,
             payment_method: order?.payment_method || 'UPI',
-            created_at: order?.created_at,
+            created_at: order?.created_at || effectivePaidAt,
           });
 
-          // Clear cart once order is verified and keep tracking only in sessionStorage
           clearCart();
           sessionStorage.removeItem('pendingOrder');
           sessionStorage.setItem('activeOrderCode', finalCode);
@@ -128,7 +138,6 @@ function OrderSuccessContent() {
           return;
         }
 
-        // 2. Failed / Cancelled condition
         if (
           ['cancelled', 'payment_cancelled', 'payment_failed'].includes(status) ||
           paymentStatus === 'failed' ||
@@ -141,7 +150,6 @@ function OrderSuccessContent() {
           return;
         }
 
-        // 3. Still pending/unpaid
         const elapsed = (Date.now() - startTimeRef.current) / 1000;
         if (elapsed > 20) {
           setVerifyStatus('processing_long');
@@ -161,10 +169,8 @@ function OrderSuccessContent() {
 
     const scheduleNextPoll = () => {
       if (isTerminatedRef.current) return;
-
       const elapsedSeconds = (Date.now() - startTimeRef.current) / 1000;
       const delay = elapsedSeconds >= 20 ? 4000 : 2000;
-
       timerRef.current = setTimeout(async () => {
         await verifyOrder(false);
         scheduleNextPoll();
@@ -178,10 +184,9 @@ function OrderSuccessContent() {
     };
   }, [verifyOrder]);
 
-  // Loading / Checking view
   if (verifyStatus === 'checking') {
     return (
-      <div className="min-h-screen bg-[#FDFBEA] flex flex-col items-center justify-center p-6 text-center page-transition">
+      <div className="min-h-[100dvh] bg-[#FDFBEA] flex flex-col items-center justify-center p-6 text-center page-transition">
         <div className="relative w-36 h-12 mb-6">
           <SafeImage
             src="/assets/logo-orange.v1.webp"
@@ -204,10 +209,9 @@ function OrderSuccessContent() {
     );
   }
 
-  // Processing long (>20s) view
   if (verifyStatus === 'processing_long') {
     return (
-      <div className="min-h-screen bg-[#FDFBEA] flex flex-col items-center justify-center p-6 text-center page-transition space-y-4">
+      <div className="min-h-[100dvh] bg-[#FDFBEA] flex flex-col items-center justify-center p-6 text-center page-transition space-y-4">
         <div className="w-14 h-14 rounded-full bg-[#FBEDE3] text-[#CE5535] flex items-center justify-center shadow-xs">
           <Loader2 className="w-7 h-7 animate-spin stroke-[2.5]" />
         </div>
@@ -215,7 +219,7 @@ function OrderSuccessContent() {
           We are still confirming.
         </h1>
         <p className="text-xs text-[#75604F] max-w-[280px]">
-          Your payment might take a few moments to confirm with your bank. Please don't pay again.
+          Your payment might take a few moments to confirm with your bank. Please don&apos;t pay again.
         </p>
         <button
           onClick={() => verifyOrder(false)}
@@ -228,10 +232,9 @@ function OrderSuccessContent() {
     );
   }
 
-  // Failed / Cancelled view
   if (verifyStatus === 'failed') {
     return (
-      <div className="min-h-screen bg-[#FDFBEA] flex flex-col items-center justify-center p-6 text-center page-transition space-y-4">
+      <div className="min-h-[100dvh] bg-[#FDFBEA] flex flex-col items-center justify-center p-6 text-center page-transition space-y-4">
         <div className="w-16 h-16 rounded-full bg-[#FDF0F0] border-2 border-[#BA1A1A]/30 text-[#BA1A1A] flex items-center justify-center shadow-xs">
           <XCircle className="w-8 h-8 stroke-[2.5]" />
         </div>
@@ -254,31 +257,102 @@ function OrderSuccessContent() {
     );
   }
 
-  // SCREEN 7: Payment Successful View (Page 7 Screenshot)
   const displayCode = orderData?.pickup_code || '7309';
   const digits = displayCode.padStart(4, '0').slice(-4).split('');
-  const displayTotal = orderData?.total ? formatPrice(orderData.total) : '₹291';
+  const displayTotal = formatPrice(orderData?.total || 0);
   const displayOutlet = orderData?.outlet_name || 'Deleted outlet';
   const shortOrderNum = orderData?.id
     ? `#ZC-${orderData.id.replace(/-/g, '').slice(-4).toUpperCase()}`
     : '#ZC-2481';
 
-  // Ready by time (~15 min from paid)
-  const readyByTime = formatTime12(
-    new Date(Date.now() + 15 * 60 * 1000)
-  );
-  const paidTime = formatTime12(orderData?.paid_at || new Date());
+  const baseTimestamp = orderData?.paid_at || orderData?.created_at || null;
+  const paidTime = formatTimeIST(baseTimestamp) || formatTimeIST(new Date());
+  const readyByTime = baseTimestamp
+    ? formatTimeIST(new Date(new Date(baseTimestamp).getTime() + 15 * 60 * 1000))
+    : formatTimeIST(new Date(Date.now() + 15 * 60 * 1000));
 
-  const handlePrintReceipt = () => {
-    if (typeof window !== 'undefined') {
+  const handleDownloadReceipt = () => {
+    if (!orderData || typeof window === 'undefined') return;
+
+    const rowsHtml = (orderData.items || [])
+      .map((item) => {
+        const qty = Number(item.quantity ?? item.qty ?? 1);
+        const unit = Number(item.unitPrice ?? item.price ?? 0);
+        return `<tr>
+          <td style="padding:8px 0;border-bottom:1px solid #eadfc7;">${escapeHtml(item.name)}</td>
+          <td style="padding:8px 0;border-bottom:1px solid #eadfc7;text-align:center;">${qty}</td>
+          <td style="padding:8px 0;border-bottom:1px solid #eadfc7;text-align:right;font-weight:700;">₹${Math.round(unit * qty)}</td>
+        </tr>`;
+      })
+      .join('');
+
+    const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Zécha! Receipt ${escapeHtml(shortOrderNum)}</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; background:#fdfbea; color:#2b1a12; margin:0; padding:24px; }
+    .card { max-width:420px; margin:0 auto; background:#fffef7; border:1px solid #eadfc7; border-radius:20px; padding:24px; }
+    .muted { color:#75604f; font-size:12px; }
+    table { width:100%; border-collapse:collapse; margin:16px 0; font-size:13px; }
+    th { text-align:left; font-size:11px; text-transform:uppercase; color:#75604f; padding-bottom:6px; border-bottom:1px solid #eadfc7; }
+    .total { display:flex; justify-content:space-between; font-size:17px; font-weight:800; padding-top:12px; border-top:2px dashed #eadfc7; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1 style="margin:0 0 4px;font-size:22px;color:#ce5535;">Zécha!</h1>
+    <div style="font-weight:700;font-size:14px;">${escapeHtml(displayOutlet)}</div>
+    ${orderData.outlet_address ? `<div class="muted">${escapeHtml(orderData.outlet_address)}</div>` : ''}
+    <hr style="border:none;border-top:1px solid #eadfc7;margin:14px 0;" />
+    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
+      <span>Order: <strong>${escapeHtml(shortOrderNum)}</strong></span>
+      <span>Time: <strong>${escapeHtml(paidTime)} IST</strong></span>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:12px;">
+      <span>Pickup Code: <strong>${escapeHtml(displayCode)}</strong></span>
+      <span>Method: <strong>${escapeHtml((orderData.payment_method || 'UPI').toUpperCase())}</strong></span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th style="text-align:center;">Qty</th>
+          <th style="text-align:right;">Amount</th>
+        </tr>
+      </thead>
+      <tbody>${rowsHtml || `<tr><td colspan="3" style="padding:8px 0;">Pickup Order</td></tr>`}</tbody>
+    </table>
+    <div class="total">
+      <span>Total Paid</span>
+      <span>${escapeHtml(displayTotal)}</span>
+    </div>
+    <p class="muted" style="text-align:center;margin-top:20px;">Thank you for ordering with Zécha! One cup every day.</p>
+  </div>
+</body>
+</html>`;
+
+    try {
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `zecha-receipt-${shortOrderNum.replace('#', '')}.html`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast('Receipt downloaded', 'success');
+    } catch {
       window.print();
     }
   };
 
   return (
-    <div className="min-h-screen bg-[#FDFBEA] flex flex-col justify-between p-5 pb-8 page-transition relative select-none">
+    <div className="min-h-[100dvh] w-full bg-[#FDFBEA] flex flex-col p-5 pt-4 pb-[max(28px,env(safe-area-inset-bottom))] page-transition relative select-none">
       {/* Top subtle doodle pattern background */}
-      <div className="absolute top-0 left-0 right-0 h-[220px] opacity-15 pointer-events-none overflow-hidden -z-0">
+      <div className="absolute top-0 left-0 right-0 h-[200px] opacity-15 pointer-events-none overflow-hidden -z-0 print:hidden">
         <SafeImage
           src="/assets/pattern.v1.webp"
           alt=""
@@ -288,22 +362,19 @@ function OrderSuccessContent() {
         />
       </div>
 
-      <div className="relative z-10 w-full flex flex-col items-center pt-3 space-y-4">
-        {/* Concentric rings: 148px outer, 116px middle, 86px center accent with white checkmark */}
-        <div className="relative w-[148px] h-[148px] flex items-center justify-center shrink-0">
-          {/* Outer Ring (148px) */}
-          <div className="w-[148px] h-[148px] rounded-full bg-[#FBEDE3] absolute inset-0 animate-in zoom-in-50 duration-300" />
-          {/* Middle Ring (116px) */}
-          <div className="w-[116px] h-[116px] rounded-full bg-[#F4D6C8] absolute animate-in zoom-in-75 duration-350" />
-          {/* Center Accent Circle (86px) */}
-          <div className="w-[86px] h-[86px] rounded-full bg-[#CE5535] text-white absolute flex items-center justify-center shadow-lg shadow-[#CE5535]/30 animate-in zoom-in-95 duration-400">
-            <Check className="w-10 h-10 stroke-[3.5]" />
+      <div className="relative z-10 w-full flex flex-col items-center pt-2 space-y-3.5 print:hidden">
+        {/* Concentric check rings */}
+        <div className="relative w-[124px] h-[124px] flex items-center justify-center shrink-0">
+          <div className="w-[124px] h-[124px] rounded-full bg-[#FBEDE3] absolute inset-0 animate-in zoom-in-50 duration-300" />
+          <div className="w-[96px] h-[96px] rounded-full bg-[#F4D6C8] absolute animate-in zoom-in-75 duration-350" />
+          <div className="w-[72px] h-[72px] rounded-full bg-[#CE5535] text-white absolute flex items-center justify-center shadow-lg shadow-[#CE5535]/30 animate-in zoom-in-95 duration-400">
+            <Check className="w-9 h-9 stroke-[3.5]" />
           </div>
         </div>
 
         {/* Headings */}
         <div className="text-center space-y-0.5">
-          <h1 className="font-display text-[26px] font-extrabold text-[#2B1A12] tracking-tight">
+          <h1 className="font-display text-[24px] font-extrabold text-[#2B1A12] tracking-tight">
             Payment successful
           </h1>
           <p className="text-[14px] text-[#75604F] font-semibold">
@@ -311,57 +382,46 @@ function OrderSuccessContent() {
           </p>
         </div>
 
-        {/* Ticket Card with side circular notches and dashed divider */}
+        {/* Ticket Card */}
         <div className="w-full bg-[#FFFEF7] rounded-[24px] border border-[#EADFC7] shadow-sm relative overflow-hidden">
-          {/* Top Row: Order number & Ready by */}
           <div className="p-4 px-5 flex items-center justify-between">
             <div>
-              <span className="text-[11px] font-bold text-[#75604F] block">
-                Order number
-              </span>
+              <span className="text-[11px] font-bold text-[#75604F] block">Order number</span>
               <span className="font-display text-[17px] font-black text-[#2B1A12]">
                 {shortOrderNum}
               </span>
             </div>
             <div className="text-right">
-              <span className="text-[11px] font-bold text-[#75604F] block">
-                Ready by
-              </span>
+              <span className="text-[11px] font-bold text-[#75604F] block">Ready by</span>
               <span className="font-display text-[17px] font-black text-[#2B1A12]">
                 ~{readyByTime}
               </span>
             </div>
           </div>
 
-          {/* Dashed divider line with circular side notches */}
           <div className="relative w-full flex items-center">
-            {/* Left Notch */}
             <div className="w-4 h-6 bg-[#FDFBEA] rounded-r-full border-r border-t border-b border-[#EADFC7] -ml-px z-10" />
-            {/* Dashed Line */}
             <div className="flex-1 border-t border-dashed border-[#EADFC7]" />
-            {/* Right Notch */}
             <div className="w-4 h-6 bg-[#FDFBEA] rounded-l-full border-l border-t border-b border-[#EADFC7] -mr-px z-10" />
           </div>
 
-          {/* Bottom section of ticket: YOUR PICKUP CODE + 4 digit boxes */}
-          <div className="p-5 text-center space-y-3">
+          <div className="p-4 pb-5 text-center space-y-2.5">
             <span className="text-[11px] font-black text-[#CE5535] tracking-widest uppercase block">
               YOUR PICKUP CODE
             </span>
 
-            {/* 4 dark rounded boxes (54x64px, #2B1A12) with 30px cream numerals */}
             <div className="flex items-center justify-center gap-2.5">
               {digits.map((digit, i) => (
                 <div
                   key={i}
-                  className="w-[54px] h-[64px] rounded-[14px] bg-[#2B1A12] text-[#FDFBEA] flex items-center justify-center font-display font-extrabold text-[30px] shadow-sm"
+                  className="w-[52px] h-[60px] rounded-[14px] bg-[#2B1A12] text-[#FDFBEA] flex items-center justify-center font-display font-extrabold text-[28px] shadow-sm"
                 >
                   {digit}
                 </div>
               ))}
             </div>
 
-            <p className="text-[12px] text-[#75604F] font-medium pt-1">
+            <p className="text-[12px] text-[#75604F] font-medium pt-0.5">
               Show this at the counter to collect your order
             </p>
           </div>
@@ -371,30 +431,32 @@ function OrderSuccessContent() {
         <div className="w-full bg-[#F4E7CC] rounded-[18px] p-3 px-4 flex items-center gap-2.5 shadow-2xs">
           <span className="w-2.5 h-2.5 rounded-full bg-[#E8B125] shrink-0" />
           <p className="text-xs font-semibold text-[#2B1A12] leading-tight">
-            Sent to <span className="font-extrabold">{displayOutlet}</span>. Your order is now with the outlet.
+            Sent to <span className="font-extrabold">{displayOutlet}</span>. Your order is now with
+            the outlet.
           </p>
         </div>
 
-        {/* Screenshot reminder */}
         <p className="text-[11px] text-[#75604F] font-semibold text-center">
-          Take a screenshot or save your pickup code: <span className="font-black text-[#2B1A12]">{displayCode}</span>
+          Save your pickup code: <span className="font-black text-[#2B1A12]">{displayCode}</span>
         </p>
       </div>
 
-      {/* Bottom Buttons: Primary "Track my order" + Secondary "Download receipt" */}
-      <div className="w-full space-y-2.5 pt-4">
+      {/* Bottom Buttons in normal scrollable flow */}
+      <div className="relative z-10 w-full space-y-2.5 pt-4 pb-3 mt-auto print:hidden">
         <Link
           href={`/track-order?id=${orderData?.id || ''}&code=${displayCode}`}
-          className="w-full h-[56px] rounded-[20px] bg-[#CE5535] text-[#FDFBEA] font-extrabold text-[16px] flex items-center justify-center shadow-[0_10px_24px_rgba(206,85,53,0.25)] hover:bg-[#A8401F] active:scale-[0.98] transition-all"
+          className="w-full h-[52px] rounded-[20px] bg-[#CE5535] text-[#FDFBEA] font-extrabold text-[16px] flex items-center justify-center shadow-[0_10px_24px_rgba(206,85,53,0.25)] hover:bg-[#A8401F] active:scale-[0.98] transition-transform duration-150"
         >
           Track my order
         </Link>
 
         <button
-          onClick={handlePrintReceipt}
-          className="w-full h-[52px] rounded-[20px] bg-transparent border-2 border-[#EADFC7] text-[#2B1A12] font-bold text-sm flex items-center justify-center hover:bg-[#FFFEF7] active:scale-[0.98] transition-all"
+          type="button"
+          onClick={handleDownloadReceipt}
+          className="w-full h-[48px] rounded-[20px] bg-[#FFFEF7] border-2 border-[#EADFC7] text-[#2B1A12] font-bold text-sm flex items-center justify-center gap-2 hover:bg-[#F4E7CC]/40 active:scale-[0.98] transition-transform duration-150"
         >
-          Download receipt
+          <Download className="w-4 h-4" />
+          <span>Download receipt</span>
         </button>
       </div>
     </div>
@@ -405,7 +467,7 @@ export default function OrderSuccessPage() {
   return (
     <Suspense
       fallback={
-        <div className="min-h-screen bg-[#FDFBEA] flex flex-col items-center justify-center p-6">
+        <div className="min-h-[100dvh] bg-[#FDFBEA] flex flex-col items-center justify-center p-6">
           <div className="w-10 h-10 border-3 border-[#CE5535] border-t-transparent rounded-full animate-spin" />
         </div>
       }

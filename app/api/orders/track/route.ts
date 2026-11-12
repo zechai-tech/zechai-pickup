@@ -95,12 +95,24 @@ export async function GET(req: NextRequest) {
       try {
         const syncRes = await verifyAndSyncOrder(row.id);
         if (syncRes.updated && syncRes.status) {
-          row.status = syncRes.status;
+          const refreshedRes = await query(sql, params);
+          if (refreshedRes.rows.length > 0) {
+            row = refreshedRes.rows[0];
+          } else {
+            row.status = syncRes.status;
+          }
         }
       } catch (syncErr) {
         console.warn('Fallback sync notice during track:', syncErr);
       }
     }
+
+    const rowStatus = String(row.status || '').toLowerCase();
+    const effectivePaidAt =
+      row.paid_at ||
+      (['pending', 'preparing', 'packaging', 'ready', 'received', 'confirmed', 'completed'].includes(rowStatus)
+        ? row.created_at
+        : null);
 
     // Strictly return ONLY permitted public tracking fields (NEVER return customer_phone)
     const sanitizedOrder = {
@@ -113,7 +125,7 @@ export async function GET(req: NextRequest) {
       outlet_phone: row.outlet_phone || null,
       outlet_address: row.outlet_address || null,
       cancel_reason: row.cancel_reason || null,
-      paid_at: row.paid_at || null,
+      paid_at: effectivePaidAt,
       making_at: row.making_at || null,
       packaging_at: row.packaging_at || null,
       ready_at: row.ready_at || null,

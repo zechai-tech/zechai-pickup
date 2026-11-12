@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { Clock, AlertTriangle, CheckCircle2, Gauge, Info, X, Loader2 } from 'lucide-react';
 import { formatDurationSeconds, formatINR } from '@/lib/analytics-utils';
+import { computeHistoricalOrderTax } from '@/lib/pricing';
 import { AnalyticsEmpty } from './AnalyticsSkeleton';
 import { supabase } from '@/lib/supabase';
 import { useAdminStore } from '@/stores/admin-store';
@@ -414,6 +415,18 @@ export function KitchenSpeedTab({ data }: { data: KitchenSpeedData }) {
                         </li>
                       )
                     )}
+                    {(() => {
+                      const itemsArr = Array.isArray(inspectingOrder.items)
+                        ? inspectingOrder.items
+                        : [];
+                      const histTax = computeHistoricalOrderTax(inspectingOrder.total, itemsArr);
+                      return histTax > 0 ? (
+                        <li className="flex justify-between text-[#75604F] pt-1.5 border-t border-[#EADFC7]">
+                          <span>Tax (historical)</span>
+                          <span className="font-bold">{formatINR(histTax)}</span>
+                        </li>
+                      ) : null;
+                    })()}
                   </ul>
                 </div>
 

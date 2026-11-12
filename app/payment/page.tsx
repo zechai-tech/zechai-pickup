@@ -34,7 +34,7 @@ export default function PaymentPage() {
     setActiveOrder,
   } = useZechaStore();
 
-  const { count, itemTotal, gst, grandTotal } = getCartSummary(cart);
+  const { count, toPay } = getCartSummary(cart);
 
   // Temporary order ID for display on payment screen
   const [orderDisplayId] = useState(() => generateOrderId());
@@ -73,7 +73,7 @@ export default function PaymentPage() {
 
   // Compute button text based on selection
   const getButtonLabel = () => {
-    const formattedAmount = formatPrice(grandTotal);
+    const formattedAmount = formatPrice(toPay);
     if (method === 'upi') {
       if (upiIdInput.trim()) {
         return `Pay ${formattedAmount} with UPI ID`;
@@ -102,14 +102,14 @@ export default function PaymentPage() {
       code: pickupCode,
       placedAt: now,
       estimatedReadyTime: getEstimatedReadyTime(new Date(now), 12),
-      paidAmount: grandTotal,
+      paidAmount: toPay,
       paymentMethod: methodName,
       status: 'placed',
       outlet,
       items: [...cart],
-      itemTotal,
-      gst,
-      grandTotal,
+      itemTotal: toPay,
+      gst: 0,
+      grandTotal: toPay,
       customer,
       statusHistory: {
         placedAt: now,
@@ -168,7 +168,7 @@ export default function PaymentPage() {
               className="w-full shadow-orange font-bold h-12 text-sm"
             >
               <RefreshCw className="w-4 h-4 mr-2" />
-              Try again ({formatPrice(grandTotal)})
+              Try again ({formatPrice(toPay)})
             </Button>
 
             <button
@@ -231,7 +231,7 @@ export default function PaymentPage() {
               Paying {outlet?.name || 'Selected outlet'}
             </p>
             <h1 className="font-display text-3xl font-black text-cream tracking-tight mb-2">
-              {formatPrice(grandTotal)}
+              {formatPrice(toPay)}
             </h1>
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cream/15 text-[11px] font-medium text-cream backdrop-blur-sm">
               <span>Order #{orderDisplayId}</span>

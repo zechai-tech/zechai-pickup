@@ -45,7 +45,7 @@ export default function MenuPage() {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const listTopRef = useRef<HTMLDivElement>(null);
 
-  const { count, grandTotal } = getCartSummary(cart);
+  const { count, toPay } = getCartSummary(cart);
 
   // Guard: if no outlet selected, send user to /outlets
   useEffect(() => {
@@ -651,7 +651,7 @@ export default function MenuPage() {
                   {count} {count === 1 ? 'item' : 'items'}
                 </span>
                 <span className="font-extrabold text-[17px] text-[#FDFBEA] tabular-nums">
-                  {formatPrice(grandTotal)}
+                  {formatPrice(toPay)}
                 </span>
               </div>
             </div>

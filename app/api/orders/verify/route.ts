@@ -45,9 +45,12 @@ export async function POST(req: NextRequest) {
 
     // Fetch refreshed order details
     const orderRes = await query(
-      `SELECT o.id, o.status, o.payment_status, o.pickup_code, o.total,
+      `SELECT o.id, o.status, o.payment_status, o.pickup_code, o.total, o.items, o.payment_method,
+              COALESCE(o.paid_at, CASE WHEN o.payment_status = 'success' THEN o.created_at ELSE NULL END) as paid_at,
+              o.created_at,
               COALESCE(ot.name, NULLIF(o.outlet_name, ''), 'Deleted outlet') as outlet_name,
-              ot.phone as outlet_phone
+              ot.phone as outlet_phone,
+              ot.address as outlet_address
        FROM public.orders o
        LEFT JOIN public.outlets ot ON o.outlet_id = ot.id
        WHERE o.id = $1`,
@@ -65,8 +68,13 @@ export async function POST(req: NextRequest) {
             payment_status: orderRow.payment_status,
             pickup_code: orderRow.pickup_code,
             total: Number(orderRow.total),
+            items: Array.isArray(orderRow.items) ? orderRow.items : [],
+            payment_method: orderRow.payment_method || null,
+            paid_at: orderRow.paid_at || orderRow.created_at || null,
+            created_at: orderRow.created_at || null,
             outlet_name: orderRow.outlet_name || 'Deleted outlet',
             outlet_phone: orderRow.outlet_phone || null,
+            outlet_address: orderRow.outlet_address || null,
           }
         : null,
     });

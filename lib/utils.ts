@@ -17,6 +17,25 @@ export function formatTime(date: Date = new Date()): string {
   });
 }
 
+/**
+ * Formats any ISO date string or Date in Asia/Kolkata (IST) like "10:23 AM".
+ */
+export function formatTimeIST(dateStr?: string | Date | null): string {
+  if (!dateStr) return '';
+  const d = dateStr instanceof Date ? dateStr : new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return '';
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Kolkata',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).format(d);
+  } catch {
+    return formatTime(d);
+  }
+}
+
 export function getEstimatedReadyTime(date: Date = new Date(), minutesAhead = 15): string {
   const readyDate = new Date(date.getTime() + minutesAhead * 60 * 1000);
   return `~${formatTime(readyDate)}`;

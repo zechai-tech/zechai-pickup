@@ -15,7 +15,7 @@ export function PhoneFrame({ children }: PhoneFrameProps) {
     pathname?.startsWith('/staff') ||
     pathname === '/orders';
 
-  // Admin panel, staff portal login and orders screen are responsive
+  // Portal login and orders screens are responsive
   if (isPortal) {
     return <div className="min-h-screen bg-cream text-espresso w-full flex flex-col">{children}</div>;
   }

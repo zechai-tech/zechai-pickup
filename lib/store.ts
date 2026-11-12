@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { CartItem, CustomerDetails, Order, OrderStatus, Outlet } from '@/types';
 import { resolveImageUrl, DEFAULT_MENU_IMAGE } from '@/lib/images';
+import { computeOrderTotal } from '@/lib/pricing';
 
 interface ZechaState {
   // Outlet
@@ -178,11 +179,16 @@ export const useZechaStore = create<ZechaState>()(
   )
 );
 
-// Derived helper functions
+// Derived helper functions — delegates directly to single shared pricing source of truth
 export function getCartSummary(cart: CartItem[]) {
-  const count = cart.reduce((acc, item) => acc + item.qty, 0);
-  const itemTotal = cart.reduce((acc, item) => acc + Number(item.unitPrice || 0) * item.qty, 0);
-  const gst = Math.round(itemTotal * 0.05); // GST 5%
-  const grandTotal = itemTotal + gst;
-  return { count, itemTotal, gst, grandTotal };
+  const summary = computeOrderTotal(cart);
+  return {
+    count: summary.count,
+    total: summary.total,
+    tax: summary.tax,
+    toPay: summary.toPay,
+    itemTotal: summary.total,
+    gst: summary.tax,
+    grandTotal: summary.toPay,
+  };
 }

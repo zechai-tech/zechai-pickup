@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { query } from '@/lib/db';
+import { computeOrderTotal } from '@/lib/pricing';
 
 export async function POST(req: NextRequest) {
   try {
@@ -131,8 +132,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Recompute total on server and build verified order items
-    let recomputedTotal = 0;
+    // Recompute order total on server from DB item prices (zero tax/GST)
     const verifiedOrderItems: any[] = [];
 
     for (const reqItem of items) {
@@ -154,9 +154,8 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      const unitPrice = Number(dbItem.price) || 0;
+      const unitPrice = Math.round(Number(dbItem.price) || 0);
       const quantity = Number(reqItem.quantity);
-      recomputedTotal += unitPrice * quantity;
 
       verifiedOrderItems.push({
         id: dbItem.id,
@@ -169,16 +168,15 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    if (recomputedTotal <= 0) {
+    const pricing = computeOrderTotal(verifiedOrderItems);
+    const grandTotal = pricing.toPay;
+
+    if (grandTotal <= 0) {
       return NextResponse.json(
         { error: 'Order total must be greater than zero' },
         { status: 400 }
       );
     }
-
-    // 5% GST
-    const taxes = Math.round(recomputedTotal * 0.05);
-    const grandTotal = recomputedTotal + taxes;
 
     // Generate unique 4-digit pickup code per outlet per day on server
     const startOfToday = new Date();

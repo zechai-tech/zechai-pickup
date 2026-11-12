@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import Razorpay from 'razorpay';
+import { query } from '@/lib/db';
 
 export async function POST(req: Request) {
   try {
@@ -22,16 +23,44 @@ export async function POST(req: Request) {
       );
     }
 
-    const body = await req.json();
-    const { amount, currency = 'INR', receipt } = body;
+    const body = await req.json().catch(() => ({}));
+    const orderId = body.order_id || body.orderId;
 
-    // Minimum amount is 100 paise (₹1)
-    if (!amount || typeof amount !== 'number' || amount < 100) {
+    if (!orderId || typeof orderId !== 'string') {
       return NextResponse.json(
-        { error: 'Invalid amount. Minimum amount is 100 paise (₹1).' },
+        { error: 'Valid order_id is required' },
         { status: 400 }
       );
     }
+
+    // Load exact order total strictly from database (never trust client-sent amounts)
+    const orderRes = await query(
+      'SELECT id, total, status FROM public.orders WHERE id = $1 LIMIT 1',
+      [orderId]
+    );
+
+    if (orderRes.rows.length === 0) {
+      return NextResponse.json({ error: 'Order not found' }, { status: 404 });
+    }
+
+    const dbOrder = orderRes.rows[0];
+    if (dbOrder.status !== 'pending_payment') {
+      return NextResponse.json(
+        { error: `Order is not awaiting payment (status: ${dbOrder.status})` },
+        { status: 400 }
+      );
+    }
+
+    const amountRupees = Math.round(Number(dbOrder.total));
+    const amountPaise = amountRupees * 100;
+    if (!Number.isFinite(amountPaise) || amountPaise < 100) {
+      return NextResponse.json(
+        { error: 'Invalid order total. Minimum amount is ₹1.' },
+        { status: 400 }
+      );
+    }
+
+    console.log(`[Razorpay Order] orderId=${dbOrder.id} amount=${amountRupees}`);
 
     const razorpay = new Razorpay({
       key_id: keyId,
@@ -39,9 +68,9 @@ export async function POST(req: Request) {
     });
 
     const order = await razorpay.orders.create({
-      amount: Math.round(amount),
-      currency: currency || 'INR',
-      receipt: receipt || `rcpt_${Date.now()}`,
+      amount: amountPaise,
+      currency: 'INR',
+      receipt: body.receipt || `rcpt_${dbOrder.id.slice(0, 12)}`,
     });
 
     return NextResponse.json({

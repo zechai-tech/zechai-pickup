@@ -3,7 +3,8 @@
 import React, { useMemo, useState } from 'react';
 import { Order, OrderStatus } from '@/types/supabase';
 import { StatusBadge } from './StatusBadge';
-import { formatPrice } from '@/lib/utils';
+import { formatPrice, formatTimeIST } from '@/lib/utils';
+import { computeHistoricalOrderTax } from '@/lib/pricing';
 import { normalizeOrderStatus } from '@/lib/order-flow';
 import { useToast } from '@/components/ui/Toast';
 import {
@@ -78,6 +79,9 @@ export function OrderCard({
   };
 
   const itemsList = Array.isArray(order.items) ? order.items : [];
+  const explicitTax = Number((order as any).tax_amount || 0);
+  const historicalTax =
+    explicitTax > 0 ? explicitTax : computeHistoricalOrderTax(order.total, itemsList);
 
   return (
     <div
@@ -133,7 +137,11 @@ export function OrderCard({
           <div className="flex items-center gap-2 text-[11px] font-semibold text-espresso/60 shrink-0">
             <div className="flex items-center gap-1">
               <Clock className="w-3.5 h-3.5" />
-              <span>{timeSince}</span>
+              <span>
+                {canonicalStatus === 'received' && (order.received_at || order.updated_at)
+                  ? `Picked up ${formatTimeIST(order.received_at || order.updated_at)}`
+                  : timeSince}
+              </span>
             </div>
             {isCancelledTab && canDelete && onDeleteOrder && (
               <button
@@ -223,6 +231,12 @@ export function OrderCard({
                 </span>
               </div>
             ))}
+            {historicalTax > 0 && (
+              <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border/50 text-espresso/60">
+                <span>Tax (historical)</span>
+                <span className="font-bold">{formatPrice(historicalTax)}</span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -270,9 +284,14 @@ export function OrderCard({
         )}
       </div>
 
-      {/* Action Buttons Section */}
+      {/* Action Buttons Section (hidden for completed/received orders) */}
+      {(canonicalStatus === 'pending' ||
+        canonicalStatus === 'preparing' ||
+        canonicalStatus === 'packaging' ||
+        canonicalStatus === 'ready' ||
+        (isCancelledTab && canDelete && onDeleteOrder)) && (
       <div className="pt-2 border-t border-border/60 flex items-center gap-2">
-        {/* Pending Stage: Green tick "Confirm Order" moves to preparing + Cancel */}
+        {/* Pending Stage: "Confirm order" moves to preparing + Cancel */}
         {canonicalStatus === 'pending' && (
           <>
             <button
@@ -281,7 +300,7 @@ export function OrderCard({
               className="flex-1 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 bg-[#2F7A3E] text-white hover:bg-[#256332] active:scale-95 disabled:opacity-50 transition-all shadow-xs"
             >
               <Check className="w-4 h-4 stroke-[3]" />
-              <span>Confirm Order</span>
+              <span>Confirm order</span>
             </button>
             <button
               onClick={() => onRequestCancel(order)}
@@ -293,7 +312,7 @@ export function OrderCard({
           </>
         )}
 
-        {/* Making Stage (preparing): Green tick "Done Making" moves to packaging + Cancel */}
+        {/* Making Stage (preparing): "Start packaging" moves to packaging + Cancel */}
         {canonicalStatus === 'preparing' && (
           <>
             <button
@@ -301,8 +320,8 @@ export function OrderCard({
               disabled={isSaving}
               className="flex-1 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 bg-[#2F7A3E] text-white hover:bg-[#256332] active:scale-95 disabled:opacity-50 transition-all shadow-xs"
             >
-              <Check className="w-4 h-4 stroke-[3]" />
-              <span>Done Making</span>
+              <Package className="w-4 h-4" />
+              <span>Start packaging</span>
             </button>
             <button
               onClick={() => onRequestCancel(order)}
@@ -315,7 +334,7 @@ export function OrderCard({
           </>
         )}
 
-        {/* Packaging Stage: Green tick "Done Packaging" moves to ready + Cancel */}
+        {/* Packaging Stage: "Mark ready" moves to ready + Cancel */}
         {canonicalStatus === 'packaging' && (
           <>
             <button
@@ -324,7 +343,7 @@ export function OrderCard({
               className="flex-1 py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 bg-[#2F7A3E] text-white hover:bg-[#256332] active:scale-95 disabled:opacity-50 transition-all shadow-xs"
             >
               <Check className="w-4 h-4 stroke-[3]" />
-              <span>Done Packaging</span>
+              <span>Mark ready</span>
             </button>
             <button
               onClick={() => onRequestCancel(order)}
@@ -337,7 +356,7 @@ export function OrderCard({
           </>
         )}
 
-        {/* Completed Stage (ready): Prominent GREEN "Give to Customer" (5s undo toast) + Cancel */}
+        {/* Ready Stage: Prominent GREEN "Give to customer" + Cancel */}
         {canonicalStatus === 'ready' && (
           <>
             <button
@@ -346,7 +365,7 @@ export function OrderCard({
               className="flex-1 py-3 px-4 rounded-xl font-display font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 bg-[#2F7A3E] text-white hover:bg-[#256332] active:scale-95 disabled:opacity-50 transition-all shadow-md"
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>Give to Customer</span>
+              <span>Give to customer</span>
             </button>
             <button
               onClick={() => onRequestCancel(order)}
@@ -372,6 +391,7 @@ export function OrderCard({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

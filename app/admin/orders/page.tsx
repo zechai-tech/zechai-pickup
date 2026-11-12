@@ -22,12 +22,11 @@ import {
   RotateCcw,
   Ban,
   Calendar,
-  Undo2,
   Trash2,
   AlertCircle,
 } from 'lucide-react';
 
-type TabKey = 'pending' | 'making' | 'packaging' | 'completed' | 'cancelled' | 'all';
+type TabKey = 'pending' | 'making' | 'packaging' | 'ready' | 'completed' | 'cancelled' | 'all';
 type DateFilter = 'today' | 'yesterday' | '7days' | 'custom';
 
 export default function AdminOrdersPage() {
@@ -59,14 +58,6 @@ export default function AdminOrdersPage() {
   const [orderToDelete, setOrderToDelete] = useState<Order | null>(null);
   const [isDeleteAllModalOpen, setIsDeleteAllModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-
-  // Undo Handover Toast state
-  const [undoHandover, setUndoHandover] = useState<{
-    orderId: string;
-    pickupCode: string;
-    timeoutId: NodeJS.Timeout;
-    timeLeft: number;
-  } | null>(null);
 
   // All Orders Tab Filters
   const [includeCancelled, setIncludeCancelled] = useState(false);
@@ -158,14 +149,26 @@ export default function AdminOrdersPage() {
     };
   }, [activeOutletId, fetchOrders, showToast]);
 
-  // Server-side Status Update Action
+  // Server-side Status Update Action (optimistic with immediate API persist & rollback)
   const handleUpdateStatus = async (orderId: string, nextStatus: OrderStatus) => {
     const previousOrders = [...orders];
+    const nowIso = new Date().toISOString();
     setIsSavingStatus(orderId);
 
-    // Optimistic UI update
+    // Optimistic UI update including stage timestamp
     setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, status: nextStatus } : o))
+      prev.map((o) =>
+        o.id === orderId
+          ? {
+              ...o,
+              status: nextStatus,
+              ...(nextStatus === 'preparing' ? { making_at: nowIso } : {}),
+              ...(nextStatus === 'packaging' ? { packaging_at: nowIso } : {}),
+              ...(nextStatus === 'ready' ? { ready_at: nowIso } : {}),
+              ...(nextStatus === 'received' ? { received_at: nowIso } : {}),
+            }
+          : o
+      )
     );
 
     try {
@@ -187,11 +190,24 @@ export default function AdminOrdersPage() {
         throw new Error(data.message || data.error || 'Failed to update order');
       }
 
-      showToast(`Order status updated to ${nextStatus}`, 'success');
-      fetchOrders();
+      if (data.order) {
+        setOrders((prev) =>
+          prev.map((o) => (o.id === orderId ? { ...o, ...data.order } : o))
+        );
+      }
+      const label =
+        nextStatus === 'preparing'
+          ? 'Making'
+          : nextStatus === 'packaging'
+          ? 'Packaging'
+          : nextStatus === 'ready'
+          ? 'Ready'
+          : nextStatus === 'received'
+          ? 'Picked up'
+          : nextStatus;
+      showToast(`Order moved to ${label}`, 'success');
     } catch (err: any) {
       console.error('Status update failed:', err);
-      // Rollback
       setOrders(previousOrders);
       showToast(err.message || 'Status update failed', 'error');
     } finally {
@@ -199,62 +215,9 @@ export default function AdminOrdersPage() {
     }
   };
 
-  // Give to Customer with 5-second Undo Toast
+  // Give to customer: saves immediately (optimistic + rollback on error)
   const handleGiveToCustomer = (order: Order) => {
-    // If an existing undo is active, finalize it immediately
-    if (undoHandover) {
-      clearTimeout(undoHandover.timeoutId);
-    }
-
-    const orderId = order.id;
-    const pickupCode = order.pickup_code;
-
-    // Optimistically update status to 'received'
-    setOrders((prev) =>
-      prev.map((o) => (o.id === orderId ? { ...o, status: 'received' } : o))
-    );
-
-    // Set 5-second timer before committing server update
-    const timeoutId = setTimeout(async () => {
-      setUndoHandover(null);
-      try {
-        await fetch(`/api/admin/orders/${orderId}/status`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
-          },
-          body: JSON.stringify({
-            status: 'received',
-            caller_role: currentUser?.role,
-            caller_outlet_id: currentUser?.outlet_id,
-          }),
-        });
-        fetchOrders();
-      } catch (err) {
-        console.error('Finalizing handover error:', err);
-      }
-    }, 5000);
-
-    setUndoHandover({
-      orderId,
-      pickupCode,
-      timeoutId,
-      timeLeft: 5,
-    });
-  };
-
-  const handleUndoHandover = () => {
-    if (!undoHandover) return;
-    clearTimeout(undoHandover.timeoutId);
-
-    // Revert local state to 'ready'
-    setOrders((prev) =>
-      prev.map((o) => (o.id === undoHandover.orderId ? { ...o, status: 'ready' } : o))
-    );
-
-    showToast(`Handover of #${undoHandover.pickupCode} cancelled`, 'info');
-    setUndoHandover(null);
+    handleUpdateStatus(order.id, 'received');
   };
 
   // Confirm Cancellation via Modal
@@ -446,8 +409,11 @@ export default function AdminOrdersPage() {
     const packaging = orders.filter(
       (o) => o.payment_status === 'success' && normalizeOrderStatus(o.status) === 'packaging'
     ).length;
-    const completed = orders.filter(
+    const ready = orders.filter(
       (o) => o.payment_status === 'success' && normalizeOrderStatus(o.status) === 'ready'
+    ).length;
+    const completed = orders.filter(
+      (o) => o.payment_status === 'success' && normalizeOrderStatus(o.status) === 'received'
     ).length;
     const cancelled = orders.filter(
       (o) =>
@@ -455,13 +421,12 @@ export default function AdminOrdersPage() {
         normalizeOrderStatus(o.status) === 'payment_cancelled'
     ).length;
 
-    // All Orders count depends on filters
     const all = orders.filter((o) => {
       const canon = normalizeOrderStatus(o.status);
-      return canon === 'received' || canon === 'cancelled' || canon === 'payment_cancelled';
+      return canon !== 'pending_payment';
     }).length;
 
-    return { pending, making, packaging, completed, cancelled, all };
+    return { pending, making, packaging, ready, completed, cancelled, all };
   }, [orders]);
 
   // Tab Filtering
@@ -478,23 +443,18 @@ export default function AdminOrdersPage() {
       if (activeTab === 'packaging') {
         return o.payment_status === 'success' && canon === 'packaging';
       }
-      if (activeTab === 'completed') {
+      if (activeTab === 'ready') {
         return o.payment_status === 'success' && canon === 'ready';
+      }
+      if (activeTab === 'completed') {
+        return o.payment_status === 'success' && canon === 'received';
       }
       if (activeTab === 'cancelled') {
         return canon === 'cancelled' || canon === 'payment_cancelled';
       }
       if (activeTab === 'all') {
-        // Default shows Customer Received orders; toggle includes cancelled
-        if (!includeCancelled && canon !== 'received') {
-          return false;
-        }
-        if (
-          includeCancelled &&
-          canon !== 'received' &&
-          canon !== 'cancelled' &&
-          canon !== 'payment_cancelled'
-        ) {
+        if (canon === 'pending_payment') return false;
+        if (!includeCancelled && (canon === 'cancelled' || canon === 'payment_cancelled')) {
           return false;
         }
 
@@ -552,6 +512,7 @@ export default function AdminOrdersPage() {
     { id: 'pending', label: 'Pending', count: counts.pending, alert: counts.pending > 0 },
     { id: 'making', label: 'Making', count: counts.making },
     { id: 'packaging', label: 'Packaging', count: counts.packaging },
+    { id: 'ready', label: 'Ready', count: counts.ready },
     { id: 'completed', label: 'Completed', count: counts.completed },
     { id: 'cancelled', label: 'Cancelled', count: counts.cancelled },
     { id: 'all', label: 'All Orders', count: counts.all },
@@ -883,32 +844,6 @@ export default function AdminOrdersPage() {
           onClose={() => setCancellingOrder(null)}
           onConfirmCancel={handleConfirmCancel}
         />
-
-        {/* 5-Second Undo Toast Bar for Handover */}
-        {undoHandover && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-4">
-            <div className="bg-espresso text-cream p-4 rounded-2xl shadow-xl flex items-center justify-between gap-3 border border-espresso/20 animate-in slide-in-from-bottom duration-200">
-              <div className="flex items-center gap-2.5">
-                <CheckCircle2 className="w-5 h-5 text-brandGreen shrink-0" />
-                <div>
-                  <p className="text-xs font-bold leading-tight">
-                    Order #{undoHandover.pickupCode} given to customer
-                  </p>
-                  <span className="text-[10px] text-cream/60">
-                    Moved to Customer Received
-                  </span>
-                </div>
-              </div>
-              <button
-                onClick={handleUndoHandover}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cream/15 hover:bg-cream/25 text-cream text-xs font-bold transition-colors"
-              >
-                <Undo2 className="w-3.5 h-3.5" />
-                <span>Undo</span>
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </RoleGuard>
   );

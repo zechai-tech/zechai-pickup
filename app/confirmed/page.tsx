@@ -192,9 +192,7 @@ export default function ConfirmedPage() {
         </table>
 
         <div className="space-y-1 text-xs text-right">
-          <div>Item Total: {formatPrice(activeOrder.itemTotal)}</div>
-          <div>GST (5%): {formatPrice(activeOrder.gst)}</div>
-          <div className="font-bold text-sm pt-1 border-t">Total Paid: {formatPrice(activeOrder.paidAmount)}</div>
+          <div className="font-bold text-sm pt-2 border-t">Total Paid: {formatPrice(activeOrder.paidAmount)}</div>
         </div>
 
         <div className="text-center text-[10px] text-gray-500 mt-8">

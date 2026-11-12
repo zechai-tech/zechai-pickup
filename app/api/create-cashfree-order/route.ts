@@ -63,6 +63,9 @@ export async function POST(req: NextRequest) {
     // Set order_expiry_time to 20 minutes from now (ISO 8601 string)
     const expiryTime = new Date(Date.now() + 20 * 60 * 1000).toISOString();
 
+    const gatewayAmount = Math.round(Number(order.total));
+    console.log(`[Cashfree Order] orderId=${order.id} order_amount=${gatewayAmount}`);
+
     const response = await fetch(baseUrl, {
       method: 'POST',
       headers: {
@@ -73,7 +76,7 @@ export async function POST(req: NextRequest) {
       },
       body: JSON.stringify({
         order_id: cfOrderId,
-        order_amount: Number(order.total),
+        order_amount: gatewayAmount,
         order_currency: 'INR',
         customer_details: {
           customer_id: `cust_${order.id.replace(/-/g, '').slice(0, 12)}`,

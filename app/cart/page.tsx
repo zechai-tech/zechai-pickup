@@ -34,7 +34,7 @@ export default function CartPage() {
     setCustomer,
   } = useZechaStore();
 
-  const { count, itemTotal, gst, grandTotal } = getCartSummary(cart);
+  const { count, toPay } = getCartSummary(cart);
   const { showToast } = useToast();
 
   const [kitchenNote, setKitchenNote] = useState(customer.note || '');
@@ -237,12 +237,28 @@ export default function CartPage() {
       } else if (activeGW === 'razorpay') {
         // ================= RAZORPAY FLOW =================
         await loadRazorpayScript();
+        const rzpOrderRes = await fetch('/api/create-order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order_id: orderId }),
+        });
+        const rzpOrderData = await rzpOrderRes.json();
+        if (!rzpOrderRes.ok || !rzpOrderData.order_id) {
+          showToast('Payment initialization failed.', 'error');
+          setErrorMsg(rzpOrderData.error || 'Payment initialization failed.');
+          setSubmitting(false);
+          setIsGatewayLoading(false);
+          isSubmittingRef.current = false;
+          return;
+        }
+
         const razorpayKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || '';
 
         const options = {
           key: razorpayKey,
-          amount: Math.round(verifiedTotal * 100),
-          currency: 'INR',
+          order_id: rzpOrderData.order_id,
+          amount: Number(rzpOrderData.amount),
+          currency: rzpOrderData.currency || 'INR',
           name: 'Zécha!',
           description: 'Pickup Order',
           image: '/assets/logo-orange.v1.webp',
@@ -253,7 +269,9 @@ export default function CartPage() {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
+                  razorpay_order_id: response.razorpay_order_id || rzpOrderData.order_id,
                   razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
                   order_id: orderId,
                 }),
               });
@@ -516,24 +534,14 @@ export default function CartPage() {
           />
         </div>
 
-        {/* Totals Card */}
-        <div className="bg-[#FFFEF7] rounded-[20px] border border-[#EADFC7] p-4 shadow-2xs space-y-2.5">
-          <div className="flex items-center justify-between text-sm font-semibold text-[#75604F]">
-            <span>Item total</span>
-            <span className="font-bold text-[#2B1A12]">{formatPrice(itemTotal)}</span>
-          </div>
-
-          <div className="flex items-center justify-between text-sm font-semibold text-[#75604F]">
-            <span>Taxes (GST 5%)</span>
-            <span className="font-bold text-[#2B1A12]">{formatPrice(gst)}</span>
-          </div>
-
-          <div className="border-t border-dashed border-[#EADFC7] pt-2.5 flex items-center justify-between">
+        {/* Total Card (Single row: To pay) */}
+        <div className="bg-[#FFFEF7] rounded-[20px] border border-[#EADFC7] p-4 shadow-2xs">
+          <div className="flex items-center justify-between">
             <span className="font-display font-extrabold text-[18px] text-[#2B1A12]">
               To pay
             </span>
-            <span className="font-display font-black text-[18px] text-[#2B1A12]">
-              {formatPrice(grandTotal)}
+            <span className="font-display font-black text-[18px] text-[#2B1A12] tabular-nums">
+              {formatPrice(toPay)}
             </span>
           </div>
         </div>
@@ -546,7 +554,7 @@ export default function CartPage() {
           className="w-full h-[56px] rounded-[20px] bg-[#CE5535] text-[#FDFBEA] font-extrabold text-[16px] flex items-center justify-between px-5 shadow-[0_10px_24px_rgba(206,85,53,0.25)] hover:bg-[#A8401F] active:scale-[0.98] transition-all"
         >
           <span className="tabular-nums font-black text-[17px]">
-            {formatPrice(grandTotal)}
+            {formatPrice(toPay)}
           </span>
           <div className="flex items-center gap-1.5">
             <span>Proceed to pay</span>
