@@ -294,9 +294,9 @@ export function SalesTab({
               </thead>
               <tbody className="divide-y divide-[#EADFC7]/60">
                 {data.outlets.map((row) => (
-                  <tr key={row.outlet_id} className="hover:bg-[#F4E7CC]/20">
+                  <tr key={row.outlet_id || row.outlet_name} className="hover:bg-[#F4E7CC]/20">
                     <td className="py-3 px-4 font-bold text-[#2B1A12] whitespace-nowrap">
-                      {row.outlet_name}
+                      {row.outlet_name || 'Deleted outlet'}
                     </td>
                     <td className="py-3 px-4 text-right font-semibold text-[#2B1A12]">
                       {formatIndianNumber(row.orders)}

@@ -5,8 +5,6 @@ export interface Outlet {
   name: string;
   address: string | null;
   phone?: string | null;
-  latitude?: number | null;
-  longitude?: number | null;
   opening_time: string; // e.g. '15:00:00'
   closing_time: string; // e.g. '00:00:00'
   is_active: boolean;

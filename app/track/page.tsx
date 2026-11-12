@@ -140,11 +140,6 @@ export default function TrackPage() {
     router.push('/');
   };
 
-  const handleOpenDirections = () => {
-    const query = encodeURIComponent(activeOrder.outlet?.name || 'Zécha');
-    window.open(`https://www.google.com/maps/search/?api=1&query=${query}`, '_blank');
-  };
-
   return (
     <div className="min-h-[100dvh] h-full flex flex-col bg-cream page-transition overflow-hidden relative w-full max-w-full">
       {/* Scrollable Container */}
@@ -288,7 +283,7 @@ export default function TrackPage() {
             </div>
           </div>
 
-          {/* Outlet Details Card with Directions Button */}
+          {/* Outlet Details Card */}
           <div className="bg-card rounded-card border border-border p-3.5 flex items-center justify-between gap-3 shadow-xs">
             <div className="flex items-center gap-2.5">
               <div className="w-8 h-8 rounded-xl bg-sand/60 flex items-center justify-center flex-shrink-0">
@@ -296,20 +291,13 @@ export default function TrackPage() {
               </div>
               <div>
                 <h4 className="font-bold text-xs text-espresso leading-snug">
-                  {activeOrder.outlet?.name || 'Zécha! Thamarassery'}
+                  {activeOrder.outlet?.name || 'Deleted outlet'}
                 </h4>
                 <p className="text-[11px] text-espresso/60 font-medium">
                   {activeOrder.items.reduce((s, i) => s + i.qty, 0)} items · {formatPrice(activeOrder.paidAmount)} paid
                 </p>
               </div>
             </div>
-
-            <button
-              onClick={handleOpenDirections}
-              className="px-3 py-1.5 rounded-full border border-border bg-card hover:bg-sand text-xs font-bold text-orange active:scale-95 transition-all shadow-xs"
-            >
-              Directions
-            </button>
           </div>
         </div>
       </main>

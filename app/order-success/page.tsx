@@ -106,7 +106,7 @@ function OrderSuccessContent() {
           const finalId = data.orderId || order?.id || parsedSessionOrderId || '';
           const finalCode = data.pickup_code || order?.pickup_code || targetCode || '7309';
           const finalTotal = data.total || order?.total || 0;
-          const finalOutlet = data.outlet_name || order?.outlet_name || 'Zécha! Thamarassery';
+          const finalOutlet = data.outlet_name || order?.outlet_name || 'Deleted outlet';
 
           setOrderData({
             id: finalId,
@@ -118,12 +118,13 @@ function OrderSuccessContent() {
             created_at: order?.created_at,
           });
 
-          // Clear local storage cart once order is verified
+          // Clear cart once order is verified and keep tracking only in sessionStorage
           clearCart();
           sessionStorage.removeItem('pendingOrder');
+          sessionStorage.setItem('activeOrderCode', finalCode);
+          if (finalId) sessionStorage.setItem('activeOrderId', finalId);
           localStorage.removeItem('activeOrderCode');
-          localStorage.setItem('activeOrderCode', finalCode);
-          if (finalId) localStorage.setItem('activeOrderId', finalId);
+          localStorage.removeItem('activeOrderId');
           return;
         }
 
@@ -257,7 +258,7 @@ function OrderSuccessContent() {
   const displayCode = orderData?.pickup_code || '7309';
   const digits = displayCode.padStart(4, '0').slice(-4).split('');
   const displayTotal = orderData?.total ? formatPrice(orderData.total) : '₹291';
-  const displayOutlet = orderData?.outlet_name || 'Zécha! Thamarassery';
+  const displayOutlet = orderData?.outlet_name || 'Deleted outlet';
   const shortOrderNum = orderData?.id
     ? `#ZC-${orderData.id.replace(/-/g, '').slice(-4).toUpperCase()}`
     : '#ZC-2481';

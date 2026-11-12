@@ -19,6 +19,7 @@ import { useToast } from '@/components/ui/Toast';
 import { SafeImage } from '@/components/ui/SafeImage';
 import { CupMarkSvg } from '@/components/ui/CupMarkSvg';
 import { DEFAULT_MENU_IMAGE } from '@/lib/images';
+import { PICKUP_ETA_SHORT } from '@/lib/outlets';
 import { formatPrice } from '@/lib/utils';
 
 export default function CartPage() {
@@ -38,7 +39,7 @@ export default function CartPage() {
 
   const [kitchenNote, setKitchenNote] = useState(customer.note || '');
   const [isPhoneModalOpen, setIsPhoneModalOpen] = useState(false);
-  const [phone, setPhone] = useState(customer.phone || '');
+  const [phone, setPhone] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [isGatewayLoading, setIsGatewayLoading] = useState(false);
@@ -117,8 +118,16 @@ export default function CartPage() {
     try {
       setCustomer({ phone: phoneToUse, note: kitchenNote });
 
-      const selectedOutletName = outlet?.name || 'Zécha! Thamarassery';
-      const selectedOutletId = outlet?.id || '2d784d85-8afb-4524-bdd7-1d4a31f8b8d5';
+      if (!outlet?.id) {
+        showToast('Please select an outlet first.', 'info');
+        setSubmitting(false);
+        isSubmittingRef.current = false;
+        router.push('/outlets');
+        return;
+      }
+
+      const selectedOutletName = outlet.name;
+      const selectedOutletId = outlet.id;
 
       // 1. Create order on server
       const createRes = await fetch('/api/orders/create', {
@@ -461,10 +470,10 @@ export default function CartPage() {
                 </div>
                 <div>
                   <h3 className="font-extrabold text-[15px] text-[#2B1A12] leading-tight">
-                    {outlet?.name || 'Zécha! Thamarassery'}
+                    {outlet?.name || 'Select outlet'}
                   </h3>
                   <p className="text-[12px] text-[#75604F] mt-0.5 font-medium">
-                    Pickup now · ready in 15-20 min
+                    Pickup now · ready in {PICKUP_ETA_SHORT}
                   </p>
                 </div>
               </div>

@@ -1,82 +1,50 @@
 import { CartItem, CustomerDetails, MenuItem, Order, OrderStatus, Outlet } from '@/types';
 import { supabase } from './supabase';
 import { generateOrderId, generatePickupCode } from './utils';
+import { getOutletAvailability } from './outlets';
 import { resolveImageUrl, DEFAULT_MENU_IMAGE } from '@/lib/images';
 
-// In-memory caches to prevent redundant Supabase queries during user navigation
-let cachedOutlets: Outlet[] | null = null;
+// In-memory menu cache to prevent redundant Supabase queries during user navigation
 const cachedMenus: Record<string, MenuItem[]> = {};
 
 export async function getOutlets(): Promise<Outlet[]> {
-  if (cachedOutlets && cachedOutlets.length > 0) {
-    return cachedOutlets;
-  }
-
   try {
-    const { data, error } = await supabase
-      .from('outlets')
-      .select('id, name, address, phone, is_active, opening_time, closing_time, latitude, longitude')
-      .order('name');
+    const res = await fetch('/api/outlets', {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' },
+    });
+    if (!res.ok) return [];
+    const payload = await res.json();
+    const rows = Array.isArray(payload?.outlets) ? payload.outlets : [];
 
-    if (error || !data || data.length === 0) {
-      return [];
-    }
-
-    const outlets = data.map((o: any) => ({
-      id: o.id,
-      name: o.name,
-      address: o.address || 'Kerala',
-      phone: o.phone || null,
-      latitude: o.latitude ? Number(o.latitude) : null,
-      longitude: o.longitude ? Number(o.longitude) : null,
-      distance: '1.2 km',
-      isOpen: o.is_active ?? true,
-      is_active: o.is_active ?? true,
-      statusText: o.is_active ? 'Open now' : 'Closed',
-      openingTime: o.opening_time || '15:00',
-      closingTime: o.closing_time || '00:00',
-    }));
-
-    cachedOutlets = outlets;
-    return outlets;
+    return rows
+      .filter((o: any) => o.is_active === true)
+      .map((o: any) => {
+        const availability = getOutletAvailability(
+          o.opening_time,
+          o.closing_time,
+          Boolean(o.is_active)
+        );
+        return {
+          id: o.id,
+          name: o.name,
+          address: o.address || '',
+          isOpen: availability.isOpen,
+          is_active: Boolean(o.is_active),
+          statusText: availability.statusText,
+          openingTime: o.opening_time || '15:00',
+          closingTime: o.closing_time || '00:00',
+        };
+      });
   } catch (err) {
-    console.error('Error fetching outlets from Supabase:', err);
+    console.error('Error fetching outlets:', err);
     return [];
   }
 }
 
 export async function getOutletById(id: string): Promise<Outlet | null> {
   const outlets = await getOutlets();
-  const match = outlets.find((o) => o.id === id);
-  if (match) return match;
-
-  try {
-    const { data, error } = await supabase
-      .from('outlets')
-      .select('id, name, address, phone, is_active, opening_time, closing_time, latitude, longitude')
-      .eq('id', id)
-      .single();
-
-    if (error || !data) return null;
-    const o: any = data;
-
-    return {
-      id: o.id,
-      name: o.name,
-      address: o.address || 'Kerala',
-      phone: o.phone || null,
-      latitude: o.latitude ? Number(o.latitude) : null,
-      longitude: o.longitude ? Number(o.longitude) : null,
-      distance: '1.2 km',
-      isOpen: o.is_active ?? true,
-      is_active: o.is_active ?? true,
-      statusText: o.is_active ? 'Open now' : 'Closed',
-      openingTime: o.opening_time || '15:00',
-      closingTime: o.closing_time || '00:00',
-    };
-  } catch {
-    return null;
-  }
+  return outlets.find((o) => o.id === id) || null;
 }
 
 export async function getMenu(outletId?: string): Promise<MenuItem[]> {
@@ -160,9 +128,8 @@ export async function getMenuItemById(id: string): Promise<MenuItem | null> {
   }
 }
 
-// Function to clear cache if needed (e.g. after outlet changes)
+// Function to clear cache if needed
 export function clearApiCache() {
-  cachedOutlets = null;
   for (const k of Object.keys(cachedMenus)) {
     delete cachedMenus[k];
   }

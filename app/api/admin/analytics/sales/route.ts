@@ -66,11 +66,13 @@ export async function GET(req: NextRequest) {
          ORDER BY 1 ASC`,
         [ctx.startTimestamp, ctx.endTimestamp, VALID_PAID_STATUSES]
       );
-      dailyByOutlet = byOutletRes.rows.map((r: any) => ({
-        date: String(r.date),
-        outlet_id: String(r.outlet_id),
-        revenue: Number(r.revenue || 0),
-      }));
+      dailyByOutlet = byOutletRes.rows
+        .filter((r: any) => Boolean(r.outlet_id))
+        .map((r: any) => ({
+          date: String(r.date),
+          outlet_id: String(r.outlet_id),
+          revenue: Number(r.revenue || 0),
+        }));
     }
 
     const result = {

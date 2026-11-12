@@ -3,7 +3,6 @@ export type OutletStatus = 'open' | 'closed';
 export interface Outlet {
   id: string;
   name: string;
-  distance?: string;
   statusText?: string;
   isOpen: boolean;
   is_active?: boolean;
@@ -11,8 +10,6 @@ export interface Outlet {
   openingTime?: string;
   address?: string;
   phone?: string | null;
-  latitude?: number | null;
-  longitude?: number | null;
 }
 
 export interface MenuItemOption {

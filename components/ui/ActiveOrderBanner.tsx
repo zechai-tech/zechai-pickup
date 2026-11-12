@@ -12,12 +12,9 @@ export function ActiveOrderBanner() {
 
   const checkActiveOrder = useCallback(async () => {
     try {
-      const storedId =
-        localStorage.getItem('activeOrderId') || sessionStorage.getItem('activeOrderId');
-      const storedCode =
-        localStorage.getItem('activeOrderCode') || sessionStorage.getItem('activeOrderCode');
-      const storedTime =
-        localStorage.getItem('activeOrderTime') || sessionStorage.getItem('activeOrderTime');
+      const storedId = sessionStorage.getItem('activeOrderId');
+      const storedCode = sessionStorage.getItem('activeOrderCode');
+      const storedTime = sessionStorage.getItem('activeOrderTime');
 
       if (!storedId && !storedCode) {
         setActiveCode(null);
@@ -28,9 +25,6 @@ export function ActiveOrderBanner() {
       if (storedTime) {
         const age = Date.now() - parseInt(storedTime, 10);
         if (age > 7200000) {
-          localStorage.removeItem('activeOrderId');
-          localStorage.removeItem('activeOrderCode');
-          localStorage.removeItem('activeOrderTime');
           sessionStorage.removeItem('activeOrderId');
           sessionStorage.removeItem('activeOrderCode');
           sessionStorage.removeItem('activeOrderTime');

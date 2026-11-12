@@ -19,7 +19,8 @@ export async function GET(req: NextRequest) {
     }
 
     const res = await query(
-      `SELECT o.id, o.pickup_code, o.outlet_id, ot.name AS outlet_name,
+      `SELECT o.id, o.pickup_code, o.outlet_id,
+              COALESCE(ot.name, NULLIF(o.outlet_name, ''), 'Deleted outlet') AS outlet_name,
               o.customer_name, o.customer_phone, o.items, o.total, o.status,
               o.payment_status, o.payment_method, o.kitchen_note,
               o.created_at, o.paid_at, o.making_at, o.packaging_at, o.ready_at, o.received_at

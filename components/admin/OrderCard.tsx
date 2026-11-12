@@ -199,9 +199,9 @@ export function OrderCard({
             </div>
           </div>
 
-          {order.outlet && (
+          {(order.outlet?.name || (order as any).outlet_name || order.outlet_id === null) && (
             <span className="text-[10px] font-semibold text-espresso/60 max-w-[120px] text-right truncate">
-              {order.outlet.name}
+              {order.outlet?.name || (order as any).outlet_name || 'Deleted outlet'}
             </span>
           )}
         </div>

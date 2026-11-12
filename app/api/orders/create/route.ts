@@ -110,6 +110,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const outletName = outletRes.rows[0].name;
+
     // Load menu items strictly from database
     const uniqueIds = Array.from(new Set(menuItemIds));
     const menuRes = await query(
@@ -198,6 +200,7 @@ export async function POST(req: NextRequest) {
     const insertRes = await query(
       `INSERT INTO public.orders (
         outlet_id,
+        outlet_name,
         customer_name,
         customer_phone,
         items,
@@ -208,10 +211,11 @@ export async function POST(req: NextRequest) {
         kitchen_note,
         created_at,
         updated_at
-      ) VALUES ($1, $2, $3, $4, $5, 'pending_payment', 'unpaid', $6, $7, now(), now())
+      ) VALUES ($1, $2, $3, $4, $5, $6, 'pending_payment', 'unpaid', $7, $8, now(), now())
       RETURNING id, total`,
       [
         outlet_id,
+        outletName,
         'Customer',
         cleanPhone,
         JSON.stringify(verifiedOrderItems),

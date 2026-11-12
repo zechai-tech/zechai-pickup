@@ -50,14 +50,14 @@ export default function AdminDashboardPage() {
 
       // Admin fetches all outlets; manager only fetches/uses their own outlet
       if (isAdmin) {
-        const resOutlets = await fetch('/api/admin/outlets');
+        const resOutlets = await fetch('/api/admin/outlets', { cache: 'no-store' });
         const dataOutlets = await resOutlets.json();
         setOutlets(dataOutlets.outlets || []);
       }
 
       // Query orders with scope
       const outletParam = isManager && currentUser?.outlet_id ? `?outlet_id=${currentUser.outlet_id}` : '';
-      const resOrders = await fetch(`/api/admin/orders${outletParam}`);
+      const resOrders = await fetch(`/api/admin/orders${outletParam}`, { cache: 'no-store' });
       const dataOrders = await resOrders.json();
       setOrders(dataOrders.orders || []);
 

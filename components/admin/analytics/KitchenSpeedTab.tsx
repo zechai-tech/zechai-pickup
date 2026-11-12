@@ -314,7 +314,7 @@ export function KitchenSpeedTab({ data }: { data: KitchenSpeedData }) {
                       #{row.order_number}
                     </td>
                     <td className="py-3 px-4 font-semibold text-[#2B1A12] whitespace-nowrap">
-                      {row.outlet_name || '—'}
+                      {row.outlet_name || 'Deleted outlet'}
                     </td>
                     <td className="py-3 px-4 text-[#75604F] whitespace-nowrap">
                       {row.ordered_at}
@@ -376,7 +376,7 @@ export function KitchenSpeedTab({ data }: { data: KitchenSpeedData }) {
                 <div className="grid grid-cols-2 gap-3 bg-[#FDFBEA] p-3.5 rounded-2xl border border-[#EADFC7]">
                   <div>
                     <span className="text-[#75604F] block">Outlet</span>
-                    <strong className="text-[#2B1A12]">{inspectingOrder.outlet_name}</strong>
+                    <strong className="text-[#2B1A12]">{inspectingOrder.outlet_name || 'Deleted outlet'}</strong>
                   </div>
                   <div>
                     <span className="text-[#75604F] block">Total paid</span>

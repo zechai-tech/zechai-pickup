@@ -130,7 +130,7 @@ function AnalyticsContent() {
   // Load outlets list for Admins
   useEffect(() => {
     if (!isAuthInitialized || !currentUser || !isAdmin) return;
-    fetch('/api/admin/outlets')
+    fetch('/api/admin/outlets', { cache: 'no-store' })
       .then((r) => r.json())
       .then((d) => setOutlets(d.outlets || []))
       .catch((err) => console.error('Failed to load outlets for analytics:', err));

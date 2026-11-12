@@ -8,8 +8,13 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get('status');
 
     let sql = `
-      SELECT o.*, 
-             json_build_object('id', ot.id, 'name', ot.name, 'address', ot.address) as outlet
+      SELECT o.*,
+             COALESCE(ot.name, NULLIF(o.outlet_name, ''), 'Deleted outlet') as outlet_name,
+             json_build_object(
+               'id', ot.id,
+               'name', COALESCE(ot.name, NULLIF(o.outlet_name, ''), 'Deleted outlet'),
+               'address', ot.address
+             ) as outlet
       FROM public.orders o
       LEFT JOIN public.outlets ot ON o.outlet_id = ot.id
     `;

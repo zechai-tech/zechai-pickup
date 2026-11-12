@@ -228,7 +228,7 @@ export default function PaymentPage() {
           {/* Amount and Order Info */}
           <div className="text-center relative z-10">
             <p className="text-xs font-semibold text-cream/70 mb-0.5">
-              Paying {outlet?.name || 'Zécha! Thamarassery'}
+              Paying {outlet?.name || 'Selected outlet'}
             </p>
             <h1 className="font-display text-3xl font-black text-cream tracking-tight mb-2">
               {formatPrice(grandTotal)}

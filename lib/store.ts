@@ -20,7 +20,7 @@ interface ZechaState {
   demoSpeed: 1 | 4;
 
   // Actions
-  setOutlet: (outlet: Outlet) => void;
+  setOutlet: (outlet: Outlet | null) => void;
   addToCart: (item: CartItem) => void;
   addItem: (item: { id: string; name: string; price: number; image?: string; isVeg?: boolean }) => void;
   updateCartQty: (lineId: string, delta: number) => void;
@@ -47,7 +47,7 @@ export const useZechaStore = create<ZechaState>()(
       activeOrder: null,
       demoSpeed: 1,
 
-      setOutlet: (outlet: Outlet) => set({ outlet }),
+      setOutlet: (outlet: Outlet | null) => set({ outlet }),
 
       addItem: (item) => {
         const { cart } = get();
@@ -152,14 +152,27 @@ export const useZechaStore = create<ZechaState>()(
         }),
     }),
     {
-      name: 'zecha_store_storage',
-      storage: createJSONStorage(() => localStorage),
+      name: 'zecha_store_session',
+      storage: createJSONStorage(() => {
+        if (typeof window !== 'undefined') {
+          try {
+            window.localStorage.removeItem('zecha_store_storage');
+            window.localStorage.removeItem('activeOrderId');
+            window.localStorage.removeItem('activeOrderCode');
+            window.localStorage.removeItem('activeOrderTime');
+          } catch {
+            // ignore storage errors
+          }
+          return window.sessionStorage;
+        }
+        return {
+          getItem: () => null,
+          setItem: () => {},
+          removeItem: () => {},
+        } as unknown as Storage;
+      }),
       partialize: (state) => ({
-        outlet: state.outlet,
         cart: state.cart,
-        customer: state.customer,
-        activeOrder: state.activeOrder,
-        demoSpeed: state.demoSpeed,
       }),
     }
   )

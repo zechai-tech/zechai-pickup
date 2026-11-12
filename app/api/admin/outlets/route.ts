@@ -1,10 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { query } from '@/lib/db';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+function revalidateOutletViews() {
+  try {
+    revalidatePath('/outlets');
+    revalidatePath('/outlet');
+    revalidatePath('/api/outlets');
+    revalidatePath('/admin/outlets');
+    revalidatePath('/admin/dashboard');
+    revalidatePath('/admin/orders');
+  } catch (err) {
+    console.warn('revalidatePath notice:', err);
+  }
+}
 
 export async function GET() {
   try {
-    const res = await query('SELECT * FROM public.outlets ORDER BY created_at ASC');
-    return NextResponse.json({ outlets: res.rows });
+    const res = await query(
+      `SELECT id, name, address, phone, opening_time, closing_time, is_active, created_at
+       FROM public.outlets
+       ORDER BY created_at ASC`
+    );
+    return NextResponse.json(
+      { outlets: res.rows },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+        },
+      }
+    );
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -13,9 +41,9 @@ export async function GET() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { name, address, phone, opening_time, closing_time, is_active, latitude, longitude } = body;
+    const { name, address, phone, opening_time, closing_time, is_active } = body;
 
-    if (!name) {
+    if (!name || !String(name).trim()) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 });
     }
 
@@ -27,27 +55,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const numLat = latitude !== undefined && latitude !== null && latitude !== '' ? Number(latitude) : null;
-    const numLng = longitude !== undefined && longitude !== null && longitude !== '' ? Number(longitude) : null;
-
     const res = await query(
       `
-      INSERT INTO public.outlets (name, address, phone, opening_time, closing_time, is_active, latitude, longitude)
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING *
+      INSERT INTO public.outlets (name, address, phone, opening_time, closing_time, is_active)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING id, name, address, phone, opening_time, closing_time, is_active, created_at
       `,
       [
-        name,
-        address || null,
+        String(name).trim(),
+        address ? String(address).trim() : null,
         cleanPhone,
         opening_time || '15:00',
         closing_time || '00:00',
         is_active ?? true,
-        numLat,
-        numLng,
       ]
     );
 
+    revalidateOutletViews();
     return NextResponse.json({ outlet: res.rows[0] });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -57,7 +81,7 @@ export async function POST(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   try {
     const body = await req.json();
-    const { id, name, address, phone, opening_time, closing_time, is_active, latitude, longitude } = body;
+    const { id, name, address, phone, opening_time, closing_time, is_active } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'ID is required' }, { status: 400 });
@@ -69,11 +93,11 @@ export async function PUT(req: NextRequest) {
 
     if (name !== undefined) {
       fields.push(`name = $${idx++}`);
-      params.push(name);
+      params.push(String(name).trim());
     }
     if (address !== undefined) {
       fields.push(`address = $${idx++}`);
-      params.push(address);
+      params.push(address ? String(address).trim() : null);
     }
     if (phone !== undefined) {
       const cleanPhone = phone ? String(phone).replace(/\D/g, '') : null;
@@ -85,16 +109,6 @@ export async function PUT(req: NextRequest) {
       }
       fields.push(`phone = $${idx++}`);
       params.push(cleanPhone);
-    }
-    if (latitude !== undefined) {
-      const numLat = latitude !== null && latitude !== '' ? Number(latitude) : null;
-      fields.push(`latitude = $${idx++}`);
-      params.push(numLat);
-    }
-    if (longitude !== undefined) {
-      const numLng = longitude !== null && longitude !== '' ? Number(longitude) : null;
-      fields.push(`longitude = $${idx++}`);
-      params.push(numLng);
     }
     if (opening_time !== undefined) {
       fields.push(`opening_time = $${idx++}`);
@@ -115,7 +129,8 @@ export async function PUT(req: NextRequest) {
 
     params.push(id);
     const res = await query(
-      `UPDATE public.outlets SET ${fields.join(', ')} WHERE id = $${idx} RETURNING *`,
+      `UPDATE public.outlets SET ${fields.join(', ')} WHERE id = $${idx}
+       RETURNING id, name, address, phone, opening_time, closing_time, is_active, created_at`,
       params
     );
 
@@ -123,6 +138,7 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Outlet not found' }, { status: 404 });
     }
 
+    revalidateOutletViews();
     return NextResponse.json({ outlet: res.rows[0] });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -135,8 +151,25 @@ export async function DELETE(req: NextRequest) {
     const id = searchParams.get('id');
     if (!id) return NextResponse.json({ error: 'ID is required' }, { status: 400 });
 
-    // Hard delete from database
+    const existing = await query('SELECT id, name FROM public.outlets WHERE id = $1 LIMIT 1', [id]);
+    if (existing.rows.length === 0) {
+      return NextResponse.json({ error: 'Outlet not found' }, { status: 404 });
+    }
+
+    const outletName = existing.rows[0].name;
+
+    // Preserve outlet name on historical orders before deleting the outlet row
+    await query(
+      `UPDATE public.orders
+       SET outlet_name = COALESCE(NULLIF(outlet_name, ''), $1)
+       WHERE outlet_id = $2`,
+      [outletName, id]
+    );
+
+    // Hard delete from database (orders.outlet_id ON DELETE SET NULL, users.outlet_id ON DELETE SET NULL, menu_items CASCADE)
     await query('DELETE FROM public.outlets WHERE id = $1', [id]);
+
+    revalidateOutletViews();
     return NextResponse.json({ success: true, message: 'Outlet deleted successfully' });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

@@ -67,10 +67,10 @@ function TrackOrderContent() {
 
   const fetchOrder = async (isSilent = false) => {
     const targetId =
-      urlId || (typeof window !== 'undefined' ? localStorage.getItem('activeOrderId') : null);
+      urlId || (typeof window !== 'undefined' ? sessionStorage.getItem('activeOrderId') : null);
     const targetCode =
       urlCode ||
-      (!targetId && typeof window !== 'undefined' ? localStorage.getItem('activeOrderCode') : null);
+      (!targetId && typeof window !== 'undefined' ? sessionStorage.getItem('activeOrderCode') : null);
 
     if (!targetId && !targetCode) {
       if (!isSilent) {
@@ -96,10 +96,10 @@ function TrackOrderContent() {
         setOrder(data.order);
         setError(null);
         if (data.order.id) {
-          localStorage.setItem('activeOrderId', data.order.id);
+          sessionStorage.setItem('activeOrderId', data.order.id);
         }
         if (data.order.pickup_code) {
-          localStorage.setItem('activeOrderCode', data.order.pickup_code);
+          sessionStorage.setItem('activeOrderCode', data.order.pickup_code);
         }
       }
     } catch (e: any) {
@@ -386,7 +386,7 @@ function TrackOrderContent() {
             </div>
           </div>
 
-          {/* Outlet Card: Cup tile, outlet name, "<distance> · N items · ₹<amount> paid", and "Directions" button */}
+          {/* Outlet Card: Cup tile, outlet name, N items · ₹<amount> paid */}
           <div className="bg-[#FFFEF7] rounded-[22px] border border-[#EADFC7] p-4 flex items-center justify-between gap-3 shadow-2xs">
             <div className="flex items-center gap-3 min-w-0">
               <div className="w-10 h-10 rounded-[12px] bg-[#FBEDE3] text-[#CE5535] flex items-center justify-center shrink-0">
@@ -394,25 +394,13 @@ function TrackOrderContent() {
               </div>
               <div className="min-w-0">
                 <h3 className="font-extrabold text-[15px] text-[#2B1A12] truncate leading-tight">
-                  {order.outlet_name || 'Zécha! Thamarassery'}
+                  {order.outlet_name || 'Deleted outlet'}
                 </h3>
                 <p className="text-[12px] text-[#75604F] mt-0.5 truncate font-medium">
-                  1.2 km · {itemCount} {itemCount === 1 ? 'item' : 'items'} ·{' '}
-                  {formatPrice(order.total)} paid
+                  {itemCount} {itemCount === 1 ? 'item' : 'items'} · {formatPrice(order.total)} paid
                 </p>
               </div>
             </div>
-
-            <a
-              href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(
-                (order.outlet_name || 'Zécha!') + ' ' + (order.outlet_address || 'Kerala')
-              )}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="h-9 px-4 rounded-full border border-[#CE5535] text-[#CE5535] font-extrabold text-xs flex items-center justify-center hover:bg-[#FBEDE3] transition-colors shrink-0"
-            >
-              Directions
-            </a>
           </div>
         </div>
       </div>

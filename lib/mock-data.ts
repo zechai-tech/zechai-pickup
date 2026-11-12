@@ -1,34 +1,4 @@
-import { MenuItem, Outlet } from '@/types';
-
-export const MOCK_OUTLETS: Outlet[] = [
-  {
-    id: 'thamarassery',
-    name: 'Zécha! Thamarassery',
-    distance: '1.2 km',
-    statusText: 'Open till 11:00 PM',
-    isOpen: true,
-    closingTime: '11:00 PM',
-    address: 'Near Old Bus Stand, Calicut Road, Thamarassery',
-  },
-  {
-    id: 'kozhikode-beach',
-    name: 'Zécha! Kozhikode Beach',
-    distance: '4.8 km',
-    statusText: 'Open till 12:00 AM',
-    isOpen: true,
-    closingTime: '12:00 AM',
-    address: 'Beach Road, Near South Beach, Kozhikode',
-  },
-  {
-    id: 'kunnamangalam',
-    name: 'Zécha! Kunnamangalam',
-    distance: '9.1 km',
-    statusText: 'Closed · opens 7:00 AM',
-    isOpen: false,
-    openingTime: '7:00 AM',
-    address: 'IIM Road Junction, Kunnamangalam',
-  },
-];
+import { MenuItem } from '@/types';
 
 export const CATEGORIES = [
   { id: 'chai_coffee', label: 'Chai & Coffee' },

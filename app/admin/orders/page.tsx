@@ -84,7 +84,7 @@ export default function AdminOrdersPage() {
   useEffect(() => {
     async function loadOutlets() {
       try {
-        const res = await fetch('/api/admin/outlets');
+        const res = await fetch('/api/admin/outlets', { cache: 'no-store' });
         const data = await res.json();
         setOutlets(data.outlets || []);
       } catch (e) {
@@ -100,7 +100,7 @@ export default function AdminOrdersPage() {
   const fetchOrders = useCallback(async () => {
     try {
       const outletQuery = activeOutletId ? `?outlet_id=${activeOutletId}` : '';
-      const res = await fetch(`/api/admin/orders${outletQuery}`);
+      const res = await fetch(`/api/admin/orders${outletQuery}`, { cache: 'no-store' });
       const data = await res.json();
       setOrders(data.orders || []);
     } catch (e) {

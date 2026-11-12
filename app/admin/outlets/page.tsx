@@ -5,10 +5,12 @@ import { RoleGuard } from '@/components/admin/RoleGuard';
 import { Outlet } from '@/types/supabase';
 import { OutletForm } from '@/components/admin/OutletForm';
 import { Button } from '@/components/ui/Button';
+import { useToast } from '@/components/ui/Toast';
 import { Store, Plus, Edit2, Power, Trash2, MapPin, Clock, AlertTriangle, X, Phone } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export default function AdminOutletsPage() {
+  const { showToast } = useToast();
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -20,7 +22,7 @@ export default function AdminOutletsPage() {
 
   const fetchOutlets = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/outlets');
+      const res = await fetch('/api/admin/outlets', { cache: 'no-store' });
       const data = await res.json();
       setOutlets(data.outlets || []);
     } catch (e) {
@@ -34,10 +36,15 @@ export default function AdminOutletsPage() {
     fetchOutlets();
   }, [fetchOutlets]);
 
-  // Activate / Deactivate Toggle
+  // Activate / Deactivate Toggle with optimistic update & rollback
   const handleToggleActive = async (outlet: Outlet) => {
+    const nextActive = !outlet.is_active;
+    const prevOutlets = outlets;
+    setOutlets((curr) =>
+      curr.map((o) => (o.id === outlet.id ? { ...o, is_active: nextActive } : o))
+    );
+
     try {
-      const nextActive = !outlet.is_active;
       const res = await fetch('/api/admin/outlets', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -46,29 +53,44 @@ export default function AdminOutletsPage() {
           is_active: nextActive,
         }),
       });
-      if (res.ok) {
-        fetchOutlets();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to update outlet status');
       }
-    } catch (e) {
-      console.error('Error toggling outlet status:', e);
+      showToast(
+        `${outlet.name} is now ${nextActive ? 'active' : 'inactive'}`,
+        'success'
+      );
+      fetchOutlets();
+    } catch (e: any) {
+      setOutlets(prevOutlets);
+      showToast(e?.message || 'Failed to toggle outlet status', 'error');
     }
   };
 
-  // Confirm and execute outlet deletion
+  // Confirm and execute hard deletion with optimistic UI removal & rollback
   const handleConfirmDelete = async () => {
     if (!outletToDelete) return;
+    const target = outletToDelete;
+    const prevOutlets = outlets;
+
     setIsDeleting(true);
+    setOutlets((curr) => curr.filter((o) => o.id !== target.id));
+    setOutletToDelete(null);
+
     try {
-      const res = await fetch(`/api/admin/outlets?id=${outletToDelete.id}`, { method: 'DELETE' });
-      if (res.ok) {
-        setOutletToDelete(null);
-        fetchOutlets();
-      } else {
-        const data = await res.json();
-        alert(data.error || 'Failed to delete outlet');
+      const res = await fetch(`/api/admin/outlets?id=${encodeURIComponent(target.id)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to delete outlet');
       }
-    } catch (e) {
-      console.error('Error deleting outlet:', e);
+      showToast(`Deleted "${target.name}"`, 'success');
+      fetchOutlets();
+    } catch (e: any) {
+      setOutlets(prevOutlets);
+      showToast(e?.message || 'Failed to delete outlet', 'error');
     } finally {
       setIsDeleting(false);
     }
@@ -339,7 +361,7 @@ export default function AdminOutletsPage() {
               </div>
 
               <p className="text-sm text-espresso/80 leading-relaxed mb-6 font-medium">
-                Are you sure you want to delete <strong className="text-espresso font-bold">{outletToDelete.name}</strong>? This action cannot be undone.
+                Permanently delete <strong className="text-espresso font-bold">{outletToDelete.name}</strong>? This cannot be undone.
               </p>
 
               <div className="flex items-center justify-end gap-3 pt-3 border-t border-border/60">

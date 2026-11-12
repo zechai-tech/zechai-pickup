@@ -27,7 +27,7 @@ export default function ConfirmedPage() {
 
   const digits = activeOrder.code ? activeOrder.code.split('') : ['7', '3', '0', '9'];
   const placedTimeStr = formatTime(new Date(activeOrder.placedAt));
-  const readyByStr = getEstimatedReadyTime(new Date(activeOrder.placedAt), 12);
+  const readyByStr = getEstimatedReadyTime(new Date(activeOrder.placedAt), 15);
 
   const handlePrintReceipt = () => {
     window.print();
@@ -133,7 +133,7 @@ export default function ConfirmedPage() {
         <div className="p-3 px-3.5 rounded-2xl bg-sand/65 border border-border flex items-center gap-2.5">
           <div className="w-2.5 h-2.5 rounded-full bg-mustard animate-pulse flex-shrink-0 shadow-xs" />
           <p className="text-xs font-semibold text-espresso leading-snug">
-            Sent to <span className="font-bold">{activeOrder.outlet?.name || 'Zécha! Thamarassery'}</span>. Waiting for the outlet to accept your order.
+            Sent to <span className="font-bold">{activeOrder.outlet?.name || 'Zécha! Outlet'}</span>. Waiting for the outlet to accept your order.
           </p>
         </div>
       </div>

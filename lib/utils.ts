@@ -17,7 +17,7 @@ export function formatTime(date: Date = new Date()): string {
   });
 }
 
-export function getEstimatedReadyTime(date: Date = new Date(), minutesAhead = 12): string {
+export function getEstimatedReadyTime(date: Date = new Date(), minutesAhead = 15): string {
   const readyDate = new Date(date.getTime() + minutesAhead * 60 * 1000);
   return `~${formatTime(readyDate)}`;
 }

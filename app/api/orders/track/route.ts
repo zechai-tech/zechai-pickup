@@ -63,7 +63,8 @@ export async function GET(req: NextRequest) {
     let sql = `
       SELECT o.id, o.status, o.pickup_code, o.items, o.total, o.cancel_reason, o.created_at,
              o.paid_at, o.making_at, o.packaging_at, o.ready_at, o.received_at,
-             ot.name as outlet_name, ot.phone as outlet_phone, ot.address as outlet_address
+             COALESCE(ot.name, NULLIF(o.outlet_name, ''), 'Deleted outlet') as outlet_name,
+             ot.phone as outlet_phone, ot.address as outlet_address
       FROM public.orders o
       LEFT JOIN public.outlets ot ON o.outlet_id = ot.id
     `;
@@ -108,7 +109,7 @@ export async function GET(req: NextRequest) {
       pickup_code: row.pickup_code,
       items: Array.isArray(row.items) ? row.items : [],
       total: Number(row.total),
-      outlet_name: row.outlet_name || 'Zécha! Outlet',
+      outlet_name: row.outlet_name || 'Deleted outlet',
       outlet_phone: row.outlet_phone || null,
       outlet_address: row.outlet_address || null,
       cancel_reason: row.cancel_reason || null,

@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet } from '@/types/supabase';
 import { Button } from '@/components/ui/Button';
-import { X, Store, MapPin, Navigation } from 'lucide-react';
+import { X, Store } from 'lucide-react';
 
 interface OutletFormProps {
   isOpen: boolean;
@@ -16,10 +16,6 @@ export function OutletForm({ isOpen, onClose, onSuccess, outletToEdit }: OutletF
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
-  const [latitude, setLatitude] = useState<string>('');
-  const [longitude, setLongitude] = useState<string>('');
-  const [locating, setLocating] = useState(false);
-  const [locSuccess, setLocSuccess] = useState(false);
   const [openingTime, setOpeningTime] = useState('15:00');
   const [closingTime, setClosingTime] = useState('00:00');
   const [isActive, setIsActive] = useState(true);
@@ -31,8 +27,6 @@ export function OutletForm({ isOpen, onClose, onSuccess, outletToEdit }: OutletF
       setName(outletToEdit.name);
       setAddress(outletToEdit.address || '');
       setPhone(outletToEdit.phone || '');
-      setLatitude(outletToEdit.latitude != null ? String(outletToEdit.latitude) : '');
-      setLongitude(outletToEdit.longitude != null ? String(outletToEdit.longitude) : '');
       setOpeningTime(outletToEdit.opening_time ? outletToEdit.opening_time.slice(0, 5) : '15:00');
       setClosingTime(outletToEdit.closing_time ? outletToEdit.closing_time.slice(0, 5) : '00:00');
       setIsActive(outletToEdit.is_active);
@@ -40,37 +34,12 @@ export function OutletForm({ isOpen, onClose, onSuccess, outletToEdit }: OutletF
       setName('');
       setAddress('');
       setPhone('');
-      setLatitude('');
-      setLongitude('');
       setOpeningTime('15:00');
       setClosingTime('00:00');
       setIsActive(true);
     }
-    setLocSuccess(false);
     setError('');
   }, [outletToEdit, isOpen]);
-
-  const handleDetectLocation = () => {
-    if (typeof window === 'undefined' || !navigator.geolocation) {
-      setError('Geolocation is not supported by your browser');
-      return;
-    }
-    setLocating(true);
-    setError('');
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setLocating(false);
-        setLatitude(pos.coords.latitude.toFixed(6));
-        setLongitude(pos.coords.longitude.toFixed(6));
-        setLocSuccess(true);
-      },
-      (err) => {
-        setLocating(false);
-        setError(`Unable to retrieve location: ${err.message}`);
-      },
-      { enableHighAccuracy: true, timeout: 10000 }
-    );
-  };
 
   if (!isOpen) return null;
 
@@ -102,8 +71,6 @@ export function OutletForm({ isOpen, onClose, onSuccess, outletToEdit }: OutletF
           name: name.trim(),
           address: address.trim() || null,
           phone: cleanPhone,
-          latitude: latitude ? Number(latitude) : null,
-          longitude: longitude ? Number(longitude) : null,
           opening_time: openingTime,
           closing_time: closingTime,
           is_active: isActive,
@@ -201,52 +168,6 @@ export function OutletForm({ isOpen, onClose, onSuccess, outletToEdit }: OutletF
             <p className="text-[11px] text-espresso/60 mt-1">
               Customers will call this number
             </p>
-          </div>
-
-          {/* Outlet GPS / Location Sharing */}
-          <div className="p-3.5 rounded-xl bg-sand/30 border border-border space-y-2.5">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-espresso block">Outlet Location (GPS)</span>
-                <span className="text-[11px] text-espresso/60">Enables nearest outlet sorting for customers</span>
-              </div>
-              <button
-                type="button"
-                onClick={handleDetectLocation}
-                disabled={locating}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-orange text-white text-xs font-bold shadow-xs hover:bg-orange-dark transition-colors disabled:opacity-50"
-              >
-                <MapPin className="w-3.5 h-3.5" />
-                <span>{locating ? 'Detecting...' : 'Share Location'}</span>
-              </button>
-            </div>
-            {locSuccess && (
-              <p className="text-[11px] font-bold text-brandGreen">
-                ✓ Location captured: {latitude}, {longitude}
-              </p>
-            )}
-            <div className="grid grid-cols-2 gap-2 pt-1">
-              <div>
-                <label className="text-[10px] font-bold text-espresso/70 uppercase">Latitude</label>
-                <input
-                  type="text"
-                  value={latitude}
-                  onChange={(e) => setLatitude(e.target.value)}
-                  placeholder="e.g. 11.2588"
-                  className="w-full h-9 px-2.5 rounded-lg bg-card border border-border text-xs font-mono text-espresso focus:outline-none focus:border-orange"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-espresso/70 uppercase">Longitude</label>
-                <input
-                  type="text"
-                  value={longitude}
-                  onChange={(e) => setLongitude(e.target.value)}
-                  placeholder="e.g. 75.7804"
-                  className="w-full h-9 px-2.5 rounded-lg bg-card border border-border text-xs font-mono text-espresso focus:outline-none focus:border-orange"
-                />
-              </div>
-            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-3">

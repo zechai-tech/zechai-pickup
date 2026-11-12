@@ -43,12 +43,10 @@ export default function WelcomePage() {
   const handleTrackClick = (e: React.MouseEvent) => {
     e.preventDefault();
     const storedCode =
-      (typeof window !== 'undefined' ? localStorage.getItem('activeOrderCode') : null) ||
       (typeof window !== 'undefined' ? sessionStorage.getItem('activeOrderCode') : null) ||
       activeOrder?.code;
 
     const storedId =
-      (typeof window !== 'undefined' ? localStorage.getItem('activeOrderId') : null) ||
       (typeof window !== 'undefined' ? sessionStorage.getItem('activeOrderId') : null) ||
       activeOrder?.id;
 
