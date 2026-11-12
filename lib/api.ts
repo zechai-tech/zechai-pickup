@@ -1,11 +1,13 @@
-import { CartItem, CustomerDetails, MenuItem, Order, OrderStatus, Outlet } from '@/types';
-import { supabase } from './supabase';
-import { generateOrderId, generatePickupCode } from './utils';
+import { MenuItem, Outlet } from '@/types';
 import { getOutletAvailability } from './outlets';
-import { resolveImageUrl, DEFAULT_MENU_IMAGE } from '@/lib/images';
+import { MenuCategoryDef } from './menu-categories';
 
-// In-memory menu cache to prevent redundant Supabase queries during user navigation
-const cachedMenus: Record<string, MenuItem[]> = {};
+export interface CustomerMenuResponse {
+  categories: MenuCategoryDef[];
+  bestsellers: MenuItem[];
+  bestseller_ids: string[];
+  items: MenuItem[];
+}
 
 export async function getOutlets(): Promise<Outlet[]> {
   try {
@@ -47,90 +49,53 @@ export async function getOutletById(id: string): Promise<Outlet | null> {
   return outlets.find((o) => o.id === id) || null;
 }
 
-export async function getMenu(outletId?: string): Promise<MenuItem[]> {
-  const cacheKey = outletId || 'all';
-  if (cachedMenus[cacheKey] && cachedMenus[cacheKey].length > 0) {
-    return cachedMenus[cacheKey];
+export async function getOutletMenuData(outletId: string): Promise<CustomerMenuResponse> {
+  if (!outletId) {
+    return { categories: [], bestsellers: [], bestseller_ids: [], items: [] };
   }
 
   try {
-    let query = supabase
-      .from('menu_items')
-      .select('id, name, description, price, category, image_url, is_veg, is_bestseller, is_available, outlet_id, sort_order')
-      .eq('is_available', true)
-      .order('sort_order', { ascending: true });
-
-    if (outletId) {
-      query = query.eq('outlet_id', outletId);
+    const res = await fetch(`/api/menu?outlet=${encodeURIComponent(outletId)}`, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' },
+    });
+    if (!res.ok) {
+      return { categories: [], bestsellers: [], bestseller_ids: [], items: [] };
     }
-
-    const { data, error } = await query;
-    if (error || !data) {
-      return [];
-    }
-
-    const items = data.map((item: any) => ({
-      id: item.id,
-      name: item.name,
-      category: item.category || 'Chai & Coffee',
-      price: Number(item.price),
-      description: item.description || '',
-      image: resolveImageUrl(item.image_url, 'hero') || DEFAULT_MENU_IMAGE,
-      image_url: resolveImageUrl(item.image_url, 'hero') || DEFAULT_MENU_IMAGE,
-      isVeg: item.is_veg ?? true,
-      is_veg: item.is_veg ?? true,
-      isBestseller: item.is_bestseller ?? false,
-      is_bestseller: item.is_bestseller ?? false,
-      outlet_id: item.outlet_id,
-    }));
-
-    cachedMenus[cacheKey] = items;
-    return items;
+    const data = await res.json();
+    return {
+      categories: Array.isArray(data.categories) ? data.categories : [],
+      bestsellers: Array.isArray(data.bestsellers) ? data.bestsellers : [],
+      bestseller_ids: Array.isArray(data.bestseller_ids) ? data.bestseller_ids : [],
+      items: Array.isArray(data.items) ? data.items : [],
+    };
   } catch (err) {
-    console.error('Error fetching menu items:', err);
-    return [];
+    console.error('Error fetching menu data:', err);
+    return { categories: [], bestsellers: [], bestseller_ids: [], items: [] };
   }
 }
 
+export async function getMenu(outletId?: string): Promise<MenuItem[]> {
+  if (!outletId) return [];
+  const data = await getOutletMenuData(outletId);
+  return data.items;
+}
+
 export async function getMenuItemById(id: string): Promise<MenuItem | null> {
-  // Search in memory caches first
-  for (const menuList of Object.values(cachedMenus)) {
-    const found = menuList.find((i) => i.id === id);
-    if (found) return found;
-  }
-
+  if (!id) return null;
   try {
-    const { data, error } = await supabase
-      .from('menu_items')
-      .select('id, name, description, price, category, image_url, is_veg, is_bestseller, is_available, outlet_id')
-      .eq('id', id)
-      .single();
-
-    if (error || !data) return null;
-    const item: any = data;
-
-    return {
-      id: item.id,
-      name: item.name,
-      category: item.category || 'Chai & Coffee',
-      price: Number(item.price),
-      description: item.description || '',
-      image: resolveImageUrl(item.image_url, 'hero') || DEFAULT_MENU_IMAGE,
-      image_url: resolveImageUrl(item.image_url, 'hero') || DEFAULT_MENU_IMAGE,
-      isVeg: item.is_veg ?? true,
-      is_veg: item.is_veg ?? true,
-      isBestseller: item.is_bestseller ?? false,
-      is_bestseller: item.is_bestseller ?? false,
-      outlet_id: item.outlet_id,
-    };
+    const res = await fetch(`/api/menu/${encodeURIComponent(id)}`, {
+      cache: 'no-store',
+      headers: { 'Cache-Control': 'no-cache' },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.item || null;
   } catch {
     return null;
   }
 }
 
-// Function to clear cache if needed
 export function clearApiCache() {
-  for (const k of Object.keys(cachedMenus)) {
-    delete cachedMenus[k];
-  }
+  // No client-side outlet/menu cache retained; routes serve live no-store data
 }

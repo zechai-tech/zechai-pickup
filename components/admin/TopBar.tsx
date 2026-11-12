@@ -83,7 +83,7 @@ export function TopBar({ onToggleMobileMenu }: TopBarProps) {
             Zécha! Operations
           </span>
           <span className="font-display font-black text-sm text-espresso">
-            {currentUser?.role ? `${currentUser.role.toUpperCase()} PANEL` : 'ADMINISTRATION'}
+            {currentUser?.role ? `${currentUser.role.toUpperCase()} PORTAL` : 'PORTAL'}
           </span>
         </div>
       </div>

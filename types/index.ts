@@ -28,7 +28,9 @@ export interface MenuItemSize {
 export interface MenuItem {
   id: string;
   name: string;
-  category: string;
+  category: string | null;
+  category_slug?: string | null;
+  category_sort_order?: number;
   price: number;
   description: string;
   image: string;

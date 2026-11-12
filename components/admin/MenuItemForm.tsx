@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { MenuItem } from '@/types/supabase';
+import { FIXED_MENU_CATEGORIES } from '@/lib/menu-categories';
 import { Button } from '@/components/ui/Button';
 import { SafeImage } from '@/components/ui/SafeImage';
 import { compressAdminImage } from '@/lib/admin-image-compress';
@@ -26,10 +27,9 @@ export function MenuItemForm({
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState<number | ''>(49);
-  const [category, setCategory] = useState('Chai & Coffee');
+  const [category, setCategory] = useState('');
   const [imageUrl, setImageUrl] = useState('');
   const [isAvailable, setIsAvailable] = useState(true);
-  const [isBestseller, setIsBestseller] = useState(false);
   const [isVeg, setIsVeg] = useState(true);
   const [sortOrder, setSortOrder] = useState<number>(0);
 
@@ -39,27 +39,23 @@ export function MenuItemForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const categories = ['Chai & Coffee', 'Coolers', 'Chicken', 'Fries', 'Snacks'];
-
   useEffect(() => {
     if (itemToEdit) {
       setName(itemToEdit.name);
       setDescription(itemToEdit.description || '');
       setPrice(itemToEdit.price);
-      setCategory(itemToEdit.category);
+      setCategory(itemToEdit.category || '');
       setImageUrl(itemToEdit.image_url || '');
       setIsAvailable(itemToEdit.is_available);
-      setIsBestseller(itemToEdit.is_bestseller);
       setIsVeg(itemToEdit.is_veg);
       setSortOrder(itemToEdit.sort_order || 0);
     } else {
       setName('');
       setDescription('');
       setPrice(49);
-      setCategory('Chai & Coffee');
+      setCategory('');
       setImageUrl('');
       setIsAvailable(true);
-      setIsBestseller(false);
       setIsVeg(true);
       setSortOrder(0);
     }
@@ -87,7 +83,6 @@ export function MenuItemForm({
     setUploadStats('');
 
     try {
-      // Compress before upload: reject > 5 MB, resize <= 1000px, convert to WebP ~80%
       const compressed = await compressAdminImage(file);
       if (previewObjectUrl) {
         URL.revokeObjectURL(previewObjectUrl);
@@ -99,6 +94,7 @@ export function MenuItemForm({
 
       const formData = new FormData();
       formData.append('file', compressed.file);
+      formData.append('bucket', 'menu-images');
 
       const res = await fetch('/api/admin/upload', {
         method: 'POST',
@@ -108,12 +104,11 @@ export function MenuItemForm({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
 
-      setImageUrl(data.path || data.url);
+      setImageUrl(data.url);
     } catch (err: any) {
-      setError(err.message || 'Image upload failed');
+      setError(`Image upload error: ${err.message}`);
     } finally {
       setUploading(false);
-      e.target.value = '';
     }
   };
 
@@ -121,6 +116,11 @@ export function MenuItemForm({
     e.preventDefault();
     if (!name.trim() || price === '') {
       setError('Name and price are required');
+      return;
+    }
+
+    if (!category) {
+      setError('Please select a category');
       return;
     }
 
@@ -143,7 +143,6 @@ export function MenuItemForm({
           category,
           image_url: imageUrl || DEFAULT_MENU_IMAGE,
           is_available: isAvailable,
-          is_bestseller: isBestseller,
           is_veg: isVeg,
           sort_order: Number(sortOrder) || 0,
         }),
@@ -173,7 +172,7 @@ export function MenuItemForm({
               <h3 className="font-display font-black text-lg text-espresso">
                 {itemToEdit ? 'Edit Menu Item' : 'Add Menu Item'}
               </h3>
-              <p className="text-xs text-espresso/60">Configure dish details and pricing</p>
+              <p className="text-xs text-espresso/60">Configure dish details and Portal category</p>
             </div>
           </div>
           <button
@@ -200,7 +199,7 @@ export function MenuItemForm({
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Masala Chai"
+                placeholder="e.g. Loaded Classic Fries"
                 required
                 className="w-full h-11 px-3.5 rounded-xl bg-sand/30 border border-border text-sm font-semibold text-espresso focus:outline-none focus:border-orange"
               />
@@ -213,11 +212,15 @@ export function MenuItemForm({
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
+                required
                 className="w-full h-11 px-3.5 rounded-xl bg-sand/30 border border-border text-xs font-bold text-espresso focus:outline-none focus:border-orange"
               >
-                {categories.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
+                <option value="" disabled>
+                  Select category...
+                </option>
+                {FIXED_MENU_CATEGORIES.map((c) => (
+                  <option key={c.slug} value={c.name}>
+                    {c.name}
                   </option>
                 ))}
               </select>
@@ -312,7 +315,7 @@ export function MenuItemForm({
           </div>
 
           {/* Toggles Row */}
-          <div className="grid grid-cols-3 gap-2 pt-2">
+          <div className="grid grid-cols-2 gap-2 pt-2">
             <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-sand/20 cursor-pointer text-xs font-bold text-espresso select-none">
               <input
                 type="checkbox"
@@ -321,16 +324,6 @@ export function MenuItemForm({
                 className="rounded accent-orange w-4 h-4"
               />
               <span>Available</span>
-            </label>
-
-            <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-sand/20 cursor-pointer text-xs font-bold text-espresso select-none">
-              <input
-                type="checkbox"
-                checked={isBestseller}
-                onChange={(e) => setIsBestseller(e.target.checked)}
-                className="rounded accent-orange w-4 h-4"
-              />
-              <span>Bestseller</span>
             </label>
 
             <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-sand/20 cursor-pointer text-xs font-bold text-espresso select-none">

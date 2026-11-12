@@ -15,6 +15,7 @@ import {
   ExternalLink,
   CreditCard,
   BarChart3,
+  Star,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -65,6 +66,15 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       href: '/admin/menu',
       icon: UtensilsCrossed,
     },
+    ...(canViewAnalytics
+      ? [
+          {
+            label: 'Bestsellers',
+            href: '/admin/bestsellers',
+            icon: Star,
+          },
+        ]
+      : []),
     {
       label: 'Users & Staff',
       href: '/admin/users',
