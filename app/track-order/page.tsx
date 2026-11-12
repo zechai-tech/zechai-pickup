@@ -306,18 +306,31 @@ function TrackOrderContent() {
   const isPackaging = canonStatus === 'packaging';
   const isMaking = canonStatus === 'preparing';
 
-  // How many of the 5 steps are COMPLETED (ticked):
-  // pending (0 paid_at exists) -> 1 step ticked (Payment successful), next step (Making) highlighted
-  // preparing -> 2 steps ticked, Packaging highlighted
-  // packaging -> 3 steps ticked, Ready for pickup highlighted
-  // ready -> 4 steps ticked, Picked up highlighted
-  // received -> all 5 steps ticked
-  let completedCount = 1;
-  if (canonStatus === 'pending_payment') completedCount = 0;
-  else if (isMaking) completedCount = 2;
-  else if (isPackaging) completedCount = 3;
-  else if (isReady) completedCount = 4;
-  else if (isReceived) completedCount = 5;
+  // Step completion & active-ring index across the 5 timeline steps:
+  // 0: Payment successful, 1: Making, 2: Packaging, 3: Ready for pickup, 4: Picked up
+  // A step becomes ticked only once it is done (Making ticks when Packaging starts, etc.).
+  let completedCount = 0;
+  let currentStepIndex: number | null = null;
+
+  if (canonStatus === 'pending') {
+    completedCount = 1; // Payment successful ticked; Making stays upcoming
+    currentStepIndex = null;
+  } else if (isMaking) {
+    completedCount = 1; // Payment successful ticked; Making is current (ring + making_at)
+    currentStepIndex = 1;
+  } else if (isPackaging) {
+    completedCount = 2; // Payment successful & Making ticked; Packaging is current (ring + packaging_at)
+    currentStepIndex = 2;
+  } else if (isReady) {
+    completedCount = 4; // Payment successful, Making, Packaging & Ready for pickup ticked; Picked up upcoming
+    currentStepIndex = null;
+  } else if (isReceived) {
+    completedCount = 5; // All 5 steps ticked
+    currentStepIndex = null;
+  } else if (canonStatus === 'pending_payment') {
+    completedCount = 0;
+    currentStepIndex = 0;
+  }
 
   const orderNum = order.id
     ? `#ZC-${order.id.replace(/-/g, '').slice(-4).toUpperCase()}`
@@ -498,7 +511,7 @@ function TrackOrderContent() {
             <div className="space-y-0 relative pl-2">
               {timelineSteps.map((step, idx) => {
                 const isStepCompleted = !isCancelled && idx < completedCount;
-                const isStepCurrent = !isCancelled && !isReceived && idx === completedCount;
+                const isStepCurrent = !isCancelled && currentStepIndex === idx;
                 const isLast = idx === timelineSteps.length - 1;
 
                 return (
@@ -551,7 +564,7 @@ function TrackOrderContent() {
                             : 'text-[#75604F]/40'
                         }`}
                       >
-                        {isStepCompleted ? step.time || '--:--' : '--:--'}
+                        {isStepCompleted || isStepCurrent ? step.time || '--:--' : '--:--'}
                       </span>
                     </div>
                   </div>
