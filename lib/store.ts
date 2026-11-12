@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { CartItem, CustomerDetails, Order, OrderStatus, Outlet } from '@/types';
+import { resolveImageUrl, DEFAULT_MENU_IMAGE } from '@/lib/images';
 
 interface ZechaState {
   // Outlet
@@ -64,7 +65,7 @@ export const useZechaStore = create<ZechaState>()(
                 lineId: item.id,
                 itemId: item.id,
                 name: item.name,
-                image: item.image || '/assets/chai.jpg',
+                image: resolveImageUrl(item.image, 'thumb') || DEFAULT_MENU_IMAGE,
                 isVeg: item.isVeg ?? true,
                 unitPrice: item.price,
                 qty: 1,

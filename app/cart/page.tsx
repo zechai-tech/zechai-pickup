@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -17,7 +16,9 @@ import {
 import { useZechaStore, getCartSummary } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/components/ui/Toast';
-import { MenuImage } from '@/components/ui/MenuImage';
+import { SafeImage } from '@/components/ui/SafeImage';
+import { CupMarkSvg } from '@/components/ui/CupMarkSvg';
+import { DEFAULT_MENU_IMAGE } from '@/lib/images';
 import { formatPrice } from '@/lib/utils';
 
 export default function CartPage() {
@@ -235,7 +236,7 @@ export default function CartPage() {
           currency: 'INR',
           name: 'Zécha!',
           description: 'Pickup Order',
-          image: '/assets/logo-orange.png',
+          image: '/assets/logo-orange.v1.webp',
           handler: async function (response: any) {
             isNavigatingToSuccessRef.current = true;
             try {
@@ -308,13 +309,14 @@ export default function CartPage() {
     return (
       <div className="min-h-screen bg-[#FDFBEA] flex flex-col items-center justify-center p-6 text-center page-transition">
         <div className="relative w-36 h-12 mb-6">
-          <Image
-            src="/assets/logo-orange.png"
+          <SafeImage
+            src="/assets/logo-orange.v1.webp"
             alt="Zécha!"
             width={144}
             height={48}
-            priority
-            className="object-contain"
+            sizes="144px"
+            transparent
+            className="object-contain w-full h-full"
           />
         </div>
         <div className="w-12 h-12 rounded-full border-3 border-[#CE5535] border-t-transparent animate-spin mb-4" />
@@ -391,9 +393,10 @@ export default function CartPage() {
             >
               {/* Left: 68px photo */}
               <div className="w-[68px] h-[68px] rounded-[14px] overflow-hidden shrink-0 relative border border-[#EADFC7]/50">
-                <MenuImage
-                  src={item.image || '/assets/chai.jpg'}
+                <SafeImage
+                  src={item.image || DEFAULT_MENU_IMAGE}
                   alt={item.name}
+                  variant="thumb"
                   fill
                   sizes="68px"
                   className="object-cover"
@@ -454,13 +457,7 @@ export default function CartPage() {
             <div className="flex items-center justify-between gap-3 pb-3">
               <div className="flex items-center gap-3">
                 <div className="w-[46px] h-[46px] rounded-[14px] bg-[#CE5535] flex items-center justify-center shrink-0 shadow-xs">
-                  <Image
-                    src="/assets/mascot-cream.png"
-                    alt="Outlet"
-                    width={24}
-                    height={24}
-                    className="object-contain"
-                  />
+                  <CupMarkSvg variant="cream" className="w-6 h-6" aria-hidden={true} />
                 </div>
                 <div>
                   <h3 className="font-extrabold text-[15px] text-[#2B1A12] leading-tight">

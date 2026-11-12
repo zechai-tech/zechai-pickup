@@ -472,18 +472,27 @@ BEGIN
       AND status = ANY(v_valid_statuses)
       AND (p_outlet_id IS NULL OR outlet_id = p_outlet_id)
     GROUP BY COALESCE(item->>'name', 'Unknown Item')
+  ),
+  ranked_items AS (
+    SELECT
+      row_number() OVER (ORDER BY qty_sold DESC, revenue DESC) AS rank_num,
+      item_name,
+      qty_sold,
+      revenue,
+      CASE WHEN v_total_revenue > 0 THEN ROUND((revenue / v_total_revenue) * 100, 1) ELSE 0 END AS share_pct
+    FROM item_sales
   )
-  SELECT jsonb_agg(
+  SELECT COALESCE(jsonb_agg(
     jsonb_build_object(
-      'rank', row_number() OVER (ORDER BY qty_sold DESC, revenue DESC),
+      'rank', rank_num,
       'name', item_name,
       'qty_sold', qty_sold,
       'revenue', revenue,
-      'share_pct', CASE WHEN v_total_revenue > 0 THEN ROUND((revenue / v_total_revenue) * 100, 1) ELSE 0 END
-    )
-  )
+      'share_pct', share_pct
+    ) ORDER BY rank_num ASC
+  ), '[]'::jsonb)
   INTO v_items_list
-  FROM item_sales;
+  FROM ranked_items;
 
   -- 5 Slow Movers: lowest-selling active menu items (including 0 sales)
   WITH active_menu AS (
@@ -504,12 +513,12 @@ BEGIN
       AND (p_outlet_id IS NULL OR outlet_id = p_outlet_id)
     GROUP BY COALESCE(item->>'id', item->>'menu_item_id'), item->>'name'
   )
-  SELECT jsonb_agg(
+  SELECT COALESCE(jsonb_agg(
     jsonb_build_object(
       'name', am.name,
-      'qty_sold', COALESCE(sc.qty_sold, 0)
+      'qty_sold', am.qty_sold
     )
-  )
+  ), '[]'::jsonb)
   INTO v_slow_movers
   FROM (
     SELECT am.name, COALESCE(sc.qty_sold, 0) AS qty_sold
@@ -589,19 +598,31 @@ BEGIN
      AND a.item_name < b.item_name
     GROUP BY a.item_name, b.item_name
     HAVING COUNT(*) >= 2
-  )
-  SELECT jsonb_agg(
-    jsonb_build_object(
-      'item_a', p.item_a,
-      'item_b', p.item_b,
-      'times_together', p.times_together,
-      'pct_of_a', ROUND((p.times_together::numeric / NULLIF(fa.total_item_orders, 0)) * 100, 1)
-    ) ORDER BY p.times_together DESC, p.item_a ASC
+  ),
+  top_pairs AS (
+    SELECT
+      p.item_a,
+      p.item_b,
+      p.times_together,
+      ROUND((p.times_together::numeric / NULLIF(fa.total_item_orders, 0)) * 100, 1) AS pct_of_a
+    FROM paired_items p
+    JOIN item_frequencies fa ON p.item_a = fa.item_name
+    ORDER BY p.times_together DESC, p.item_a ASC
     LIMIT 15
   )
+  SELECT COALESCE(
+    jsonb_agg(
+      jsonb_build_object(
+        'item_a', tp.item_a,
+        'item_b', tp.item_b,
+        'times_together', tp.times_together,
+        'pct_of_a', tp.pct_of_a
+      )
+    ),
+    '[]'::jsonb
+  )
   INTO v_pairs
-  FROM paired_items p
-  JOIN item_frequencies fa ON p.item_a = fa.item_name;
+  FROM top_pairs tp;
 
   RETURN jsonb_build_object(
     'total_orders', v_total_paid_orders,

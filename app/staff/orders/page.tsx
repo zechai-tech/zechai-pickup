@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { SafeImage } from '@/components/ui/SafeImage';
 import { useAdminStore } from '@/stores/admin-store';
 import { supabase } from '@/lib/supabase';
 import { Order, OrderStatus } from '@/types/supabase';
@@ -162,12 +162,13 @@ export default function StaffOrdersPage() {
           {/* Left: Brand Logo */}
           <div className="flex items-center gap-3">
             <div className="relative w-28 h-8">
-              <Image
-                src="/assets/logo-orange.png"
+              <SafeImage
+                src="/assets/logo-orange.v1.webp"
                 alt="Zécha!"
                 fill
+                sizes="112px"
+                transparent
                 className="object-contain object-left"
-                priority
               />
             </div>
             <span className="hidden sm:inline-block px-2.5 py-0.5 rounded-full bg-orange-soft text-orange-dark text-[11px] font-black tracking-wide">

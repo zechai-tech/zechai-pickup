@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState } from 'react';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
+import { SafeImage } from '@/components/ui/SafeImage';
 import { supabase } from '@/lib/supabase';
 import { useAdminStore } from '@/stores/admin-store';
 import { Button } from '@/components/ui/Button';
@@ -131,12 +131,13 @@ export default function StaffLoginPage() {
         {/* Top Brand Logo */}
         <div className="flex flex-col items-center text-center pb-6 border-b border-border/70 mb-6">
           <div className="relative w-36 h-12 mb-3">
-            <Image
-              src="/assets/logo-orange.png"
+            <SafeImage
+              src="/assets/logo-orange.v1.webp"
               alt="Zécha!"
               fill
+              sizes="144px"
+              transparent
               className="object-contain"
-              priority
             />
           </div>
           <h1 className="font-display font-black text-xl text-espresso tracking-tight">

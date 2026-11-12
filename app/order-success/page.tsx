@@ -2,7 +2,7 @@
 
 import React, { Suspense, useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
+import { SafeImage } from '@/components/ui/SafeImage';
 import { useSearchParams, useRouter } from 'next/navigation';
 import {
   Check,
@@ -182,13 +182,14 @@ function OrderSuccessContent() {
     return (
       <div className="min-h-screen bg-[#FDFBEA] flex flex-col items-center justify-center p-6 text-center page-transition">
         <div className="relative w-36 h-12 mb-6">
-          <Image
-            src="/assets/logo-orange.png"
+          <SafeImage
+            src="/assets/logo-orange.v1.webp"
             alt="Zécha!"
             width={144}
             height={48}
-            priority
-            className="object-contain"
+            sizes="144px"
+            transparent
+            className="object-contain w-full h-full"
           />
         </div>
         <div className="w-12 h-12 rounded-full border-3 border-[#CE5535] border-t-transparent animate-spin mb-4" />
@@ -277,10 +278,11 @@ function OrderSuccessContent() {
     <div className="min-h-screen bg-[#FDFBEA] flex flex-col justify-between p-5 pb-8 page-transition relative select-none">
       {/* Top subtle doodle pattern background */}
       <div className="absolute top-0 left-0 right-0 h-[220px] opacity-15 pointer-events-none overflow-hidden -z-0">
-        <Image
-          src="/assets/pattern.jpg"
-          alt="Pattern"
+        <SafeImage
+          src="/assets/pattern.v1.webp"
+          alt=""
           fill
+          sizes="(max-width: 430px) 100vw, 430px"
           className="object-cover"
         />
       </div>

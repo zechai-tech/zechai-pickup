@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
-import Image from 'next/image';
 import { useAdminStore } from '@/stores/admin-store';
+import { SafeImage } from '@/components/ui/SafeImage';
+import { DEFAULT_MENU_IMAGE } from '@/lib/images';
 import { RoleGuard } from '@/components/admin/RoleGuard';
 import { MenuItem, Outlet } from '@/types/supabase';
 import { MenuItemForm } from '@/components/admin/MenuItemForm';
@@ -224,10 +225,12 @@ export default function AdminMenuPage() {
                 >
                   {/* Photo with badges */}
                   <div className="relative w-full h-36 bg-sand/30 overflow-hidden">
-                    <Image
-                      src={item.image_url || '/assets/chai.jpg'}
+                    <SafeImage
+                      src={item.image_url || DEFAULT_MENU_IMAGE}
                       alt={item.name}
+                      variant="tile"
                       fill
+                      sizes="(max-width: 1024px) 50vw, 25vw"
                       className="object-cover"
                     />
                     <div className="absolute top-2 left-2 flex items-center gap-1.5">
@@ -336,10 +339,12 @@ export default function AdminMenuPage() {
                   className="bg-card rounded-2xl border border-border p-3 flex items-center justify-between gap-3 shadow-xs"
                 >
                   <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-sand/30 shrink-0">
-                    <Image
-                      src={item.image_url || '/assets/chai.jpg'}
+                    <SafeImage
+                      src={item.image_url || DEFAULT_MENU_IMAGE}
                       alt={item.name}
+                      variant="thumb"
                       fill
+                      sizes="64px"
                       className="object-cover"
                     />
                   </div>

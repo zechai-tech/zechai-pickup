@@ -25,6 +25,16 @@ export const viewport: Viewport = {
   viewportFit: 'cover',
 };
 
+const SUPABASE_ORIGIN = (() => {
+  try {
+    return new URL(
+      process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://pdgtdcabbfvhomkpoajw.supabase.co'
+    ).origin;
+  } catch {
+    return 'https://pdgtdcabbfvhomkpoajw.supabase.co';
+  }
+})();
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -33,13 +43,16 @@ export default function RootLayout({
   return (
     <html lang="en" className={archivo.variable}>
       <head>
+        <link rel="preconnect" href={SUPABASE_ORIGIN} crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://checkout.razorpay.com" />
+        <link rel="dns-prefetch" href="https://sdk.cashfree.com" />
         <Script
           src="https://checkout.razorpay.com/v1/checkout.js"
-          strategy="beforeInteractive"
+          strategy="lazyOnload"
         />
         <Script
           src="https://sdk.cashfree.com/js/v3/cashfree.js"
-          strategy="beforeInteractive"
+          strategy="lazyOnload"
         />
       </head>
       <body className="antialiased min-h-screen">

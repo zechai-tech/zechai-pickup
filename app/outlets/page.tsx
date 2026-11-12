@@ -1,14 +1,16 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Search, Locate, Check, AlertCircle } from 'lucide-react';
-import { getOutlets } from '@/lib/api';
+import { getOutlets, getMenu } from '@/lib/api';
 import { Outlet } from '@/types';
 import { useZechaStore } from '@/lib/store';
 import { useToast } from '@/components/ui/Toast';
+import { SafeImage } from '@/components/ui/SafeImage';
+import { CupMarkSvg } from '@/components/ui/CupMarkSvg';
+import { warmImagesInIdle } from '@/lib/images';
 
 // Haversine distance calculator
 function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -59,14 +61,21 @@ export default function OutletsPage() {
       setOutlets(data);
       setLoading(false);
 
+      const warmTarget = selectedOutlet?.id || data.find((o) => o.isOpen)?.id || data[0]?.id;
+      if (warmTarget) {
+        getMenu(warmTarget).then((items) => {
+          warmImagesInIdle(
+            items.slice(0, 8).map((i) => i.image || i.image_url || ''),
+            8
+          );
+        });
+      }
+
       // BEHAVIOUR FIX: no outlet may be auto-selected for the user.
       // On first visit nothing is selected and the Continue button is disabled until the user taps an outlet.
       // Only restore a previous outlet if the user explicitly chose it earlier and the cart already holds items from it.
       if (selectedOutlet && cart.length === 0) {
-        // If cart is empty, do NOT force select - user can select freshly or we keep if they want
-        // The rule says: "Only restore a previous outlet if the user explicitly chose it earlier and the cart already holds items from it."
-        // So if cart has no items, clear selection so user picks freshly
-        // (or if cart has items from selectedOutlet, we preserve it)
+        // If cart has no items, clear selection so user picks freshly or keeps intent
       }
     });
   }, [router, selectedOutlet, cart.length]);
@@ -197,13 +206,14 @@ export default function OutletsPage() {
 
           {/* Small Zécha! logo (72px) */}
           <div className="relative w-[72px] h-[32px]">
-            <Image
-              src="/assets/logo-orange.png"
+            <SafeImage
+              src="/assets/logo-orange.v1.webp"
               alt="Zécha!"
               width={72}
               height={32}
-              priority
-              className="object-contain object-right"
+              sizes="72px"
+              transparent
+              className="object-contain object-right w-full h-full"
             />
           </div>
         </div>
@@ -273,22 +283,16 @@ export default function OutletsPage() {
                   {/* Top card row: Cup tile, name, area, radio circle */}
                   <div className="flex items-start justify-between gap-3 mb-3">
                     <div className="flex items-center gap-3">
-                      {/* 52px rounded tile with tiny cup mark */}
+                      {/* 52px rounded tile with crisp SVG cup mark */}
                       <div
                         className={`w-[52px] h-[52px] rounded-[16px] flex items-center justify-center shrink-0 transition-colors ${
                           isSelected ? 'bg-[#CE5535]' : 'bg-[#F4E7CC]'
                         }`}
                       >
-                        <Image
-                          src={
-                            isSelected
-                              ? '/assets/mascot-cream.png'
-                              : '/assets/mascot-orange.png'
-                          }
-                          alt="Zécha"
-                          width={26}
-                          height={26}
-                          className="object-contain"
+                        <CupMarkSvg
+                          variant={isSelected ? 'cream' : 'orange'}
+                          className="w-7 h-7"
+                          aria-hidden={true}
                         />
                       </div>
 

@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useState, use } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ChevronLeft, Plus, Minus } from 'lucide-react';
@@ -10,7 +9,8 @@ import { MenuItem } from '@/types';
 import { useZechaStore } from '@/lib/store';
 import { useToast } from '@/components/ui/Toast';
 import { VegBadge } from '@/components/ui/VegBadge';
-import { MenuImage } from '@/components/ui/MenuImage';
+import { SafeImage } from '@/components/ui/SafeImage';
+import { DEFAULT_MENU_IMAGE } from '@/lib/images';
 import { formatPrice } from '@/lib/utils';
 
 export default function ItemDetailPage({
@@ -44,7 +44,7 @@ export default function ItemDetailPage({
         id: item.id,
         name: item.name,
         price: item.price,
-        image: item.image || item.image_url || '/assets/chai.jpg',
+        image: item.image || item.image_url || DEFAULT_MENU_IMAGE,
         isVeg: item.isVeg ?? item.is_veg ?? true,
       });
     }
@@ -84,9 +84,10 @@ export default function ItemDetailPage({
       <div>
         {/* Big photo (440px tall, bottom corners 32px rounded) with round back button on it */}
         <div className="relative w-full h-[440px] rounded-b-[32px] overflow-hidden shadow-sm">
-          <MenuImage
-            src={item.image || item.image_url || '/assets/chai.jpg'}
+          <SafeImage
+            src={item.image || item.image_url || DEFAULT_MENU_IMAGE}
             alt={item.name}
+            variant="hero"
             fill
             priority
             sizes="(max-width: 430px) 100vw, 430px"

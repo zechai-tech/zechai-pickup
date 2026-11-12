@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
@@ -18,7 +17,8 @@ import { MenuItem } from '@/types';
 import { useZechaStore, getCartSummary } from '@/lib/store';
 import { useToast } from '@/components/ui/Toast';
 import { VegBadge } from '@/components/ui/VegBadge';
-import { MenuImage } from '@/components/ui/MenuImage';
+import { SafeImage } from '@/components/ui/SafeImage';
+import { DEFAULT_MENU_IMAGE } from '@/lib/images';
 import { formatPrice } from '@/lib/utils';
 
 const MENU_CATEGORIES = [
@@ -71,7 +71,7 @@ export default function MenuPage() {
       id: item.id,
       name: item.name,
       price: item.price,
-      image: item.image || item.image_url || '/assets/chai.jpg',
+      image: item.image || item.image_url || DEFAULT_MENU_IMAGE,
       isVeg: item.isVeg ?? item.is_veg ?? true,
     });
     showToast(`Added ${item.name} to cart`, 'success');
@@ -148,13 +148,14 @@ export default function MenuPage() {
 
           {/* Right Logo (64px) */}
           <div className="w-[64px] h-[30px] relative">
-            <Image
-              src="/assets/logo-orange.png"
+            <SafeImage
+              src="/assets/logo-orange.v1.webp"
               alt="Zécha!"
               width={64}
               height={30}
-              priority
-              className="object-contain object-right"
+              sizes="64px"
+              transparent
+              className="object-contain object-right w-full h-full"
             />
           </div>
         </div>
@@ -228,15 +229,16 @@ export default function MenuPage() {
                           {/* Photo with rounded corners */}
                           <Link
                             href={`/menu/${item.id}`}
-                            className="block w-full h-full rounded-[14px] overflow-hidden"
+                            className="block w-full h-full rounded-[14px] overflow-hidden relative"
                           >
-                            <MenuImage
-                              src={item.image || item.image_url || '/assets/chai.jpg'}
+                            <SafeImage
+                              src={item.image || item.image_url || DEFAULT_MENU_IMAGE}
                               alt={item.name}
+                              variant="tile"
                               fill
-                              sizes="(max-width: 430px) 190px, 200px"
+                              sizes="(max-width: 430px) 50vw, 215px"
                               priority={idx < 2}
-                              className="object-cover hover:scale-105 transition-transform duration-300"
+                              className="object-cover"
                             />
                           </Link>
 
@@ -318,11 +320,12 @@ export default function MenuPage() {
                     <p className="font-bold text-sm">No items found</p>
                   </div>
                 ) : (
-                  popularItems.map((item) => {
+                  popularItems.map((item, idx) => {
                     const qty = getItemQty(item.id);
                     const lineId = getItemLineId(item.id);
                     const isVeg = item.isVeg ?? item.is_veg ?? true;
                     const isBestseller = item.isBestseller ?? item.is_bestseller ?? false;
+                    const isPriorityMenu = bestsellers.length + idx < 4;
 
                     return (
                       <div
@@ -364,12 +367,15 @@ export default function MenuPage() {
                             href={`/menu/${item.id}`}
                             className="block w-full h-[96px] rounded-[14px] overflow-hidden relative"
                           >
-                            <MenuImage
-                              src={item.image || item.image_url || '/assets/chai.jpg'}
+                            <SafeImage
+                              src={item.image || item.image_url || DEFAULT_MENU_IMAGE}
                               alt={item.name}
+                              variant="thumb"
                               fill
                               sizes="124px"
-                              className="object-cover hover:scale-105 transition-transform duration-300"
+                              priority={isPriorityMenu}
+                              preloadNearViewport={!isPriorityMenu}
+                              className="object-cover"
                             />
                           </Link>
 

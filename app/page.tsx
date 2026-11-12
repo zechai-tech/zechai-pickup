@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useZechaStore } from '@/lib/store';
 import { useToast } from '@/components/ui/Toast';
-import { getOutlets } from '@/lib/api';
+import { getOutlets, getMenu } from '@/lib/api';
+import { SafeImage } from '@/components/ui/SafeImage';
+import { warmImagesInIdle } from '@/lib/images';
 
 export default function WelcomePage() {
   const router = useRouter();
@@ -15,14 +16,26 @@ export default function WelcomePage() {
   const [anyOutletOpen, setAnyOutletOpen] = useState(true);
 
   useEffect(() => {
-    // Check if any outlet is open right now
+    router.prefetch('/outlets');
+    router.prefetch('/menu');
+
+    // Check if any outlet is open right now & warm first 8 menu images in idle callback
     getOutlets().then((outlets) => {
       if (outlets && outlets.length > 0) {
         const hasOpen = outlets.some((o) => o.isOpen);
         setAnyOutletOpen(hasOpen);
+        const firstOpen = outlets.find((o) => o.isOpen) || outlets[0];
+        if (firstOpen?.id) {
+          getMenu(firstOpen.id).then((items) => {
+            warmImagesInIdle(
+              items.slice(0, 8).map((i) => i.image || i.image_url || ''),
+              8
+            );
+          });
+        }
       }
     });
-  }, []);
+  }, [router]);
 
   const handleTrackClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -55,37 +68,44 @@ export default function WelcomePage() {
         <div className="relative z-10 w-[320px] h-[340px]">
           {/* Crispy Chicken (Left, rotated -12deg, 140px) */}
           <div className="absolute left-1 top-[135px] w-[140px] h-[135px] transform -rotate-12 z-10">
-            <Image
-              src="/assets/chicken.png"
+            <SafeImage
+              src="/assets/chicken.v1.webp"
               alt="Crispy Chicken"
               width={140}
               height={135}
+              sizes="140px"
               priority
-              className="object-contain drop-shadow-[0_12px_24px_rgba(43,26,18,0.2)]"
+              transparent
+              className="object-contain w-full h-full drop-shadow-[0_12px_24px_rgba(43,26,18,0.2)]"
             />
           </div>
 
           {/* Two Iced Teas (Centre, 198px wide) */}
           <div className="absolute left-1/2 -translate-x-1/2 top-4 w-[198px] h-[240px] z-20">
-            <Image
-              src="/assets/iced.png"
+            <SafeImage
+              src="/assets/iced.v1.webp"
               alt="Zécha Iced Coolers"
+              variant="thumb"
               width={198}
               height={240}
+              sizes="198px"
               priority
-              className="object-contain drop-shadow-[0_16px_32px_rgba(43,26,18,0.25)]"
+              transparent
+              className="object-contain w-full h-full drop-shadow-[0_16px_32px_rgba(43,26,18,0.25)]"
             />
           </div>
 
           {/* Loaded Fries Cup (Right, rotated 8deg, 104px) */}
           <div className="absolute right-0 top-[120px] w-[104px] h-[145px] transform rotate-8 z-30">
-            <Image
-              src="/assets/loaded-cup.png"
+            <SafeImage
+              src="/assets/loaded-cup.v1.webp"
               alt="Loaded Fries"
               width={104}
               height={145}
+              sizes="104px"
               priority
-              className="object-contain drop-shadow-[0_12px_24px_rgba(43,26,18,0.22)]"
+              transparent
+              className="object-contain w-full h-full drop-shadow-[0_12px_24px_rgba(43,26,18,0.22)]"
             />
           </div>
         </div>
@@ -107,13 +127,15 @@ export default function WelcomePage() {
 
         {/* Zécha! Logo (200px wide) */}
         <div className="relative w-[200px] h-[68px] mb-3">
-          <Image
-            src="/assets/logo-orange.png"
+          <SafeImage
+            src="/assets/logo-orange.v1.webp"
             alt="Zécha! One Cup Every Day"
             width={200}
             height={68}
+            sizes="200px"
             priority
-            className="object-contain"
+            transparent
+            className="object-contain w-full h-full"
           />
         </div>
 

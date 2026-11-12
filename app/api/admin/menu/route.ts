@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
         description || null,
         price,
         category,
-        image_url || '/assets/chai.jpg',
+        image_url || '/assets/chai.v1.webp',
         is_available ?? true,
         is_bestseller ?? false,
         is_veg ?? true,

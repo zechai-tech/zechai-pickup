@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
+import { SafeImage } from '@/components/ui/SafeImage';
 import { useRouter } from 'next/navigation';
 import { Check, ArrowRight, Printer } from 'lucide-react';
 import { useZechaStore } from '@/lib/store';
@@ -37,12 +37,12 @@ export default function ConfirmedPage() {
     <div className="flex-1 flex flex-col h-full bg-cream page-transition overflow-hidden relative">
       {/* Pattern overlay at top 300px */}
       <div className="absolute inset-x-0 top-0 h-[280px] pointer-events-none opacity-22 overflow-hidden print:hidden">
-        <Image
-          src="/assets/pattern.jpg"
-          alt="Zécha pattern"
+        <SafeImage
+          src="/assets/pattern.v1.webp"
+          alt=""
           fill
+          sizes="(max-width: 430px) 100vw, 430px"
           className="object-cover"
-          priority
         />
         <div className="absolute inset-0 bg-gradient-to-b from-transparent via-cream/80 to-cream" />
       </div>

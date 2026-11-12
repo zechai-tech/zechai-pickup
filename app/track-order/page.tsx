@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, Suspense } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
+import { SafeImage } from '@/components/ui/SafeImage';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   ChevronLeft,
@@ -285,10 +285,12 @@ function TrackOrderContent() {
 
           {/* Mascot Art Peeking bottom-right */}
           <div className="absolute right-0 -bottom-2 w-[130px] h-[170px] pointer-events-none">
-            <Image
-              src="/assets/mascot-cream.png"
-              alt="Mascot"
+            <SafeImage
+              src="/assets/mascot-cream.v1.webp"
+              alt="Zécha Mascot"
               fill
+              sizes="130px"
+              transparent
               className="object-contain object-bottom-right opacity-90"
             />
           </div>

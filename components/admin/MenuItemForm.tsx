@@ -1,9 +1,11 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Image from 'next/image';
-import { MenuItem, Outlet } from '@/types/supabase';
+import { MenuItem } from '@/types/supabase';
 import { Button } from '@/components/ui/Button';
+import { SafeImage } from '@/components/ui/SafeImage';
+import { compressAdminImage } from '@/lib/admin-image-compress';
+import { DEFAULT_MENU_IMAGE } from '@/lib/images';
 import { X, UtensilsCrossed, Upload, Image as ImageIcon } from 'lucide-react';
 
 interface MenuItemFormProps {
@@ -32,6 +34,8 @@ export function MenuItemForm({
   const [sortOrder, setSortOrder] = useState<number>(0);
 
   const [uploading, setUploading] = useState(false);
+  const [uploadStats, setUploadStats] = useState<string>('');
+  const [previewObjectUrl, setPreviewObjectUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -59,8 +63,18 @@ export function MenuItemForm({
       setIsVeg(true);
       setSortOrder(0);
     }
+    setUploadStats('');
+    setPreviewObjectUrl(null);
     setError('');
   }, [itemToEdit, isOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (previewObjectUrl) {
+        URL.revokeObjectURL(previewObjectUrl);
+      }
+    };
+  }, [previewObjectUrl]);
 
   if (!isOpen) return null;
 
@@ -70,10 +84,21 @@ export function MenuItemForm({
 
     setUploading(true);
     setError('');
+    setUploadStats('');
 
     try {
+      // Compress before upload: reject > 5 MB, resize <= 1000px, convert to WebP ~80%
+      const compressed = await compressAdminImage(file);
+      if (previewObjectUrl) {
+        URL.revokeObjectURL(previewObjectUrl);
+      }
+      setPreviewObjectUrl(compressed.previewUrl);
+      setUploadStats(
+        `Optimized WebP: ${(compressed.originalBytes / 1024).toFixed(0)} KB → ${(compressed.compressedBytes / 1024).toFixed(1)} KB (${compressed.width}×${compressed.height})`
+      );
+
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', compressed.file);
 
       const res = await fetch('/api/admin/upload', {
         method: 'POST',
@@ -83,11 +108,12 @@ export function MenuItemForm({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Upload failed');
 
-      setImageUrl(data.url);
+      setImageUrl(data.path || data.url);
     } catch (err: any) {
       setError(err.message || 'Image upload failed');
     } finally {
       setUploading(false);
+      e.target.value = '';
     }
   };
 
@@ -115,7 +141,7 @@ export function MenuItemForm({
           description: description.trim() || null,
           price: Number(price),
           category,
-          image_url: imageUrl || '/assets/chai.jpg',
+          image_url: imageUrl || DEFAULT_MENU_IMAGE,
           is_available: isAvailable,
           is_bestseller: isBestseller,
           is_veg: isVeg,
@@ -246,8 +272,15 @@ export function MenuItemForm({
             </label>
             <div className="flex items-center gap-3">
               <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-sand/60 border border-border shrink-0 flex items-center justify-center">
-                {imageUrl ? (
-                  <Image src={imageUrl} alt="Preview" fill className="object-cover" />
+                {previewObjectUrl || imageUrl ? (
+                  <SafeImage
+                    src={previewObjectUrl || imageUrl}
+                    alt="Preview"
+                    variant="thumb"
+                    fill
+                    sizes="64px"
+                    className="object-cover"
+                  />
                 ) : (
                   <ImageIcon className="w-6 h-6 text-espresso/40" />
                 )}
@@ -255,7 +288,7 @@ export function MenuItemForm({
               <div className="flex-1">
                 <label className="cursor-pointer inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-sand/40 hover:bg-sand border border-border text-xs font-bold text-espresso transition-colors">
                   <Upload className="w-3.5 h-3.5 text-orange" />
-                  <span>{uploading ? 'Uploading...' : 'Upload Image'}</span>
+                  <span>{uploading ? 'Compressing & Uploading...' : 'Upload Image (Max 5 MB)'}</span>
                   <input
                     type="file"
                     accept="image/*"
@@ -264,11 +297,14 @@ export function MenuItemForm({
                     className="hidden"
                   />
                 </label>
+                {uploadStats && (
+                  <p className="text-[10px] font-bold text-[#2F7A3E] mt-1">{uploadStats}</p>
+                )}
                 <input
                   type="text"
                   value={imageUrl}
                   onChange={(e) => setImageUrl(e.target.value)}
-                  placeholder="Or enter image URL (/assets/chai.jpg)"
+                  placeholder="Or enter image path (/assets/chai.v1.webp)"
                   className="w-full mt-1.5 px-3 py-1.5 rounded-lg bg-sand/20 border border-border text-[11px] font-medium text-espresso"
                 />
               </div>

@@ -1,6 +1,7 @@
 import { CartItem, CustomerDetails, MenuItem, Order, OrderStatus, Outlet } from '@/types';
 import { supabase } from './supabase';
 import { generateOrderId, generatePickupCode } from './utils';
+import { resolveImageUrl, DEFAULT_MENU_IMAGE } from '@/lib/images';
 
 // In-memory caches to prevent redundant Supabase queries during user navigation
 let cachedOutlets: Outlet[] | null = null;
@@ -106,8 +107,8 @@ export async function getMenu(outletId?: string): Promise<MenuItem[]> {
       category: item.category || 'Chai & Coffee',
       price: Number(item.price),
       description: item.description || '',
-      image: item.image_url || '/assets/chai.jpg',
-      image_url: item.image_url || '/assets/chai.jpg',
+      image: resolveImageUrl(item.image_url, 'hero') || DEFAULT_MENU_IMAGE,
+      image_url: resolveImageUrl(item.image_url, 'hero') || DEFAULT_MENU_IMAGE,
       isVeg: item.is_veg ?? true,
       is_veg: item.is_veg ?? true,
       isBestseller: item.is_bestseller ?? false,
@@ -146,8 +147,8 @@ export async function getMenuItemById(id: string): Promise<MenuItem | null> {
       category: item.category || 'Chai & Coffee',
       price: Number(item.price),
       description: item.description || '',
-      image: item.image_url || '/assets/chai.jpg',
-      image_url: item.image_url || '/assets/chai.jpg',
+      image: resolveImageUrl(item.image_url, 'hero') || DEFAULT_MENU_IMAGE,
+      image_url: resolveImageUrl(item.image_url, 'hero') || DEFAULT_MENU_IMAGE,
       isVeg: item.is_veg ?? true,
       is_veg: item.is_veg ?? true,
       isBestseller: item.is_bestseller ?? false,

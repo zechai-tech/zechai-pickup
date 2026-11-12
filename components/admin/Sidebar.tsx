@@ -2,8 +2,8 @@
 
 import React from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { usePathname } from 'next/navigation';
+import { SafeImage } from '@/components/ui/SafeImage';
 import { useAdminStore } from '@/stores/admin-store';
 import {
   LayoutDashboard,
@@ -14,6 +14,7 @@ import {
   X,
   ExternalLink,
   CreditCard,
+  BarChart3,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -33,6 +34,11 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const isAdmin = mounted && (currentUser?.role === 'admin' || currentUser?.role === 'super_admin');
   const isSuperAdmin = mounted && (currentUser?.role === 'super_admin' || currentUser?.role === 'admin');
+  const canViewAnalytics =
+    mounted &&
+    (currentUser?.role === 'admin' ||
+      currentUser?.role === 'super_admin' ||
+      currentUser?.role === 'manager');
 
   const navItems = [
     {
@@ -40,6 +46,15 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
       href: '/admin/dashboard',
       icon: LayoutDashboard,
     },
+    ...(canViewAnalytics
+      ? [
+          {
+            label: 'Analytics',
+            href: '/admin/analytics',
+            icon: BarChart3,
+          },
+        ]
+      : []),
     {
       label: 'Orders',
       href: '/admin/orders',
@@ -75,12 +90,13 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         <div className="flex items-center justify-between pb-6 pt-2 px-2 border-b border-border/70">
           <Link href="/admin/dashboard" className="flex items-center gap-3">
             <div className="relative w-28 h-8">
-              <Image
-                src="/assets/logo-orange.png"
+              <SafeImage
+                src="/assets/logo-orange.v1.webp"
                 alt="Zécha!"
                 fill
+                sizes="112px"
+                transparent
                 className="object-contain object-left"
-                priority
               />
             </div>
           </Link>

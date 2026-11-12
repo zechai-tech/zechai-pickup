@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
+import { SafeImage } from '@/components/ui/SafeImage';
 import { useRouter } from 'next/navigation';
 import {
   ChevronLeft,
@@ -193,10 +193,12 @@ export default function PaymentPage() {
         <div className="relative bg-espresso text-cream pt-4 pb-5 px-5 rounded-b-[28px] overflow-hidden shadow-lg shrink-0">
           {/* Subtle mascot watermark */}
           <div className="absolute right-0 top-1/2 -translate-y-1/2 w-36 h-36 opacity-10 pointer-events-none">
-            <Image
-              src="/assets/mascot-cream.png"
-              alt="Mascot watermark"
+            <SafeImage
+              src="/assets/mascot-cream.v1.webp"
+              alt=""
               fill
+              sizes="144px"
+              transparent
               className="object-contain"
             />
           </div>
@@ -211,10 +213,12 @@ export default function PaymentPage() {
               <ChevronLeft className="w-5 h-5 stroke-[2.2]" />
             </Link>
             <div className="relative w-24 h-7">
-              <Image
-                src="/assets/logo-cream.png"
+              <SafeImage
+                src="/assets/logo-cream.v1.webp"
                 alt="Zécha!"
                 fill
+                sizes="96px"
+                transparent
                 className="object-contain"
               />
             </div>

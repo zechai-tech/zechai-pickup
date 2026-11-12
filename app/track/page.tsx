@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
-import Image from 'next/image';
 import Link from 'next/link';
+import { SafeImage } from '@/components/ui/SafeImage';
 import { useRouter } from 'next/navigation';
 import {
   ChevronLeft,
@@ -153,12 +153,13 @@ export default function TrackPage() {
         <div className="bg-orange text-cream pt-3.5 pb-10 px-4 rounded-b-[32px] relative overflow-hidden shadow-md">
           {/* Mascot Cream Graphic on right */}
           <div className="absolute right-1 -bottom-2 w-32 h-40 opacity-95 pointer-events-none">
-            <Image
-              src="/assets/mascot-cream.png"
+            <SafeImage
+              src="/assets/mascot-cream.v1.webp"
               alt="Zécha Mascot"
               fill
+              sizes="128px"
+              transparent
               className="object-contain object-right"
-              priority
             />
           </div>
 
