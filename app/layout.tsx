@@ -1,16 +1,9 @@
 import type { Metadata, Viewport } from 'next';
-import { Archivo } from 'next/font/google';
 import Script from 'next/script';
+import '@fontsource-variable/archivo/wdth.css';
 import './globals.css';
 import { ToastProvider } from '@/components/ui/Toast';
 import { PhoneFrame } from '@/components/ui/PhoneFrame';
-
-const archivo = Archivo({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700', '800', '900'],
-  variable: '--font-archivo',
-  display: 'swap',
-});
 
 export const metadata: Metadata = {
   title: 'Zécha! — One Cup Every Day',
@@ -41,7 +34,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={archivo.variable}>
+    <html lang="en">
       <head>
         <link rel="preconnect" href={SUPABASE_ORIGIN} crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://checkout.razorpay.com" />
