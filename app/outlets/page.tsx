@@ -8,6 +8,8 @@ import {
   Search,
   Check,
   AlertCircle,
+  Clock,
+  Moon,
 } from 'lucide-react';
 import { getOutlets } from '@/lib/api';
 import { PICKUP_ETA_TEXT, getOutletAvailability } from '@/lib/outlets';
@@ -15,7 +17,6 @@ import { Outlet } from '@/types';
 import { useZechaStore } from '@/lib/store';
 import { useToast } from '@/components/ui/Toast';
 import { SafeImage } from '@/components/ui/SafeImage';
-import { CupMarkSvg } from '@/components/ui/CupMarkSvg';
 
 export default function OutletsPage() {
   const router = useRouter();
@@ -27,9 +28,19 @@ export default function OutletsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [pendingSwitchOutlet, setPendingSwitchOutlet] = useState<Outlet | null>(null);
   const [, setClockTick] = useState(0);
+  const [animateInitialCards, setAnimateInitialCards] = useState(true);
 
   const selectedOutletRef = useRef<Outlet | null>(selectedOutlet);
   selectedOutletRef.current = selectedOutlet;
+  const hasLoadedOnceRef = useRef(false);
+
+  // Ensure nothing is pre-selected on fresh load when cart is empty
+  useEffect(() => {
+    if (cart.length === 0 && selectedOutletRef.current) {
+      setOutlet(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const loadOutlets = useCallback(
     async (isBackground = false) => {
@@ -39,6 +50,10 @@ export default function OutletsPage() {
         }
         const data = await getOutlets();
         setOutlets(data);
+        if (!hasLoadedOnceRef.current) {
+          hasLoadedOnceRef.current = true;
+          setTimeout(() => setAnimateInitialCards(false), 600);
+        }
 
         const currentSel = selectedOutletRef.current;
         if (currentSel) {
@@ -130,6 +145,11 @@ export default function OutletsPage() {
       return;
     }
 
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      try {
+        navigator.vibrate(10);
+      } catch {}
+    }
     setOutlet(item);
   };
 
@@ -173,9 +193,12 @@ export default function OutletsPage() {
           </div>
         </div>
 
-        <h1 className="font-display text-[30px] font-extrabold text-[#2B1A12] leading-[1.15] mb-4 tracking-tight">
+        <h1 className="font-display text-[30px] font-extrabold text-[#2B1A12] leading-[1.08] tracking-tight">
           Choose your<br />outlet
         </h1>
+        <p className="text-[14px] text-[#75604F] mt-[4px] mb-4 font-medium">
+          Pick where you&apos;ll collect your order.
+        </p>
 
         <div className="relative w-full">
           <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-[#75604F]/60">
@@ -194,13 +217,15 @@ export default function OutletsPage() {
       {/* Scrollable Outlet List Container */}
       <div
         data-testid="outlets-scroll-list"
-        className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-scroll px-5 pt-2 pb-[calc(40px+env(safe-area-inset-bottom))] space-y-[14px]"
+        role="radiogroup"
+        aria-label="Choose your outlet"
+        className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-scroll px-5 pt-2 pb-[calc(40px+env(safe-area-inset-bottom))] space-y-[12px]"
       >
         {loading ? (
           [1, 2, 3].map((n) => (
             <div
               key={n}
-              className="h-[120px] rounded-[22px] bg-[#F4E7CC]/40 border border-[#EADFC7] animate-pulse"
+              className="h-[126px] rounded-[22px] bg-[#F4E7CC]/40 border-[1.5px] border-[#EADFC7] animate-pulse"
             />
           ))
         ) : processedOutlets.length === 0 ? (
@@ -211,85 +236,165 @@ export default function OutletsPage() {
             </p>
           </div>
         ) : (
-          processedOutlets.map((item) => {
+          processedOutlets.map((item, idx) => {
             const isSelected = selectedOutlet?.id === item.id;
             const isClosed = !item.isOpen;
+            const trimmedAddress = (item.address || '').trim();
+            const shouldAnimateEnter = animateInitialCards && idx < 6;
 
             return (
               <div
                 key={item.id}
-                onClick={() => handleCardClick(item)}
-                role="button"
-                tabIndex={0}
+                data-testid={`outlet-card-${item.id}`}
+                onClick={() => {
+                  if (!isClosed) handleCardClick(item);
+                }}
+                role="radio"
+                aria-checked={isSelected}
+                aria-disabled={isClosed}
+                tabIndex={isClosed ? -1 : 0}
                 onKeyDown={(e) => {
+                  if (isClosed) return;
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     handleCardClick(item);
                   }
                 }}
-                aria-disabled={isClosed}
-                className={`w-full rounded-[22px] p-4 border transition-all duration-150 ${
+                style={
+                  shouldAnimateEnter ? { animationDelay: `${idx * 40}ms` } : undefined
+                }
+                className={`relative overflow-hidden w-full rounded-[22px] bg-[#FFFEF7] border-[1.5px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#CE5535] focus-visible:ring-offset-2 focus-visible:ring-offset-[#FDFBEA] ${
+                  shouldAnimateEnter ? 'zecha-card-enter' : ''
+                } ${
                   isClosed
-                    ? 'opacity-[0.6] bg-[#FFFEF7]/60 border-[#EADFC7] cursor-not-allowed'
+                    ? 'opacity-[0.62] border-[#EADFC7] cursor-default'
                     : isSelected
-                    ? 'bg-[#FFFEF7] border-2 border-[#CE5535] shadow-[0_4px_20px_rgba(206,85,53,0.12)] cursor-pointer'
-                    : 'bg-[#FFFEF7] border-[#EADFC7] hover:border-[#E3D7BC] shadow-xs cursor-pointer'
+                    ? 'border-[#CE5535] shadow-[inset_0_0_0_0.5px_#CE5535,0_0_0_4px_rgba(206,85,53,0.14)] cursor-pointer zecha-card-press'
+                    : 'border-[#EADFC7] cursor-pointer zecha-card-press'
                 }`}
               >
-                {/* Top card row: Cup tile, name, address, radio circle */}
-                <div className="flex items-start justify-between gap-3 mb-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div
-                      className={`w-[52px] h-[52px] rounded-[16px] flex items-center justify-center shrink-0 transition-colors ${
-                        isSelected ? 'bg-[#CE5535]' : 'bg-[#F4E7CC]'
-                      }`}
-                    >
-                      <CupMarkSvg
-                        variant={isSelected ? 'cream' : 'orange'}
-                        className="w-7 h-7"
-                        aria-hidden={true}
-                      />
-                    </div>
+                {/* Decorative Terracotta Cup Watermark */}
+                <img
+                  src="/assets/mascot-orange.v1.webp"
+                  alt=""
+                  aria-hidden="true"
+                  className="pointer-events-none select-none absolute -right-[10px] top-[4px] w-[104px] h-auto"
+                  style={{
+                    transform: 'rotate(12deg)',
+                    opacity: isSelected ? 0.07 : 0.06,
+                  }}
+                />
 
-                    <div className="min-w-0">
-                      <h2 className="text-[17px] font-extrabold text-[#2B1A12] leading-tight">
-                        {item.name}
-                      </h2>
-                      <p className="text-[13px] text-[#75604F] mt-0.5 font-medium leading-tight">
-                        {item.address || 'Kerala'}
-                      </p>
-                    </div>
+                {/* Top section */}
+                <div className="relative z-10 flex items-center gap-[14px] p-[14px]">
+                  {/* 58x58 Cup Tile */}
+                  <div
+                    className={`w-[58px] h-[58px] rounded-[18px] relative flex items-center justify-center shrink-0 ${
+                      isClosed ? 'bg-[#F4E7CC]' : 'bg-[#CE5535]'
+                    }`}
+                  >
+                    {!isClosed && (
+                      <>
+                        <span
+                          className="zecha-steam-bar absolute top-[9px] left-[21px] w-[2px] h-[8px] rounded-[2px] bg-[#FDFBEA]"
+                          style={{ animationDelay: '0s' }}
+                        />
+                        <span
+                          className="zecha-steam-bar absolute top-[9px] left-[28px] w-[2px] h-[8px] rounded-[2px] bg-[#FDFBEA]"
+                          style={{ animationDelay: '0.5s' }}
+                        />
+                        <span
+                          className="zecha-steam-bar absolute top-[9px] left-[35px] w-[2px] h-[8px] rounded-[2px] bg-[#FDFBEA]"
+                          style={{ animationDelay: '1s' }}
+                        />
+                      </>
+                    )}
+                    <img
+                      src={isClosed ? '/assets/mascot-orange.v1.webp' : '/assets/mascot-cream.v1.webp'}
+                      alt=""
+                      aria-hidden="true"
+                      className={`w-[30px] h-auto object-contain ${isClosed ? '' : 'mt-[8px]'}`}
+                    />
                   </div>
 
-                  <div className="pt-1 shrink-0">
-                    <div
-                      className={`w-6 h-6 rounded-full flex items-center justify-center transition-all ${
-                        isSelected
-                          ? 'bg-[#CE5535] text-white shadow-xs'
-                          : 'border-2 border-[#EADFC7]'
-                      }`}
-                    >
-                      {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
-                    </div>
+                  {/* Outlet Name & Address */}
+                  <div className="flex-1 min-w-0">
+                    <h2 className="text-[17px] font-extrabold text-[#2B1A12] leading-[1.15] truncate">
+                      {item.name}
+                    </h2>
+                    {trimmedAddress && (
+                      <p className="text-[13px] text-[#75604F] mt-0.5 font-medium leading-tight truncate">
+                        {trimmedAddress}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Radio Circle */}
+                  <div className="shrink-0">
+                    {isSelected ? (
+                      <div className="w-[26px] h-[26px] rounded-full bg-[#CE5535] text-white flex items-center justify-center">
+                        <Check
+                          className="w-3.5 h-3.5 zecha-check-pop"
+                          strokeWidth={3.2}
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-[26px] h-[26px] rounded-full border-2 border-[#D9CBAE]" />
+                    )}
                   </div>
                 </div>
 
-                {/* Bottom Chips Row */}
-                <div className="flex flex-wrap items-center gap-2 pt-0.5">
+                {/* Ticket Divider with Edge Notches */}
+                <div className="relative z-10 w-full border-t-[1.5px] border-dashed border-[#EADFC7]">
                   <span
-                    className={`px-3 py-1 rounded-full text-xs font-bold ${
-                      item.isOpen
-                        ? 'bg-[#2F7A3E]/10 text-[#2F7A3E]'
-                        : 'bg-[#BA1A1A]/10 text-[#BA1A1A]'
+                    aria-hidden="true"
+                    className={`w-[22px] h-[22px] rounded-full bg-[#FDFBEA] border-[1.5px] absolute left-[-12px] top-[-11px] pointer-events-none ${
+                      isSelected ? 'border-[#CE5535]' : 'border-[#EADFC7]'
                     }`}
-                  >
-                    {item.openStatusText}
-                  </span>
+                  />
+                  <span
+                    aria-hidden="true"
+                    className={`w-[22px] h-[22px] rounded-full bg-[#FDFBEA] border-[1.5px] absolute right-[-12px] top-[-11px] pointer-events-none ${
+                      isSelected ? 'border-[#CE5535]' : 'border-[#EADFC7]'
+                    }`}
+                  />
+                </div>
 
-                  {item.isOpen && (
-                    <span className="px-3 py-1 rounded-full text-xs font-bold bg-[#F4E7CC] text-[#2B1A12]">
-                      {item.readyTime}
-                    </span>
+                {/* Bottom Strip */}
+                <div
+                  className={`relative z-10 flex items-center justify-between gap-2 px-[14px] py-[11px] text-[12px] ${
+                    isClosed
+                      ? 'bg-[#F4EBD6]'
+                      : isSelected
+                      ? 'bg-[#FCE9DF] font-bold'
+                      : 'bg-[#F8F0DC] font-bold'
+                  }`}
+                >
+                  {isClosed ? (
+                    <>
+                      <span className="flex items-center gap-1.5 font-bold text-[#BA1A1A] min-w-0 truncate">
+                        <Moon className="w-[14px] h-[14px] shrink-0" />
+                        <span className="truncate">{item.openStatusText}</span>
+                      </span>
+                      <span className="text-[12px] font-semibold text-[#75604F] shrink-0">
+                        Not available now
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="flex items-center gap-1.5 font-bold text-[#2F7A3E] min-w-0 truncate">
+                        <span className="zecha-pulse-dot w-[7px] h-[7px] rounded-full bg-[#2F7A3E] shrink-0" />
+                        <span className="truncate">{item.openStatusText}</span>
+                      </span>
+                      <span
+                        className={`flex items-center gap-1 font-bold shrink-0 ${
+                          isSelected ? 'text-[#A8401F]' : 'text-[#5A4334]'
+                        }`}
+                      >
+                        <Clock className="w-[14px] h-[14px] shrink-0" />
+                        <span>{item.readyTime}</span>
+                      </span>
+                    </>
                   )}
                 </div>
               </div>
