@@ -20,8 +20,12 @@ import { SafeImage } from '@/components/ui/SafeImage';
 
 export default function OutletsPage() {
   const router = useRouter();
-  const { outlet: selectedOutlet, setOutlet, cart, clearCart } = useZechaStore();
+  const { outlet: storeOutlet, setOutlet, cart, clearCart } = useZechaStore();
   const { showToast } = useToast();
+
+  const [selectedOutlet, setSelectedOutlet] = useState<Outlet | null>(null);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const isNavigatingRef = useRef(false);
 
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [loading, setLoading] = useState(true);
@@ -30,17 +34,14 @@ export default function OutletsPage() {
   const [, setClockTick] = useState(0);
   const [animateInitialCards, setAnimateInitialCards] = useState(true);
 
-  const selectedOutletRef = useRef<Outlet | null>(selectedOutlet);
-  selectedOutletRef.current = selectedOutlet;
+  const storeOutletRef = useRef<Outlet | null>(storeOutlet);
+  storeOutletRef.current = storeOutlet;
   const hasLoadedOnceRef = useRef(false);
 
-  // Ensure nothing is pre-selected on fresh load when cart is empty
+  // Prefetch /menu so navigation on tap is instant
   useEffect(() => {
-    if (cart.length === 0 && selectedOutletRef.current) {
-      setOutlet(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    router.prefetch('/menu');
+  }, [router]);
 
   const loadOutlets = useCallback(
     async (isBackground = false) => {
@@ -55,16 +56,15 @@ export default function OutletsPage() {
           setTimeout(() => setAnimateInitialCards(false), 600);
         }
 
-        const currentSel = selectedOutletRef.current;
-        if (currentSel) {
-          const match = data.find((o) => o.id === currentSel.id);
+        const currentStore = storeOutletRef.current;
+        if (currentStore) {
+          const match = data.find((o) => o.id === currentStore.id);
           if (!match || !match.isOpen) {
             setOutlet(null);
-            showToast('That outlet is no longer available. Please choose another.', 'info');
           } else if (
-            match.name !== currentSel.name ||
-            match.address !== currentSel.address ||
-            match.statusText !== currentSel.statusText
+            match.name !== currentStore.name ||
+            match.address !== currentStore.address ||
+            match.statusText !== currentStore.statusText
           ) {
             setOutlet(match);
           }
@@ -77,7 +77,7 @@ export default function OutletsPage() {
         }
       }
     },
-    [setOutlet, showToast]
+    [setOutlet]
   );
 
   useEffect(() => {
@@ -140,7 +140,11 @@ export default function OutletsPage() {
       return;
     }
 
-    if (selectedOutlet && selectedOutlet.id !== item.id && cart.length > 0) {
+    if (isNavigatingRef.current) {
+      return;
+    }
+
+    if (storeOutlet && storeOutlet.id !== item.id && cart.length > 0) {
       setPendingSwitchOutlet(item);
       return;
     }
@@ -150,20 +154,46 @@ export default function OutletsPage() {
         navigator.vibrate(10);
       } catch {}
     }
-    setOutlet(item);
+
+    isNavigatingRef.current = true;
+    setIsNavigating(true);
+    setSelectedOutlet(item);
+
+    setTimeout(() => {
+      setOutlet(item);
+      router.push('/menu');
+    }, 220);
   };
 
   const handleConfirmSwitch = () => {
     if (pendingSwitchOutlet) {
-      clearCart();
-      setOutlet(pendingSwitchOutlet);
+      const target = pendingSwitchOutlet;
       setPendingSwitchOutlet(null);
+      isNavigatingRef.current = true;
+      setIsNavigating(true);
+      setSelectedOutlet(target);
+
+      if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+        try {
+          navigator.vibrate(10);
+        } catch {}
+      }
+
       showToast('Switched outlet. Cart was cleared.', 'info');
+
+      setTimeout(() => {
+        clearCart();
+        setOutlet(target);
+        router.push('/menu');
+      }, 220);
     }
   };
 
   const handleContinue = () => {
-    if (!selectedOutlet || !selectedOutlet.isOpen) return;
+    if (!selectedOutlet || !selectedOutlet.isOpen || isNavigatingRef.current) return;
+    isNavigatingRef.current = true;
+    setIsNavigating(true);
+    setOutlet(selectedOutlet);
     router.push('/menu');
   };
 
@@ -414,14 +444,14 @@ export default function OutletsPage() {
 
         <button
           onClick={handleContinue}
-          disabled={!selectedOutlet || !selectedOutlet.isOpen}
+          disabled={!selectedOutlet || !selectedOutlet.isOpen || isNavigating}
           className={`w-full h-[56px] rounded-[20px] font-extrabold text-[16px] flex items-center justify-center gap-2 shadow-[0_10px_24px_rgba(206,85,53,0.25)] transition-all ${
-            !selectedOutlet || !selectedOutlet.isOpen
+            !selectedOutlet || !selectedOutlet.isOpen || isNavigating
               ? 'bg-[#CE5535]/40 text-[#FDFBEA]/70 cursor-not-allowed shadow-none'
               : 'bg-[#CE5535] text-[#FDFBEA] hover:bg-[#A8401F] active:scale-[0.98]'
           }`}
         >
-          <span>Continue to menu</span>
+          <span>{selectedOutlet ? 'Continue to menu' : 'Choose an outlet to continue'}</span>
           <span className="text-xl">→</span>
         </button>
       </footer>
@@ -441,7 +471,7 @@ export default function OutletsPage() {
               <p className="text-sm text-[#75604F]">
                 Your cart contains items from{' '}
                 <span className="font-bold text-[#2B1A12]">
-                  {selectedOutlet?.name}
+                  {storeOutlet?.name || 'another outlet'}
                 </span>
                 . Switching to{' '}
                 <span className="font-bold text-[#2B1A12]">
