@@ -93,6 +93,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       if (event === 'SIGNED_OUT' || !session) {
         logout();
         router.replace('/admin/login');
+      } else if (session?.access_token) {
+        const currentUser = useAdminStore.getState().currentUser;
+        if (currentUser) {
+          useAdminStore.getState().setUser(currentUser, session.access_token);
+        }
       }
     });
 

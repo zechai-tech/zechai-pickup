@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { useAdminStore } from '@/stores/admin-store';
 import { supabase } from '@/lib/supabase';
 import { SafeImage } from '@/components/ui/SafeImage';
@@ -32,11 +33,17 @@ import {
 type CategoryFilter = 'all' | 'no-category' | string;
 
 export default function AdminMenuPage() {
+  const router = useRouter();
   const { currentUser, sessionToken, selectedOutletId, setSelectedOutletId, syncTrigger } =
     useAdminStore();
   const { showToast } = useToast();
   const isAdmin = currentUser?.role === 'admin' || currentUser?.role === 'super_admin';
   const canManageTheme = isAdmin || currentUser?.role === 'manager';
+
+  const getToken = useCallback(async (): Promise<string | null> => {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token || sessionToken || null;
+  }, [sessionToken]);
 
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [items, setItems] = useState<MenuItem[]>([]);
@@ -224,13 +231,20 @@ export default function AdminMenuPage() {
     setIsSavingTheme(true);
 
     try {
-      const token =
-        sessionToken || (await supabase.auth.getSession()).data.session?.access_token || '';
+      const token = await getToken();
+      if (!token) {
+        setOutlets(prevOutlets);
+        setPreviewRefreshKey((k) => k + 1);
+        showToast('Session expired, please log in again', 'error');
+        router.push('/admin/login');
+        return;
+      }
+
       const res = await fetch('/api/admin/outlets/menu-theme', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           outlet_id: activeOutletId,
@@ -240,6 +254,22 @@ export default function AdminMenuPage() {
       });
 
       const data = await res.json().catch(() => ({}));
+
+      if (res.status === 401) {
+        setOutlets(prevOutlets);
+        setPreviewRefreshKey((k) => k + 1);
+        showToast('Session expired, please log in again', 'error');
+        router.push('/admin/login');
+        return;
+      }
+
+      if (res.status === 403) {
+        setOutlets(prevOutlets);
+        setPreviewRefreshKey((k) => k + 1);
+        showToast(data.error || "You don't have permission to perform this action", 'error');
+        return;
+      }
+
       if (!res.ok) {
         throw new Error(data.error || 'Failed to update menu theme');
       }

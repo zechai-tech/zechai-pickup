@@ -74,12 +74,14 @@ export async function PUT(req: NextRequest) {
       });
     }
 
+    const targetOutletId = ctx.isManager ? ctx.userOutletId! : outletId;
+
     const updRes = await query(
       `UPDATE public.outlets
        SET menu_theme = $1
        WHERE id = $2::uuid
        RETURNING id, menu_theme`,
-      [menuTheme, outletId]
+      [menuTheme, targetOutletId]
     );
 
     if (updRes.rows.length === 0) {

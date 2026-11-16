@@ -83,7 +83,7 @@ export async function validatePortalManagerOrAdmin(
     return {
       ok: false,
       response: NextResponse.json(
-        { error: 'Forbidden: restricted to Portal admin and manager roles' },
+        { error: "You don't have permission to perform this action" },
         { status: 403 }
       ),
     };
