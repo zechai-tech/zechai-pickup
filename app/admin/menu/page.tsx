@@ -9,7 +9,9 @@ import { DEFAULT_MENU_IMAGE } from '@/lib/images';
 import { FIXED_MENU_CATEGORIES } from '@/lib/menu-categories';
 import { RoleGuard } from '@/components/admin/RoleGuard';
 import { MenuItem, MenuTheme, Outlet } from '@/types/supabase';
+import { Combo } from '@/types';
 import { MenuItemForm } from '@/components/admin/MenuItemForm';
+import { ComboForm } from '@/components/admin/ComboForm';
 import { Button } from '@/components/ui/Button';
 import { VegBadge } from '@/components/ui/VegBadge';
 import { useToast } from '@/components/ui/Toast';
@@ -28,6 +30,8 @@ import {
   X,
   Check,
   ChevronDown,
+  Sparkles,
+  Package,
 } from 'lucide-react';
 
 type CategoryFilter = 'all' | 'no-category' | string;
@@ -47,9 +51,12 @@ export default function AdminMenuPage() {
 
   const [outlets, setOutlets] = useState<Outlet[]>([]);
   const [items, setItems] = useState<MenuItem[]>([]);
+  const [combos, setCombos] = useState<Combo[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [itemToEdit, setItemToEdit] = useState<MenuItem | null>(null);
+  const [isComboModalOpen, setIsComboModalOpen] = useState(false);
+  const [comboToEdit, setComboToEdit] = useState<Combo | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
 
   // Menu Theme picker & preview state
@@ -103,11 +110,27 @@ export default function AdminMenuPage() {
     }
   }, [activeOutletId]);
 
+  const fetchCombos = useCallback(async () => {
+    if (!activeOutletId) return;
+    try {
+      const token = await getToken();
+      const res = await fetch(`/api/admin/combos?outlet_id=${encodeURIComponent(activeOutletId)}`, {
+        cache: 'no-store',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      const data = await res.json();
+      setCombos(data.combos || []);
+    } catch (e) {
+      console.error('Error fetching combos:', e);
+    }
+  }, [activeOutletId, getToken]);
+
   useEffect(() => {
     if (activeOutletId) {
       fetchMenuItems();
+      fetchCombos();
     }
-  }, [activeOutletId, fetchMenuItems, syncTrigger]);
+  }, [activeOutletId, fetchMenuItems, fetchCombos, syncTrigger]);
 
   const noCategoryCount = useMemo(
     () => items.filter((item) => !item.category).length,
@@ -202,6 +225,38 @@ export default function AdminMenuPage() {
   const handleOpenEdit = (item: MenuItem) => {
     setItemToEdit(item);
     setIsModalOpen(true);
+  };
+
+  const handleOpenAddCombo = () => {
+    setComboToEdit(null);
+    setIsComboModalOpen(true);
+  };
+
+  const handleOpenEditCombo = (combo: Combo) => {
+    setComboToEdit(combo);
+    setIsComboModalOpen(true);
+  };
+
+  const handleDeleteCombo = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to delete combo "${name}"?`)) return;
+    const prevCombos = combos;
+    setCombos((curr) => curr.filter((c) => c.id !== id));
+    try {
+      const token = await getToken();
+      const res = await fetch(`/api/admin/combos?id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Failed to delete combo');
+      }
+      showToast(`Deleted combo "${name}"`, 'success');
+      fetchCombos();
+    } catch (e: any) {
+      setCombos(prevCombos);
+      showToast(e?.message || 'Failed to delete combo', 'error');
+    }
   };
 
   useEffect(() => {
@@ -331,6 +386,17 @@ export default function AdminMenuPage() {
               <Plus className="w-4 h-4 mr-2" />
               <span>Add Item</span>
             </Button>
+
+            {isAdmin && (
+              <Button
+                onClick={handleOpenAddCombo}
+                disabled={!activeOutletId}
+                className="h-11 px-5 text-sm font-bold bg-[#2B1A12] text-[#FDFBEA] hover:bg-[#2B1A12]/90 shadow-xs"
+              >
+                <Sparkles className="w-4 h-4 mr-2 text-orange" />
+                <span>Add Combo</span>
+              </Button>
+            )}
           </div>
         </div>
 
@@ -538,6 +604,201 @@ export default function AdminMenuPage() {
             </button>
           </div>
         )}
+
+        {/* COMBOS SECTION AT THE TOP OF MENU LIST */}
+        {categoryFilter === 'all' && (
+          <div className="space-y-3 pb-4 border-b border-border/70">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-orange/15 text-orange flex items-center justify-center">
+                  <Sparkles className="w-4 h-4" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="font-display font-black text-xl text-espresso tracking-tight">
+                      Combos
+                    </h2>
+                    <span className="text-[11px] font-bold bg-orange/15 text-orange px-2.5 py-0.5 rounded-full">
+                      {combos.length} {combos.length === 1 ? 'combo' : 'combos'}
+                    </span>
+                    {!isAdmin && (
+                      <span className="text-[10px] font-bold text-espresso/50 bg-sand/60 px-2 py-0.5 rounded-full">
+                        View only
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-espresso/60">
+                    Bundled meals appearing as the first section on customer menu
+                  </p>
+                </div>
+              </div>
+
+              {isAdmin && (
+                <Button
+                  onClick={handleOpenAddCombo}
+                  disabled={!activeOutletId}
+                  className="h-9 px-4 text-xs font-bold bg-espresso hover:bg-espresso/90 text-cream"
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1 text-orange" />
+                  <span>Add Combo</span>
+                </Button>
+              )}
+            </div>
+
+            {combos.length === 0 ? (
+              <div className="bg-sand/20 rounded-2xl border border-dashed border-border p-6 text-center">
+                <Package className="w-8 h-8 text-espresso/30 mx-auto mb-2" />
+                <p className="text-xs font-bold text-espresso/70">
+                  No combos configured for this outlet yet.
+                </p>
+                {isAdmin ? (
+                  <p className="text-[11px] text-espresso/50 mt-1">
+                    Click &quot;Add Combo&quot; above to select 2 or more menu items and set a combo price.
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-espresso/50 mt-1">
+                    Only administrators can create and edit combos.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {combos.map((combo) => {
+                  return (
+                    <div
+                      key={combo.id}
+                      className={cn(
+                        'bg-card rounded-2xl border border-border overflow-hidden flex flex-col justify-between shadow-xs transition-all hover:border-orange/40',
+                        !combo.is_available && 'opacity-65 grayscale-[30%]'
+                      )}
+                    >
+                      {/* Image & Badges */}
+                      <div className="relative w-full h-36 bg-sand/30 overflow-hidden">
+                        <SafeImage
+                          src={combo.image_url || DEFAULT_MENU_IMAGE}
+                          alt={combo.name}
+                          variant="tile"
+                          fill
+                          sizes="(max-width: 1024px) 50vw, 25vw"
+                          className="object-cover"
+                        />
+                        <div className="absolute top-2 left-2 flex items-center gap-1.5">
+                          <VegBadge isVeg={combo.is_veg} size="sm" />
+                          <span className="bg-orange text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs">
+                            Combo
+                          </span>
+                        </div>
+
+                        <div className="absolute top-2 right-2">
+                          <span
+                            className={cn(
+                              'text-[10px] font-bold px-2 py-0.5 rounded-full shadow-xs',
+                              combo.is_available
+                                ? 'bg-[#EBF7EE] text-brandGreen border border-brandGreen/30'
+                                : 'bg-[#FDF0F0] text-brandRed border border-brandRed/30'
+                            )}
+                          >
+                            {combo.is_available ? 'In Stock' : 'Sold Out'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Combo Details */}
+                      <div className="p-3.5 flex-1 flex flex-col justify-between space-y-2.5">
+                        <div>
+                          <div className="flex items-start justify-between gap-1 mb-1">
+                            <h3 className="font-bold text-sm text-espresso line-clamp-1">
+                              {combo.name}
+                            </h3>
+                            <div className="text-right shrink-0">
+                              <span className="font-display font-black text-sm text-espresso block">
+                                {formatPrice(Number(combo.price))}
+                              </span>
+                              {combo.savings > 0 && (
+                                <span className="text-[10px] font-black text-[#2F7A3E] bg-[#2F7A3E]/10 px-1.5 py-0.2 rounded-full">
+                                  Save ₹{combo.savings}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {combo.description && (
+                            <p className="text-xs text-espresso/60 line-clamp-2 leading-relaxed mb-2">
+                              {combo.description}
+                            </p>
+                          )}
+
+                          {/* Included Items Short List */}
+                          <div className="bg-sand/30 rounded-xl p-2 space-y-1">
+                            <span className="text-[10px] font-black uppercase tracking-wider text-espresso/50 block">
+                              Includes ({combo.items?.length || 0} items):
+                            </span>
+                            <div className="space-y-0.5 max-h-20 overflow-y-auto pr-0.5">
+                              {combo.items?.map((ci, idx) => (
+                                <div
+                                  key={idx}
+                                  className="flex items-center justify-between text-[11px] text-espresso"
+                                >
+                                  <span className="truncate pr-1">
+                                    <span className="font-bold text-orange">{ci.quantity}x</span>{' '}
+                                    {ci.name}
+                                  </span>
+                                  {!ci.is_available && (
+                                    <span className="text-[9px] font-bold text-brandRed shrink-0">
+                                      Sold out
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Footer / Admin Actions */}
+                        <div className="pt-2 border-t border-border/70 flex items-center justify-between">
+                          <span className="text-[10px] font-semibold text-espresso/60">
+                            {combo.is_available
+                              ? 'All items available'
+                              : 'Sold out (item unavailable)'}
+                          </span>
+
+                          {isAdmin && (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => handleOpenEditCombo(combo)}
+                                className="p-1.5 rounded-lg hover:bg-sand/60 text-espresso/70 hover:text-espresso transition-colors"
+                                title="Edit combo"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => handleDeleteCombo(combo.id, combo.name)}
+                                className="p-1.5 rounded-lg hover:bg-[#FDF0F0] text-espresso/70 hover:text-brandRed transition-colors"
+                                title="Delete combo"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* NORMAL ITEMS HEADING */}
+        <div className="flex items-center justify-between pt-1">
+          <h2 className="font-display font-black text-xl text-espresso tracking-tight">
+            Menu Items
+          </h2>
+          <span className="text-xs font-bold text-espresso/60">
+            {filteredItems.length} {filteredItems.length === 1 ? 'item' : 'items'}
+          </span>
+        </div>
 
         {/* Content View: Desktop Grid Cards / Mobile Compact List */}
         {loading ? (
@@ -798,6 +1059,18 @@ export default function AdminMenuPage() {
           onSuccess={fetchMenuItems}
           itemToEdit={itemToEdit}
           outletId={activeOutletId}
+        />
+
+        <ComboForm
+          isOpen={isComboModalOpen}
+          onClose={() => setIsComboModalOpen(false)}
+          onSuccess={() => {
+            fetchCombos();
+            fetchMenuItems();
+          }}
+          outletId={activeOutletId}
+          availableMenuItems={items}
+          comboToEdit={comboToEdit}
         />
 
         {/* Phone-sized Customer Menu Preview Modal */}

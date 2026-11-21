@@ -51,6 +51,34 @@ export interface MenuItem {
   sort_order?: number;
 }
 
+export interface ComboItemEntry {
+  id?: string;
+  menu_item_id: string;
+  name: string;
+  quantity: number;
+  price?: number;
+  image_url?: string;
+  is_veg?: boolean;
+  is_available?: boolean;
+}
+
+export interface Combo {
+  id: string;
+  outlet_id: string;
+  name: string;
+  description: string | null;
+  image_url: string | null;
+  image?: string;
+  price: number;
+  sort_order?: number;
+  is_available: boolean;
+  is_veg: boolean;
+  items_total: number;
+  savings: number;
+  items: ComboItemEntry[];
+  created_at?: string;
+}
+
 export interface CartItemAddon {
   id: string;
   name: string;
@@ -70,6 +98,11 @@ export interface CartItem {
   addons?: CartItemAddon[];
   unitPrice: number;
   qty: number;
+  isCombo?: boolean;
+  comboItems?: {
+    name: string;
+    quantity: number;
+  }[];
 }
 
 export interface CustomerDetails {

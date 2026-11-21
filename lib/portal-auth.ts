@@ -133,3 +133,136 @@ export async function validatePortalManagerOrAdmin(
     },
   };
 }
+
+export async function validatePortalAdmin(req: NextRequest): Promise<PortalAuthResult> {
+  const result = await validatePortalManagerOrAdmin(req);
+  if (!result.ok) return result;
+  if (!result.ctx.isAdmin) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: 'Forbidden: only admins can manage combos' },
+        { status: 403 }
+      ),
+    };
+  }
+  return result;
+}
+
+export async function validatePortalStaffOrAbove(
+  req: NextRequest,
+  targetOutletId?: string | null
+): Promise<PortalAuthResult> {
+  const authHeader = req.headers.get('authorization');
+  if (!authHeader?.startsWith('Bearer ')) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: 'Unauthorized: missing session token' },
+        { status: 401 }
+      ),
+    };
+  }
+
+  const token = authHeader.slice(7).trim();
+  if (!token) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: 'Unauthorized: empty token' }, { status: 401 }),
+    };
+  }
+
+  const {
+    data: { user: authUser },
+    error: authError,
+  } = await supabaseAdmin.auth.getUser(token);
+
+  if (authError || !authUser?.email) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: 'Unauthorized: invalid session' }, { status: 401 }),
+    };
+  }
+
+  const userRes = await query(
+    `SELECT id, email, role, outlet_id, is_active
+     FROM public.users
+     WHERE lower(email) = $1 OR id = $2
+     LIMIT 1`,
+    [authUser.email.toLowerCase().trim(), authUser.id]
+  );
+
+  if (userRes.rows.length === 0) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: 'Forbidden: Portal user profile not found' },
+        { status: 403 }
+      ),
+    };
+  }
+
+  const profile = userRes.rows[0];
+  if (!profile.is_active) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: 'Forbidden: account is inactive' }, { status: 403 }),
+    };
+  }
+
+  const role = String(profile.role || '');
+  const allowed = ['admin', 'super_admin', 'manager', 'staff', 'ordering_staff'];
+  if (!allowed.includes(role)) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "You don't have permission to perform this action" },
+        { status: 403 }
+      ),
+    };
+  }
+
+  const isAdmin = role === 'admin' || role === 'super_admin';
+  const isManager = role === 'manager';
+
+  if (!isAdmin && !profile.outlet_id) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: 'Forbidden: user is not assigned to an outlet' },
+        { status: 403 }
+      ),
+    };
+  }
+
+  if (targetOutletId !== undefined && targetOutletId !== null && targetOutletId !== '') {
+    if (!UUID_REGEX.test(targetOutletId)) {
+      return {
+        ok: false,
+        response: NextResponse.json({ error: 'Invalid outlet_id UUID' }, { status: 400 }),
+      };
+    }
+
+    if (!isAdmin && targetOutletId !== profile.outlet_id) {
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: 'Forbidden: access restricted to assigned outlet' },
+          { status: 403 }
+        ),
+      };
+    }
+  }
+
+  return {
+    ok: true,
+    ctx: {
+      userId: profile.id,
+      email: profile.email,
+      role: role as any,
+      isAdmin,
+      isManager,
+      userOutletId: profile.outlet_id || null,
+    },
+  };
+}

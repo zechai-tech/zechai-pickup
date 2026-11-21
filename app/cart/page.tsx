@@ -138,7 +138,8 @@ export default function CartPage() {
           customer_phone: phoneToUse,
           kitchen_note: kitchenNote.trim() || null,
           items: cart.map((item) => ({
-            menu_item_id: item.itemId,
+            combo_id: item.isCombo ? item.itemId : undefined,
+            menu_item_id: item.isCombo ? undefined : item.itemId,
             quantity: item.qty,
           })),
         }),
@@ -460,7 +461,13 @@ export default function CartPage() {
                 <h3 className="font-extrabold text-[16px] text-[#2B1A12] truncate leading-tight">
                   {item.name}
                 </h3>
-                {item.selectedSize ? (
+                {item.isCombo ? (
+                  <p className="text-[12px] text-[#75604F] mt-0.5 truncate">
+                    {item.comboItems && item.comboItems.length > 0
+                      ? item.comboItems.map((ci) => `${ci.quantity > 1 ? `${ci.quantity}x ` : ''}${ci.name}`).join(' · ')
+                      : 'Combo pack'}
+                  </p>
+                ) : item.selectedSize ? (
                   <p className="text-[12px] text-[#75604F] mt-0.5 truncate">
                     {item.selectedSize}
                     {item.selectedSugar ? ` · ${item.selectedSugar}` : ''}

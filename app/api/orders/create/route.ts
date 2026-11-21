@@ -6,7 +6,7 @@ import { verifyAndSyncOrder } from '@/lib/order-sync';
 function normalizeCartSignature(rawItems: any[]): string {
   if (!Array.isArray(rawItems)) return '';
   return rawItems
-    .map((it) => `${String(it.id || it.menu_item_id || '')}:${Number(it.quantity ?? it.qty ?? 1)}`)
+    .map((it) => `${String(it.combo_id || it.menu_item_id || it.id || '')}:${Number(it.quantity ?? it.qty ?? 1)}`)
     .sort()
     .join('|');
 }
@@ -67,8 +67,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Validate each item structure
-    const allowedItemKeys = ['menu_item_id', 'quantity'];
+    const allowedItemKeys = ['menu_item_id', 'combo_id', 'quantity'];
     const menuItemIds: string[] = [];
+    const comboIds: string[] = [];
 
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
@@ -85,9 +86,12 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      if (!it.menu_item_id || typeof it.menu_item_id !== 'string') {
+      const hasMenuItemId = Boolean(it.menu_item_id && typeof it.menu_item_id === 'string');
+      const hasComboId = Boolean(it.combo_id && typeof it.combo_id === 'string');
+
+      if ((!hasMenuItemId && !hasComboId) || (hasMenuItemId && hasComboId)) {
         return NextResponse.json(
-          { error: `Item at index ${i} has invalid menu_item_id` },
+          { error: `Item at index ${i} must specify either menu_item_id or combo_id` },
           { status: 400 }
         );
       }
@@ -100,7 +104,11 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      menuItemIds.push(it.menu_item_id.trim());
+      if (hasMenuItemId) {
+        menuItemIds.push(it.menu_item_id.trim());
+      } else {
+        comboIds.push(it.combo_id.trim());
+      }
     }
 
     // Validate outlet exists and is active
@@ -122,59 +130,152 @@ export async function POST(req: NextRequest) {
 
     const outletName = outletRes.rows[0].name;
 
-    // Load menu items strictly from database
-    const uniqueIds = Array.from(new Set(menuItemIds));
-    const menuRes = await query(
-      `SELECT id, name, price, outlet_id, is_available, image_url 
-       FROM public.menu_items 
-       WHERE id = ANY($1)`,
-      [uniqueIds]
-    );
-
+    // Load regular menu items strictly from database
+    const uniqueMenuItemIds = Array.from(new Set(menuItemIds));
     const dbItemsMap = new Map<string, any>();
-    menuRes.rows.forEach((r) => dbItemsMap.set(r.id, r));
-
-    if (dbItemsMap.size !== uniqueIds.length) {
-      return NextResponse.json(
-        { error: 'One or more menu items could not be found' },
-        { status: 400 }
+    if (uniqueMenuItemIds.length > 0) {
+      const menuRes = await query(
+        `SELECT id, name, price, outlet_id, is_available, image_url 
+         FROM public.menu_items 
+         WHERE id = ANY($1)`,
+        [uniqueMenuItemIds]
       );
+      menuRes.rows.forEach((r) => dbItemsMap.set(r.id, r));
+
+      if (dbItemsMap.size !== uniqueMenuItemIds.length) {
+        return NextResponse.json(
+          { error: 'One or more menu items could not be found' },
+          { status: 400 }
+        );
+      }
     }
 
-    // Recompute order total on server from DB item prices (zero tax/GST)
+    // Load combos strictly from database
+    const uniqueComboIds = Array.from(new Set(comboIds));
+    const dbCombosMap = new Map<string, any>();
+    const comboItemsMap = new Map<string, any[]>();
+
+    if (uniqueComboIds.length > 0) {
+      const combosRes = await query(
+        `SELECT id, outlet_id, name, price, image_url 
+         FROM public.combos 
+         WHERE id = ANY($1)`,
+        [uniqueComboIds]
+      );
+      combosRes.rows.forEach((r) => dbCombosMap.set(r.id, r));
+
+      if (dbCombosMap.size !== uniqueComboIds.length) {
+        return NextResponse.json(
+          { error: 'One or more combos could not be found' },
+          { status: 400 }
+        );
+      }
+
+      // Load all included items and their live availability for these combos
+      const comboItemsRes = await query(
+        `SELECT ci.combo_id, ci.menu_item_id, ci.quantity,
+                m.name, m.price, m.outlet_id, m.is_available, m.is_veg
+         FROM public.combo_items ci
+         JOIN public.menu_items m ON ci.menu_item_id = m.id
+         WHERE ci.combo_id = ANY($1)`,
+        [uniqueComboIds]
+      );
+
+      for (const row of comboItemsRes.rows) {
+        const list = comboItemsMap.get(row.combo_id) || [];
+        list.push(row);
+        comboItemsMap.set(row.combo_id, list);
+      }
+    }
+
+    // Recompute order total on server from DB prices (never trust browser prices)
     const verifiedOrderItems: any[] = [];
 
     for (const reqItem of items) {
-      const dbItem = dbItemsMap.get(reqItem.menu_item_id.trim());
-
-      // Reject items from another outlet
-      if (dbItem.outlet_id !== outlet_id) {
-        return NextResponse.json(
-          { error: `Menu item "${dbItem.name}" does not belong to the selected outlet` },
-          { status: 400 }
-        );
-      }
-
-      // Reject unavailable items
-      if (!dbItem.is_available) {
-        return NextResponse.json(
-          { error: `Menu item "${dbItem.name}" is currently unavailable` },
-          { status: 400 }
-        );
-      }
-
-      const unitPrice = Math.round(Number(dbItem.price) || 0);
       const quantity = Number(reqItem.quantity);
 
-      verifiedOrderItems.push({
-        id: dbItem.id,
-        name: dbItem.name,
-        price: unitPrice,
-        unitPrice: unitPrice,
-        quantity: quantity,
-        qty: quantity,
-        ...(dbItem.image_url ? { image: dbItem.image_url } : {}),
-      });
+      if (reqItem.menu_item_id) {
+        const dbItem = dbItemsMap.get(reqItem.menu_item_id.trim());
+
+        // Reject items from another outlet
+        if (dbItem.outlet_id !== outlet_id) {
+          return NextResponse.json(
+            { error: `Menu item "${dbItem.name}" does not belong to the selected outlet` },
+            { status: 400 }
+          );
+        }
+
+        // Reject unavailable items
+        if (!dbItem.is_available) {
+          return NextResponse.json(
+            { error: `Menu item "${dbItem.name}" is currently unavailable` },
+            { status: 400 }
+          );
+        }
+
+        const unitPrice = Math.round(Number(dbItem.price) || 0);
+
+        verifiedOrderItems.push({
+          id: dbItem.id,
+          name: dbItem.name,
+          price: unitPrice,
+          unitPrice: unitPrice,
+          quantity: quantity,
+          qty: quantity,
+          ...(dbItem.image_url ? { image: dbItem.image_url } : {}),
+        });
+      } else if (reqItem.combo_id) {
+        const dbCombo = dbCombosMap.get(reqItem.combo_id.trim());
+
+        // Reject combos from another outlet
+        if (dbCombo.outlet_id !== outlet_id) {
+          return NextResponse.json(
+            { error: `Combo "${dbCombo.name}" does not belong to the selected outlet` },
+            { status: 400 }
+          );
+        }
+
+        const includedItems = comboItemsMap.get(dbCombo.id) || [];
+        if (includedItems.length < 2) {
+          return NextResponse.json(
+            { error: `This combo is no longer available.` },
+            { status: 400 }
+          );
+        }
+
+        // Re-check that every item inside the combo is available and belongs to outlet
+        for (const itemInside of includedItems) {
+          if (!itemInside.is_available || itemInside.outlet_id !== outlet_id) {
+            return NextResponse.json(
+              { error: 'This combo is no longer available.' },
+              { status: 400 }
+            );
+          }
+        }
+
+        const comboUnitPrice = Math.round(Number(dbCombo.price) || 0);
+
+        // Snapshot of included items at this exact moment
+        const itemsSnapshot = includedItems.map((ci) => ({
+          menu_item_id: ci.menu_item_id,
+          name: ci.name,
+          quantity: Number(ci.quantity) || 1,
+          unit_price: Math.round(Number(ci.price) || 0),
+        }));
+
+        verifiedOrderItems.push({
+          id: dbCombo.id,
+          combo_id: dbCombo.id,
+          is_combo: true,
+          name: dbCombo.name,
+          price: comboUnitPrice,
+          unitPrice: comboUnitPrice,
+          quantity: quantity,
+          qty: quantity,
+          ...(dbCombo.image_url ? { image: dbCombo.image_url } : {}),
+          combo_items: itemsSnapshot,
+        });
+      }
     }
 
     const pricing = computeOrderTotal(verifiedOrderItems);

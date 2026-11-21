@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { getOutletMenuData, getOutlets } from '@/lib/api';
 import { MenuCategoryDef } from '@/lib/menu-categories';
-import { MenuItem, MenuTheme, Outlet } from '@/types';
+import { Combo, MenuItem, MenuTheme, Outlet } from '@/types';
 import { useZechaStore, getCartSummary } from '@/lib/store';
 import { useToast } from '@/components/ui/Toast';
 import { VegBadge } from '@/components/ui/VegBadge';
@@ -32,7 +32,7 @@ function MenuPageContent() {
   const previewThemeParam = searchParams.get('preview_theme');
   const isPreviewMode = searchParams.get('preview') === '1';
 
-  const { outlet, setOutlet, cart, addItem, updateCartQty, clearCart } = useZechaStore();
+  const { outlet, setOutlet, cart, addItem, addCombo, updateCartQty, clearCart } = useZechaStore();
   const { showToast } = useToast();
 
   const [menuTheme, setMenuTheme] = useState<MenuTheme>('classic');
@@ -40,6 +40,7 @@ function MenuPageContent() {
   const [bestsellers, setBestsellers] = useState<MenuItem[]>([]);
   const [bestsellerIds, setBestsellerIds] = useState<string[]>([]);
   const [items, setItems] = useState<MenuItem[]>([]);
+  const [combos, setCombos] = useState<Combo[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
@@ -104,6 +105,7 @@ function MenuPageContent() {
         setBestsellers(data.bestsellers);
         setBestsellerIds(data.bestseller_ids);
         setItems(data.items);
+        setCombos(data.combos || []);
 
         setSelectedCategory((curr) => {
           if (curr === 'all') return 'all';
@@ -225,17 +227,52 @@ function MenuPageContent() {
     showToast(`Added ${item.name} to cart`, 'success');
   };
 
-  // Search matches across ALL categories (ignores chip selection while typing)
+  const getComboQty = (comboId: string) => {
+    const lineId = 'combo-' + comboId;
+    const found = cart.find((i) => i.lineId === lineId || (i.isCombo && i.itemId === comboId));
+    return found ? found.qty : 0;
+  };
+
+  const getComboLineId = (comboId: string) => {
+    const lineId = 'combo-' + comboId;
+    const found = cart.find((i) => i.lineId === lineId || (i.isCombo && i.itemId === comboId));
+    return found ? found.lineId : lineId;
+  };
+
+  const handleAddCombo = (combo: Combo) => {
+    if (!combo.is_available) {
+      showToast('This combo is currently sold out', 'info');
+      return;
+    }
+    addCombo({
+      id: combo.id,
+      name: combo.name,
+      price: combo.price,
+      image: combo.image || combo.image_url || undefined,
+      isVeg: combo.is_veg,
+      items: (combo.items || []).map((it) => ({ name: it.name, quantity: it.quantity })),
+    });
+    showToast(`Added ${combo.name} to cart`, 'success');
+  };
+
+  // Search matches across ALL categories & combos (ignores chip selection while typing)
   const searchResults = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return [];
-    return items.filter(
+    if (!q) return { items: [], combos: [] };
+    const matchedItems = items.filter(
       (item) =>
         item.name.toLowerCase().includes(q) ||
         item.description.toLowerCase().includes(q) ||
         (item.category || '').toLowerCase().includes(q)
     );
-  }, [items, searchQuery]);
+    const matchedCombos = combos.filter(
+      (combo) =>
+        combo.name.toLowerCase().includes(q) ||
+        (combo.description || '').toLowerCase().includes(q) ||
+        combo.items?.some((ci) => ci.name.toLowerCase().includes(q))
+    );
+    return { items: matchedItems, combos: matchedCombos };
+  }, [items, combos, searchQuery]);
 
   // Group items under categories in exact sort_order (1..12)
   const groupedSections = useMemo(() => {
@@ -448,6 +485,190 @@ function MenuPageContent() {
     );
   };
 
+  const renderClassicComboRow = (combo: Combo) => {
+    const qty = getComboQty(combo.id);
+    const lineId = getComboLineId(combo.id);
+
+    return (
+      <div
+        key={combo.id}
+        className="p-3.5 sm:p-4 flex items-start justify-between gap-3 hover:bg-[#FAF4E6]/30 transition-colors"
+      >
+        {/* Left column: Name, price, savings, description, included items */}
+        <div className="flex-1 min-w-0 pr-1 block">
+          <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+            <VegBadge isVeg={combo.is_veg} size="sm" />
+            <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-orange text-white">
+              Combo
+            </span>
+          </div>
+
+          <h3 className="font-extrabold text-[16px] text-[#2B1A12] leading-snug">
+            {combo.name}
+          </h3>
+
+          <div className="flex items-center gap-2 mt-0.5 mb-1 flex-wrap">
+            <span className="font-black text-[15px] text-[#2B1A12]">
+              {formatPrice(combo.price)}
+            </span>
+            {combo.savings > 0 && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-black bg-[#2F7A3E]/10 text-[#2F7A3E]">
+                Save ₹{combo.savings}
+              </span>
+            )}
+          </div>
+
+          {combo.description && (
+            <p className="text-[13px] text-[#75604F] leading-relaxed line-clamp-2">
+              {combo.description}
+            </p>
+          )}
+
+          {combo.items && combo.items.length > 0 && (
+            <p className="text-[11px] font-bold text-[#75604F]/90 mt-1.5 leading-snug">
+              Includes:{' '}
+              <span className="text-[#2B1A12]">
+                {combo.items
+                  .map((ci) => `${ci.quantity > 1 ? `${ci.quantity}x ` : ''}${ci.name}`)
+                  .join(' · ')}
+              </span>
+            </p>
+          )}
+        </div>
+
+        {/* Right column: 124px photo with overlapping ADD/stepper button */}
+        <div className="relative w-[124px] h-[116px] shrink-0 mb-3">
+          <div className="block w-full h-[96px] rounded-[14px] overflow-hidden relative border border-[#EADFC7]/60">
+            <SafeImage
+              src={combo.image || combo.image_url || DEFAULT_MENU_IMAGE}
+              alt={combo.name}
+              variant="thumb"
+              fill
+              sizes="124px"
+              className="object-cover"
+            />
+          </div>
+
+          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 z-20">
+            {!combo.is_available ? (
+              <span className="w-[96px] h-[34px] rounded-[10px] bg-[#F4E7CC]/80 border border-[#EADFC7] text-[#75604F] font-bold text-[11px] uppercase tracking-wider flex items-center justify-center">
+                Sold out
+              </span>
+            ) : qty === 0 ? (
+              <button
+                onClick={() => handleAddCombo(combo)}
+                className="w-[96px] h-[34px] rounded-[10px] bg-white border border-[#EADFC7] text-[#CE5535] font-black text-xs tracking-wider shadow-md hover:bg-[#FFFEF7] active:scale-95 transition-transform duration-150 flex items-center justify-center uppercase"
+              >
+                ADD
+              </button>
+            ) : (
+              <div className="w-[96px] h-[34px] rounded-[10px] bg-white border border-[#CE5535] text-[#2B1A12] font-black text-xs shadow-md flex items-center justify-between px-2">
+                <button
+                  onClick={() => updateCartQty(lineId, -1)}
+                  className="w-6 h-6 flex items-center justify-center text-[#CE5535] hover:bg-[#FBEDE3] rounded"
+                  aria-label="Decrease quantity"
+                >
+                  <Minus className="w-3.5 h-3.5 stroke-[3]" />
+                </button>
+                <span className="font-extrabold text-sm">{qty}</span>
+                <button
+                  onClick={() => updateCartQty(lineId, 1)}
+                  className="w-6 h-6 flex items-center justify-center text-[#CE5535] hover:bg-[#FBEDE3] rounded"
+                  aria-label="Increase quantity"
+                >
+                  <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderGridComboCard = (combo: Combo) => {
+    const qty = getComboQty(combo.id);
+    const lineId = getComboLineId(combo.id);
+
+    return (
+      <div
+        key={combo.id}
+        className="bg-white rounded-[22px] border border-[#EADFC7]/80 p-2.5 flex flex-col justify-between shadow-2xs space-y-2"
+      >
+        <div>
+          <div className="block w-full aspect-[4/3] rounded-[16px] overflow-hidden relative bg-[#FAF4E6]">
+            <SafeImage
+              src={combo.image || combo.image_url || DEFAULT_MENU_IMAGE}
+              alt={combo.name}
+              variant="tile"
+              fill
+              sizes="(max-width: 430px) 46vw, 198px"
+              className="object-cover"
+            />
+            {combo.savings > 0 && (
+              <span className="absolute top-2 left-2 bg-[#2F7A3E] text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs">
+                Save ₹{combo.savings}
+              </span>
+            )}
+          </div>
+
+          <div className="mt-2 flex items-start gap-1.5">
+            <div className="pt-0.5 shrink-0">
+              <VegBadge isVeg={combo.is_veg} size="sm" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="font-extrabold text-[14px] text-[#2B1A12] leading-snug line-clamp-1">
+                {combo.name}
+              </h3>
+              {combo.items && combo.items.length > 0 && (
+                <p className="text-[11px] text-[#75604F] line-clamp-1 mt-0.5">
+                  {combo.items
+                    .map((ci) => `${ci.quantity > 1 ? `${ci.quantity}x ` : ''}${ci.name}`)
+                    .join(' + ')}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="pt-1 flex items-center justify-between gap-1">
+          <span className="font-black text-[15px] text-[#2B1A12]">
+            {formatPrice(combo.price)}
+          </span>
+
+          {!combo.is_available ? (
+            <span className="h-[30px] px-2.5 rounded-[8px] bg-[#F4E7CC]/60 text-[#75604F] font-bold text-[10px] uppercase flex items-center justify-center">
+              Sold out
+            </span>
+          ) : qty === 0 ? (
+            <button
+              onClick={() => handleAddCombo(combo)}
+              className="h-[30px] px-3 rounded-[8px] bg-white border border-[#CE5535] text-[#CE5535] font-black text-xs hover:bg-[#FBEDE3] active:scale-95 transition-all uppercase"
+            >
+              ADD
+            </button>
+          ) : (
+            <div className="h-[30px] px-2 rounded-[8px] bg-white border border-[#CE5535] text-[#2B1A12] font-black text-xs flex items-center gap-1.5">
+              <button
+                onClick={() => updateCartQty(lineId, -1)}
+                className="w-5 h-5 flex items-center justify-center text-[#CE5535]"
+              >
+                <Minus className="w-3.5 h-3.5 stroke-[3]" />
+              </button>
+              <span className="w-3 text-center">{qty}</span>
+              <button
+                onClick={() => updateCartQty(lineId, 1)}
+                className="w-5 h-5 flex items-center justify-center text-[#CE5535]"
+              >
+                <Plus className="w-3.5 h-3.5 stroke-[3]" />
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div
       data-testid="customer-menu-page"
@@ -576,7 +797,7 @@ function MenuPageContent() {
         </div>
 
         {/* Category Chips Row (only shown when non-empty categories exist, hidden/dimmed irrelevant when searching) */}
-        {!isSearching && categories.length > 0 && (
+        {!isSearching && (categories.length > 0 || combos.length > 0) && (
           <div
             data-testid="menu-category-chips"
             className="flex items-center gap-2 overflow-x-auto pt-2.5 pb-1 scrollbar-none -mx-4 px-4 overscroll-x-contain touch-scroll"
@@ -592,6 +813,21 @@ function MenuPageContent() {
             >
               All
             </button>
+
+            {combos.length > 0 && (
+              <button
+                type="button"
+                onClick={() => handleSelectCategory('combos')}
+                className={`h-8 px-4 rounded-full text-xs font-extrabold whitespace-nowrap transition-transform duration-150 active:scale-95 shrink-0 flex items-center gap-1.5 ${
+                  selectedCategory === 'combos'
+                    ? 'bg-[#2B1A12] text-[#FDFBEA] shadow-xs'
+                    : 'bg-[#FBEDE3] text-[#CE5535] border border-[#CE5535]/30 hover:bg-[#F9DEC9]'
+                }`}
+              >
+                <span>Combos</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-[#CE5535]" />
+              </button>
+            )}
 
             {categories.map((cat) => {
               const isActive = selectedCategory === cat.name;
@@ -638,22 +874,52 @@ function MenuPageContent() {
             <h2 className="font-display text-[22px] font-extrabold text-[#2B1A12] mb-3 tracking-tight">
               Search Results
             </h2>
-            {searchResults.length === 0 ? (
+            {searchResults.items.length === 0 && searchResults.combos.length === 0 ? (
               <div className="bg-white rounded-[22px] border border-[#EADFC7] p-8 text-center text-[#75604F] shadow-2xs">
                 <p className="font-bold text-sm">No matching items found</p>
                 <p className="text-xs mt-1">Try searching another dish or clear the search</p>
               </div>
-            ) : effectiveTheme === 'grid' ? (
-              <div data-testid="grid-search-results" className="grid grid-cols-2 gap-3">
-                {searchResults.map((item, idx) => renderGridCard(item, idx < 4))}
-              </div>
             ) : (
-              <div className="bg-white rounded-[22px] border border-[#EADFC7] divide-y divide-[#EADFC7]/70 overflow-hidden shadow-2xs">
-                {searchResults.map((item, idx) => renderMenuRow(item, idx < 4))}
+              <div className="space-y-6">
+                {searchResults.combos.length > 0 && (
+                  <div>
+                    <h3 className="font-extrabold text-sm text-[#75604F] uppercase tracking-wider mb-2.5">
+                      Combos ({searchResults.combos.length})
+                    </h3>
+                    {effectiveTheme === 'grid' ? (
+                      <div className="grid grid-cols-2 gap-3">
+                        {searchResults.combos.map((combo) => renderGridComboCard(combo))}
+                      </div>
+                    ) : (
+                      <div className="bg-white rounded-[22px] border border-[#EADFC7] divide-y divide-[#EADFC7]/70 overflow-hidden shadow-2xs">
+                        {searchResults.combos.map((combo) => renderClassicComboRow(combo))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {searchResults.items.length > 0 && (
+                  <div>
+                    {searchResults.combos.length > 0 && (
+                      <h3 className="font-extrabold text-sm text-[#75604F] uppercase tracking-wider mb-2.5">
+                        Individual Items ({searchResults.items.length})
+                      </h3>
+                    )}
+                    {effectiveTheme === 'grid' ? (
+                      <div data-testid="grid-search-results" className="grid grid-cols-2 gap-3">
+                        {searchResults.items.map((item, idx) => renderGridCard(item, idx < 4))}
+                      </div>
+                    ) : (
+                      <div className="bg-white rounded-[22px] border border-[#EADFC7] divide-y divide-[#EADFC7]/70 overflow-hidden shadow-2xs">
+                        {searchResults.items.map((item, idx) => renderMenuRow(item, idx < 4))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
-        ) : items.length === 0 ? (
+        ) : items.length === 0 && combos.length === 0 ? (
           <div className="bg-white rounded-[22px] border border-[#EADFC7] p-10 text-center text-[#75604F] mt-4">
             <p className="font-extrabold text-base text-[#2B1A12]">Menu coming soon</p>
             <p className="text-xs mt-1">No available items configured for this outlet yet.</p>
@@ -757,6 +1023,32 @@ function MenuPageContent() {
                         );
                       })}
                 </div>
+              </section>
+            )}
+
+            {/* Combos Section (FIRST above all categories) */}
+            {(selectedCategory === 'all' || selectedCategory === 'combos') && combos.length > 0 && (
+              <section data-testid="combos-section" className="mb-6">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <h2 className="font-display text-[22px] font-extrabold text-[#2B1A12] tracking-tight">
+                      Combos
+                    </h2>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-[#CE5535] text-white shadow-xs">
+                      Special Value
+                    </span>
+                  </div>
+                </div>
+
+                {effectiveTheme === 'grid' ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    {combos.map((combo) => renderGridComboCard(combo))}
+                  </div>
+                ) : (
+                  <div className="bg-white rounded-[22px] border border-[#EADFC7] divide-y divide-[#EADFC7]/70 overflow-hidden shadow-2xs">
+                    {combos.map((combo) => renderClassicComboRow(combo))}
+                  </div>
+                )}
               </section>
             )}
 

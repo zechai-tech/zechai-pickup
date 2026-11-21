@@ -220,17 +220,54 @@ export function OrderCard({
             ORDER ITEMS ({itemsList.reduce((acc, i) => acc + (i.qty || 1), 0)})
           </span>
           <div className="space-y-1 max-h-36 overflow-y-auto pr-1 scrollbar-none">
-            {itemsList.map((item, idx) => (
-              <div key={idx} className="flex items-center justify-between text-xs">
-                <span className="text-espresso font-medium truncate pr-2">
-                  <span className="font-bold text-orange">{item.qty || 1}x</span> {item.name}
-                  {item.size ? ` (${item.size})` : ''}
-                </span>
-                <span className="font-bold text-espresso/70 shrink-0">
-                  {formatPrice(Number(item.price || item.unitPrice || 0) * (item.qty || 1))}
-                </span>
-              </div>
-            ))}
+            {itemsList.map((item, idx) => {
+              const isCombo = Boolean(
+                item.is_combo ||
+                  (Array.isArray(item.combo_items) && item.combo_items.length > 0)
+              );
+              const qty = item.qty || item.quantity || 1;
+
+              return (
+                <div key={idx} className="space-y-0.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-espresso font-medium truncate pr-2">
+                      <span className="font-bold text-orange">{qty}x</span> {item.name}
+                      {isCombo && (
+                        <span className="ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-orange/15 text-orange">
+                          Combo
+                        </span>
+                      )}
+                      {item.size ? ` (${item.size})` : ''}
+                    </span>
+                    <span className="font-bold text-espresso/70 shrink-0">
+                      {formatPrice(Number(item.price || item.unitPrice || 0) * qty)}
+                    </span>
+                  </div>
+
+                  {/* Included items inside the combo for kitchen staff */}
+                  {isCombo &&
+                    Array.isArray(item.combo_items) &&
+                    item.combo_items.length > 0 && (
+                      <div className="pl-4 py-0.5 space-y-0.5">
+                        {item.combo_items.map((ci: any, cIdx: number) => (
+                          <div
+                            key={cIdx}
+                            className="text-[11px] text-espresso/75 flex items-center gap-1.5"
+                          >
+                            <span className="text-orange font-black">•</span>
+                            <span>
+                              <span className="font-bold text-espresso">
+                                {(ci.quantity || 1) * qty}x
+                              </span>{' '}
+                              {ci.name}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                </div>
+              );
+            })}
             {historicalTax > 0 && (
               <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border/50 text-espresso/60">
                 <span>Tax (historical)</span>

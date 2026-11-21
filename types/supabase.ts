@@ -57,6 +57,41 @@ export type OrderStatus =
   | 'accepted'
   | 'picked_up';
 
+export interface ComboItem {
+  id: string;
+  combo_id: string;
+  menu_item_id: string;
+  quantity: number;
+  created_at: string;
+  menu_item?: MenuItem;
+}
+
+export interface Combo {
+  id: string;
+  outlet_id: string;
+  name: string;
+  description: string | null;
+  image_url: string | null;
+  price: number;
+  sort_order: number;
+  is_available?: boolean;
+  is_veg?: boolean;
+  items_total?: number;
+  savings?: number;
+  items?: Array<{
+    id?: string;
+    menu_item_id: string;
+    name: string;
+    quantity: number;
+    price?: number;
+    image_url?: string;
+    is_veg?: boolean;
+    is_available?: boolean;
+  }>;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface OrderItem {
   id?: string;
   itemId?: string;
@@ -68,6 +103,8 @@ export interface OrderItem {
   size?: string;
   sugar?: string;
   addons?: Array<{ id: string; name: string; priceDelta: number }>;
+  is_combo?: boolean;
+  combo_items?: Array<{ name: string; quantity: number; unit_price?: number }>;
 }
 
 export interface Order {

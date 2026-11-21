@@ -1,4 +1,4 @@
-import { MenuItem, MenuTheme, Outlet } from '@/types';
+import { Combo, MenuItem, MenuTheme, Outlet } from '@/types';
 import { getOutletAvailability } from './outlets';
 import { MenuCategoryDef } from './menu-categories';
 
@@ -8,6 +8,7 @@ export interface CustomerMenuResponse {
   bestsellers: MenuItem[];
   bestseller_ids: string[];
   items: MenuItem[];
+  combos: Combo[];
 }
 
 export async function getOutlets(): Promise<Outlet[]> {
@@ -52,7 +53,7 @@ export async function getOutletById(id: string): Promise<Outlet | null> {
 
 export async function getOutletMenuData(outletId: string): Promise<CustomerMenuResponse> {
   if (!outletId) {
-    return { menu_theme: 'classic', categories: [], bestsellers: [], bestseller_ids: [], items: [] };
+    return { menu_theme: 'classic', categories: [], bestsellers: [], bestseller_ids: [], items: [], combos: [] };
   }
 
   try {
@@ -61,7 +62,7 @@ export async function getOutletMenuData(outletId: string): Promise<CustomerMenuR
       headers: { 'Cache-Control': 'no-cache' },
     });
     if (!res.ok) {
-      return { menu_theme: 'classic', categories: [], bestsellers: [], bestseller_ids: [], items: [] };
+      return { menu_theme: 'classic', categories: [], bestsellers: [], bestseller_ids: [], items: [], combos: [] };
     }
     const data = await res.json();
     return {
@@ -70,10 +71,11 @@ export async function getOutletMenuData(outletId: string): Promise<CustomerMenuR
       bestsellers: Array.isArray(data.bestsellers) ? data.bestsellers : [],
       bestseller_ids: Array.isArray(data.bestseller_ids) ? data.bestseller_ids : [],
       items: Array.isArray(data.items) ? data.items : [],
+      combos: Array.isArray(data.combos) ? data.combos : [],
     };
   } catch (err) {
     console.error('Error fetching menu data:', err);
-    return { menu_theme: 'classic', categories: [], bestsellers: [], bestseller_ids: [], items: [] };
+    return { menu_theme: 'classic', categories: [], bestsellers: [], bestseller_ids: [], items: [], combos: [] };
   }
 }
 

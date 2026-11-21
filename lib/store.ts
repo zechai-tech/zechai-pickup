@@ -24,6 +24,14 @@ interface ZechaState {
   setOutlet: (outlet: Outlet | null) => void;
   addToCart: (item: CartItem) => void;
   addItem: (item: { id: string; name: string; price: number; image?: string; isVeg?: boolean }) => void;
+  addCombo: (combo: {
+    id: string;
+    name: string;
+    price: number;
+    image?: string;
+    isVeg?: boolean;
+    items: Array<{ name: string; quantity: number }>;
+  }) => void;
   updateCartQty: (lineId: string, delta: number) => void;
   removeFromCart: (lineId: string) => void;
   clearCart: () => void;
@@ -70,6 +78,38 @@ export const useZechaStore = create<ZechaState>()(
                 isVeg: item.isVeg ?? true,
                 unitPrice: item.price,
                 qty: 1,
+              },
+            ],
+          });
+        }
+      },
+
+      addCombo: (combo) => {
+        const { cart } = get();
+        const lineId = 'combo-' + combo.id;
+        const existing = cart.find((i) => i.lineId === lineId || (i.isCombo && i.itemId === combo.id));
+        if (existing) {
+          const updated = cart.map((i) =>
+            i.lineId === existing.lineId ? { ...i, qty: i.qty + 1 } : i
+          );
+          set({ cart: updated });
+        } else {
+          set({
+            cart: [
+              ...cart,
+              {
+                lineId,
+                itemId: combo.id,
+                name: combo.name,
+                image: resolveImageUrl(combo.image, 'thumb') || DEFAULT_MENU_IMAGE,
+                isVeg: combo.isVeg ?? true,
+                unitPrice: combo.price,
+                qty: 1,
+                isCombo: true,
+                comboItems: combo.items.map((it) => ({
+                  name: it.name,
+                  quantity: it.quantity,
+                })),
               },
             ],
           });

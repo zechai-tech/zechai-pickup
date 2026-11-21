@@ -24,6 +24,8 @@ interface SuccessOrderItem {
   unitPrice?: number;
   quantity?: number;
   qty?: number;
+  is_combo?: boolean;
+  combo_items?: { name: string; quantity: number }[];
 }
 
 interface SuccessOrderData {
@@ -275,8 +277,11 @@ function OrderSuccessContent() {
       .map((item) => {
         const qty = Number(item.quantity ?? item.qty ?? 1);
         const unit = Number(item.unitPrice ?? item.price ?? 0);
+        const comboSub = item.is_combo && Array.isArray(item.combo_items) && item.combo_items.length > 0
+          ? `<div style="font-size:11px;color:#75604f;margin-top:2px;">${item.combo_items.map((ci) => `${ci.quantity > 1 ? `${ci.quantity}x ` : ''}${escapeHtml(ci.name)}`).join(' · ')}</div>`
+          : '';
         return `<tr>
-          <td style="padding:8px 0;border-bottom:1px solid #eadfc7;">${escapeHtml(item.name)}</td>
+          <td style="padding:8px 0;border-bottom:1px solid #eadfc7;">${escapeHtml(item.name)}${comboSub}</td>
           <td style="padding:8px 0;border-bottom:1px solid #eadfc7;text-align:center;">${qty}</td>
           <td style="padding:8px 0;border-bottom:1px solid #eadfc7;text-align:right;font-weight:700;">₹${Math.round(unit * qty)}</td>
         </tr>`;
