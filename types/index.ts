@@ -99,6 +99,8 @@ export interface CartItem {
   unitPrice: number;
   qty: number;
   isCombo?: boolean;
+  originalPrice?: number;
+  savings?: number;
   comboItems?: {
     name: string;
     quantity: number;

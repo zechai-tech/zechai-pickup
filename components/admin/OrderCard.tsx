@@ -82,6 +82,12 @@ export function OrderCard({
   const explicitTax = Number((order as any).tax_amount || 0);
   const historicalTax =
     explicitTax > 0 ? explicitTax : computeHistoricalOrderTax(order.total, itemsList);
+  const packagingFee =
+    order.packaging_fee != null
+      ? Number(order.packaging_fee)
+      : (order as any).items?.packaging_fee != null
+      ? Number((order as any).items.packaging_fee)
+      : 0;
 
   return (
     <div
@@ -268,6 +274,12 @@ export function OrderCard({
                 </div>
               );
             })}
+            {packagingFee > 0 && (
+              <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border/50 text-espresso/60">
+                <span>Packaging</span>
+                <span className="font-bold">{formatPrice(packagingFee)}</span>
+              </div>
+            )}
             {historicalTax > 0 && (
               <div className="flex items-center justify-between text-[11px] pt-1 border-t border-border/50 text-espresso/60">
                 <span>Tax (historical)</span>

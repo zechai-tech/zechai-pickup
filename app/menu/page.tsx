@@ -508,11 +508,16 @@ function MenuPageContent() {
           </h3>
 
           <div className="flex items-center gap-2 mt-0.5 mb-1 flex-wrap">
+            {combo.items_total && combo.items_total > combo.price && (
+              <span className="text-[13px] text-[#75604F] line-through font-semibold">
+                {formatPrice(combo.items_total)}
+              </span>
+            )}
             <span className="font-black text-[15px] text-[#2B1A12]">
               {formatPrice(combo.price)}
             </span>
             {combo.savings > 0 && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-black bg-[#2F7A3E]/10 text-[#2F7A3E]">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-black bg-[#FFD23F] text-[#2B1A12] shadow-2xs">
                 Save ₹{combo.savings}
               </span>
             )}
@@ -606,7 +611,7 @@ function MenuPageContent() {
               className="object-cover"
             />
             {combo.savings > 0 && (
-              <span className="absolute top-2 left-2 bg-[#2F7A3E] text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs">
+              <span className="absolute top-2 left-2 bg-[#FFD23F] text-[#2B1A12] text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs">
                 Save ₹{combo.savings}
               </span>
             )}
@@ -632,9 +637,16 @@ function MenuPageContent() {
         </div>
 
         <div className="pt-1 flex items-center justify-between gap-1">
-          <span className="font-black text-[15px] text-[#2B1A12]">
-            {formatPrice(combo.price)}
-          </span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {combo.items_total && combo.items_total > combo.price && (
+              <span className="text-[12px] text-[#75604F] line-through font-semibold">
+                {formatPrice(combo.items_total)}
+              </span>
+            )}
+            <span className="font-black text-[15px] text-[#2B1A12]">
+              {formatPrice(combo.price)}
+            </span>
+          </div>
 
           {!combo.is_available ? (
             <span className="h-[30px] px-2.5 rounded-[8px] bg-[#F4E7CC]/60 text-[#75604F] font-bold text-[10px] uppercase flex items-center justify-center">

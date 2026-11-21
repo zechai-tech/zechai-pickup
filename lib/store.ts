@@ -30,7 +30,9 @@ interface ZechaState {
     price: number;
     image?: string;
     isVeg?: boolean;
-    items: Array<{ name: string; quantity: number }>;
+    items_total?: number;
+    savings?: number;
+    items: Array<{ name: string; quantity: number; price?: number }>;
   }) => void;
   updateCartQty: (lineId: string, delta: number) => void;
   removeFromCart: (lineId: string) => void;
@@ -88,6 +90,11 @@ export const useZechaStore = create<ZechaState>()(
         const { cart } = get();
         const lineId = 'combo-' + combo.id;
         const existing = cart.find((i) => i.lineId === lineId || (i.isCombo && i.itemId === combo.id));
+        const itemsTotal = Number(combo.items_total) ||
+          (combo.items ? combo.items.reduce((s: number, it: any) => s + (Number(it.price) || 0) * (Number(it.quantity) || 1), 0) : 0);
+        const originalPrice = itemsTotal > combo.price ? itemsTotal : combo.price;
+        const savings = Math.max(0, originalPrice - combo.price);
+
         if (existing) {
           const updated = cart.map((i) =>
             i.lineId === existing.lineId ? { ...i, qty: i.qty + 1 } : i
@@ -104,11 +111,14 @@ export const useZechaStore = create<ZechaState>()(
                 image: resolveImageUrl(combo.image, 'thumb') || DEFAULT_MENU_IMAGE,
                 isVeg: combo.isVeg ?? true,
                 unitPrice: combo.price,
+                originalPrice,
+                savings,
                 qty: 1,
                 isCombo: true,
                 comboItems: combo.items.map((it) => ({
                   name: it.name,
                   quantity: it.quantity,
+                  unit_price: it.price,
                 })),
               },
             ],
@@ -224,10 +234,15 @@ export function getCartSummary(cart: CartItem[]) {
   const summary = computeOrderTotal(cart);
   return {
     count: summary.count,
+    physicalItemCount: summary.physicalItemCount,
+    originalItemTotal: summary.originalItemTotal,
+    itemsTotal: summary.itemsTotal,
+    comboSavings: summary.comboSavings,
+    packagingFee: summary.packagingFee,
+    toPay: summary.toPay,
     total: summary.total,
     tax: summary.tax,
-    toPay: summary.toPay,
-    itemTotal: summary.total,
+    itemTotal: summary.itemsTotal,
     gst: summary.tax,
     grandTotal: summary.toPay,
   };

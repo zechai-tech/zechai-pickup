@@ -34,7 +34,14 @@ export default function CartPage() {
     setCustomer,
   } = useZechaStore();
 
-  const { count, toPay } = getCartSummary(cart);
+  const {
+    count,
+    originalItemTotal,
+    itemsTotal,
+    comboSavings,
+    packagingFee,
+    toPay,
+  } = getCartSummary(cart);
   const { showToast } = useToast();
 
   const [kitchenNote, setKitchenNote] = useState(customer.note || '');
@@ -477,9 +484,16 @@ export default function CartPage() {
                     Standard portion
                   </p>
                 )}
-                <p className="font-extrabold text-[15px] text-[#2B1A12] mt-1">
-                  {formatPrice(item.unitPrice * item.qty)}
-                </p>
+                <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                  {item.isCombo && item.originalPrice && item.originalPrice > item.unitPrice && (
+                    <span className="text-[12px] text-[#75604F] line-through font-semibold">
+                      {formatPrice(item.originalPrice * item.qty)}
+                    </span>
+                  )}
+                  <p className="font-extrabold text-[15px] text-[#2B1A12]">
+                    {formatPrice(item.unitPrice * item.qty)}
+                  </p>
+                </div>
               </div>
 
               {/* Right: Stepper (40px tall) */}
@@ -566,9 +580,41 @@ export default function CartPage() {
           />
         </div>
 
-        {/* Total Card (Single row: To pay) */}
-        <div className="bg-[#FFFEF7] rounded-[20px] border border-[#EADFC7] p-4 shadow-2xs">
-          <div className="flex items-center justify-between">
+        {/* Payment Summary (Zomato-style breakdown) */}
+        <div className="bg-[#FFFEF7] rounded-[20px] border border-[#EADFC7] p-4 shadow-2xs space-y-2.5">
+          {/* 1. Item total: Original prices struck-through if combo savings present */}
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-[#75604F] font-medium">Item total</span>
+            <div className="flex items-center gap-1.5 font-bold text-[#2B1A12] tabular-nums">
+              {comboSavings > 0 && (
+                <span className="text-[#75604F] line-through font-normal">
+                  {formatPrice(originalItemTotal)}
+                </span>
+              )}
+              <span>{formatPrice(itemsTotal)}</span>
+            </div>
+          </div>
+
+          {/* 2. Combo offer (shown only when cart has a combo with savings) */}
+          {comboSavings > 0 && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-[#2F7A3E] font-medium">Combo offer</span>
+              <span className="font-bold text-[#2F7A3E] tabular-nums">
+                −{formatPrice(comboSavings)}
+              </span>
+            </div>
+          )}
+
+          {/* 3. Packaging charge */}
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-[#75604F] font-medium">Packaging</span>
+            <span className="font-bold text-[#2B1A12] tabular-nums">
+              {formatPrice(packagingFee)}
+            </span>
+          </div>
+
+          {/* 4. To pay (final amount in bold) */}
+          <div className="border-t border-[#EADFC7]/70 pt-2.5 flex items-center justify-between">
             <span className="font-display font-extrabold text-[18px] text-[#2B1A12]">
               To pay
             </span>
@@ -576,6 +622,15 @@ export default function CartPage() {
               {formatPrice(toPay)}
             </span>
           </div>
+
+          {/* 5. Yellow chip under summary (only when savings > 0) */}
+          {comboSavings > 0 && (
+            <div className="pt-1">
+              <div className="bg-[#FFD23F] text-[#2B1A12] rounded-xl px-3 py-1.5 text-xs font-black flex items-center justify-center gap-1.5 shadow-2xs">
+                <span>You saved ₹{comboSavings} on this order</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

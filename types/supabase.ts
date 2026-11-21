@@ -114,6 +114,9 @@ export interface Order {
   customer_phone: string;
   items: OrderItem[];
   total: number;
+  subtotal?: number | null;
+  combo_savings?: number | null;
+  packaging_fee?: number | null;
   status: OrderStatus;
   pickup_code: string;
   payment_id: string | null;
@@ -165,6 +168,9 @@ export type Database = {
           customer_phone?: string;
           items?: any;
           total: number;
+          subtotal?: number | null;
+          combo_savings?: number | null;
+          packaging_fee?: number | null;
           status?: OrderStatus | string;
           pickup_code?: string;
           payment_id?: string | null;
@@ -192,6 +198,9 @@ export type Database = {
           customer_phone?: string;
           items?: any;
           total?: number;
+          subtotal?: number | null;
+          combo_savings?: number | null;
+          packaging_fee?: number | null;
           status?: OrderStatus | string;
           pickup_code?: string;
           payment_id?: string | null;

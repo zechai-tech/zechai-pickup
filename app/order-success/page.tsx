@@ -1,6 +1,6 @@
 'use client';
 
-import React, { Suspense, useState, useEffect, useRef, useCallback } from 'react';
+import React, { Suspense, useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { SafeImage } from '@/components/ui/SafeImage';
 import { useSearchParams } from 'next/navigation';
@@ -15,6 +15,7 @@ import {
 import { useZechaStore } from '@/lib/store';
 import { useToast } from '@/components/ui/Toast';
 import { formatPrice, formatTimeIST } from '@/lib/utils';
+import { computeOrderTotal } from '@/lib/pricing';
 
 type VerifyStatus = 'checking' | 'processing_long' | 'success' | 'failed';
 
@@ -25,6 +26,8 @@ interface SuccessOrderItem {
   quantity?: number;
   qty?: number;
   is_combo?: boolean;
+  original_price?: number;
+  originalPrice?: number;
   combo_items?: { name: string; quantity: number }[];
 }
 
@@ -32,6 +35,9 @@ interface SuccessOrderData {
   id: string;
   pickup_code: string;
   total: number;
+  subtotal?: number | null;
+  combo_savings?: number | null;
+  packaging_fee?: number | null;
   items: SuccessOrderItem[];
   outlet_name: string;
   outlet_address?: string | null;
@@ -113,6 +119,9 @@ function OrderSuccessContent() {
             id: finalId,
             pickup_code: finalCode,
             total: finalTotal,
+            subtotal: order?.subtotal != null ? Number(order.subtotal) : null,
+            combo_savings: order?.combo_savings != null ? Number(order.combo_savings) : null,
+            packaging_fee: order?.packaging_fee != null ? Number(order.packaging_fee) : null,
             items: Array.isArray(order?.items) ? order.items : [],
             outlet_name: finalOutlet,
             outlet_address: order?.outlet_address || null,
@@ -270,6 +279,35 @@ function OrderSuccessContent() {
     ? formatTimeIST(new Date(new Date(baseTimestamp).getTime() + 15 * 60 * 1000))
     : formatTimeIST(new Date(Date.now() + 15 * 60 * 1000));
 
+  const pricing = useMemo(() => {
+    if (!orderData) return null;
+    const computed = computeOrderTotal(orderData.items || []);
+    const storedTotal = Number(orderData.total || 0);
+
+    const packagingFee =
+      orderData.packaging_fee != null
+        ? Number(orderData.packaging_fee)
+        : storedTotal > computed.itemsTotal
+        ? storedTotal - computed.itemsTotal
+        : computed.packagingFee;
+
+    const itemsTotal =
+      orderData.subtotal != null ? Number(orderData.subtotal) : computed.itemsTotal;
+
+    const comboSavings =
+      orderData.combo_savings != null ? Number(orderData.combo_savings) : computed.comboSavings;
+
+    const originalItemTotal = itemsTotal + comboSavings;
+
+    return {
+      originalItemTotal,
+      itemsTotal,
+      comboSavings,
+      packagingFee,
+      toPay: storedTotal || (itemsTotal + packagingFee),
+    };
+  }, [orderData]);
+
   const handleDownloadReceipt = () => {
     if (!orderData || typeof window === 'undefined') return;
 
@@ -326,9 +364,24 @@ function OrderSuccessContent() {
       </thead>
       <tbody>${rowsHtml || `<tr><td colspan="3" style="padding:8px 0;">Pickup Order</td></tr>`}</tbody>
     </table>
-    <div class="total">
-      <span>Total Paid</span>
-      <span>${escapeHtml(displayTotal)}</span>
+    <div style="border-top:1px solid #eadfc7;padding-top:10px;margin-top:8px;font-size:13px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span class="muted">Item Total</span>
+        <span>${pricing && pricing.comboSavings > 0 ? `<span style="text-decoration:line-through;color:#75604f;margin-right:6px;">₹${pricing.originalItemTotal}</span>` : ''}₹${pricing ? pricing.itemsTotal : Math.round(orderData.total)}</span>
+      </div>
+      ${pricing && pricing.comboSavings > 0 ? `
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;color:#2f7a3e;">
+        <span>Combo Offer</span>
+        <span>−₹${pricing.comboSavings}</span>
+      </div>` : ''}
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
+        <span class="muted">Packaging</span>
+        <span>₹${pricing ? pricing.packagingFee : 0}</span>
+      </div>
+      <div class="total" style="display:flex;justify-content:space-between;font-size:16px;font-weight:800;padding-top:8px;border-top:1px dashed #eadfc7;">
+        <span>Total Paid</span>
+        <span>${escapeHtml(displayTotal)}</span>
+      </div>
     </div>
     <p class="muted" style="text-align:center;margin-top:20px;">Thank you for ordering with Zécha! One cup every day.</p>
   </div>
@@ -428,6 +481,40 @@ function OrderSuccessContent() {
             </p>
           </div>
         </div>
+
+        {/* Price Breakdown Card */}
+        {pricing && (
+          <div className="w-full bg-[#FFFEF7] rounded-[20px] border border-[#EADFC7] p-3.5 space-y-2 text-xs shadow-2xs">
+            <div className="flex items-center justify-between text-[#75604F]">
+              <span>Item total</span>
+              <div className="flex items-center gap-1.5 font-bold text-[#2B1A12] tabular-nums">
+                {pricing.comboSavings > 0 && (
+                  <span className="line-through font-normal text-[#75604F]">
+                    {formatPrice(pricing.originalItemTotal)}
+                  </span>
+                )}
+                <span>{formatPrice(pricing.itemsTotal)}</span>
+              </div>
+            </div>
+
+            {pricing.comboSavings > 0 && (
+              <div className="flex items-center justify-between text-[#2F7A3E]">
+                <span>Combo offer</span>
+                <span className="font-bold tabular-nums">−{formatPrice(pricing.comboSavings)}</span>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between text-[#75604F]">
+              <span>Packaging</span>
+              <span className="font-bold text-[#2B1A12] tabular-nums">{formatPrice(pricing.packagingFee)}</span>
+            </div>
+
+            <div className="border-t border-[#EADFC7]/70 pt-2 flex items-center justify-between font-extrabold text-[#2B1A12] text-sm">
+              <span>Total paid</span>
+              <span className="font-display font-black text-[15px] tabular-nums">{displayTotal}</span>
+            </div>
+          </div>
+        )}
 
         {/* Sand Info Strip */}
         <div className="w-full bg-[#F4E7CC] rounded-[18px] p-3 px-4 flex items-center gap-2.5 shadow-2xs">

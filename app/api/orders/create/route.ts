@@ -263,6 +263,11 @@ export async function POST(req: NextRequest) {
           unit_price: Math.round(Number(ci.price) || 0),
         }));
 
+        const originalItemsTotal = itemsSnapshot.reduce(
+          (sum, ci) => sum + (Number(ci.unit_price) || 0) * (Number(ci.quantity) || 1),
+          0
+        );
+
         verifiedOrderItems.push({
           id: dbCombo.id,
           combo_id: dbCombo.id,
@@ -270,6 +275,9 @@ export async function POST(req: NextRequest) {
           name: dbCombo.name,
           price: comboUnitPrice,
           unitPrice: comboUnitPrice,
+          originalPrice: originalItemsTotal > comboUnitPrice ? originalItemsTotal : comboUnitPrice,
+          original_price: originalItemsTotal > comboUnitPrice ? originalItemsTotal : comboUnitPrice,
+          savings: Math.max(0, originalItemsTotal - comboUnitPrice),
           quantity: quantity,
           qty: quantity,
           ...(dbCombo.image_url ? { image: dbCombo.image_url } : {}),
@@ -354,36 +362,81 @@ export async function POST(req: NextRequest) {
       pickupCode = Math.floor(1000 + Math.random() * 9000).toString();
     }
 
-    // Insert order with server-forced status and payment_status
-    const insertRes = await query(
-      `INSERT INTO public.orders (
-        outlet_id,
-        outlet_name,
-        customer_name,
-        customer_phone,
-        items,
-        total,
-        status,
-        payment_status,
-        pickup_code,
-        kitchen_note,
-        created_at,
-        updated_at
-      ) VALUES ($1, $2, $3, $4, $5, $6, 'pending_payment', 'unpaid', $7, $8, now(), now())
-      RETURNING id, total`,
-      [
-        outlet_id,
-        outletName,
-        'Customer',
-        cleanPhone,
-        JSON.stringify(verifiedOrderItems),
-        grandTotal,
-        pickupCode,
-        cleanNote,
-      ]
-    );
-
-    const createdOrder = insertRes.rows[0];
+    // Insert order with server-forced status, payment_status, and separate subtotal/fee fields
+    let createdOrder: any = null;
+    try {
+      const insertRes = await query(
+        `INSERT INTO public.orders (
+          outlet_id,
+          outlet_name,
+          customer_name,
+          customer_phone,
+          items,
+          total,
+          subtotal,
+          combo_savings,
+          packaging_fee,
+          status,
+          payment_status,
+          pickup_code,
+          kitchen_note,
+          created_at,
+          updated_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending_payment', 'unpaid', $10, $11, now(), now())
+        RETURNING id, total`,
+        [
+          outlet_id,
+          outletName,
+          'Customer',
+          cleanPhone,
+          JSON.stringify(verifiedOrderItems),
+          grandTotal,
+          pricing.itemsTotal,
+          pricing.comboSavings,
+          pricing.packagingFee,
+          pickupCode,
+          cleanNote,
+        ]
+      );
+      createdOrder = insertRes.rows[0];
+    } catch (dbErr: any) {
+      // If columns (subtotal, combo_savings, packaging_fee) do not exist yet in DB, fallback to classic columns
+      if (
+        dbErr?.message?.includes('column') &&
+        (dbErr?.message?.includes('subtotal') || dbErr?.message?.includes('packaging_fee') || dbErr?.message?.includes('combo_savings'))
+      ) {
+        const fallbackRes = await query(
+          `INSERT INTO public.orders (
+            outlet_id,
+            outlet_name,
+            customer_name,
+            customer_phone,
+            items,
+            total,
+            status,
+            payment_status,
+            pickup_code,
+            kitchen_note,
+            created_at,
+            updated_at
+          ) VALUES ($1, $2, $3, $4, $5, $6, 'pending_payment', 'unpaid', $7, $8, now(), now())
+          RETURNING id, total`,
+          [
+            outlet_id,
+            outletName,
+            'Customer',
+            cleanPhone,
+            JSON.stringify(verifiedOrderItems),
+            grandTotal,
+            pickupCode,
+            cleanNote,
+          ]
+        );
+        createdOrder = fallbackRes.rows[0];
+      } else {
+        throw dbErr;
+      }
+    }
 
     // Return ONLY order_id and total
     return NextResponse.json({
