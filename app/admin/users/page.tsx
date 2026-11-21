@@ -558,6 +558,7 @@ export default function AdminUsersPage() {
                   <div className="relative">
                     <input
                       type={showResetPassword ? 'text' : 'password'}
+                      data-clarity-mask="true"
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       required

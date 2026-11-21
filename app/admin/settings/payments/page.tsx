@@ -251,7 +251,7 @@ export default function PaymentGatewaySettingsPage() {
               </div>
 
               {/* Server Env Info Card */}
-              <div className="p-3 rounded-xl bg-[#F4E7CC]/30 border border-[#EADFC7] text-xs text-[#75604F] space-y-1.5">
+              <div data-clarity-mask="true" className="p-3 rounded-xl bg-[#F4E7CC]/30 border border-[#EADFC7] text-xs text-[#75604F] space-y-1.5">
                 <div className="flex items-center gap-1.5 font-bold text-[#2B1A12]">
                   <Server className="w-3.5 h-3.5 text-orange" />
                   <span>Configured via Server Environment</span>
@@ -344,7 +344,7 @@ export default function PaymentGatewaySettingsPage() {
               </div>
 
               {/* Server Env Info Card */}
-              <div className="p-3 rounded-xl bg-[#F4E7CC]/30 border border-[#EADFC7] text-xs text-[#75604F] space-y-1.5">
+              <div data-clarity-mask="true" className="p-3 rounded-xl bg-[#F4E7CC]/30 border border-[#EADFC7] text-xs text-[#75604F] space-y-1.5">
                 <div className="flex items-center gap-1.5 font-bold text-[#2B1A12]">
                   <Server className="w-3.5 h-3.5 text-orange" />
                   <span>Configured via Server Environment</span>

@@ -6,6 +6,7 @@ import { useAdminStore } from '@/stores/admin-store';
 import { supabase } from '@/lib/supabase';
 import { Sidebar } from '@/components/admin/Sidebar';
 import { TopBar } from '@/components/admin/TopBar';
+import { setClarityUser } from '@/lib/clarity';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -106,6 +107,17 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       subscription.unsubscribe();
     };
   }, [isLoginPage, router, setUser, logout, setAuthInitialized]);
+
+  // Tag Clarity with role and outlet whenever user session is active
+  useEffect(() => {
+    if (currentUser) {
+      const outletName =
+        currentUser.outlet?.name ||
+        currentUser.outlet_name ||
+        (currentUser.role === 'admin' || currentUser.role === 'super_admin' ? 'All Outlets' : '');
+      setClarityUser(currentUser.role, outletName);
+    }
+  }, [currentUser]);
 
   if (isLoginPage) {
     return (

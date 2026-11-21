@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAdminStore } from '@/stores/admin-store';
 import { supabase } from '@/lib/supabase';
+import { setClarityUser } from '@/lib/clarity';
 
 export default function StaffLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -49,6 +50,7 @@ export default function StaffLayout({ children }: { children: React.ReactNode })
         const user = data.user;
         setUser(user, session.access_token);
         setAuthInitialized(true);
+        setClarityUser(user.role, user.outlet?.name || user.outlet_name || '');
 
         if (isMounted) {
           setIsLoading(false);

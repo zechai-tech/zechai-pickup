@@ -417,6 +417,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({
           already_paid: true,
           order_id: existingOrder.id,
+          pickup_code: existingOrder.pickup_code,
           total: Number(existingOrder.total),
         });
       }
@@ -431,6 +432,7 @@ export async function POST(req: NextRequest) {
         );
         return NextResponse.json({
           order_id: existingOrder.id,
+          pickup_code: existingOrder.pickup_code,
           total: Number(existingOrder.total),
           reused: true,
         });
@@ -529,9 +531,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Return ONLY order_id and total
+    // Return order_id, pickup_code and total
     return NextResponse.json({
       order_id: createdOrder.id,
+      pickup_code: createdOrder.pickup_code,
       total: Number(createdOrder.total),
     });
   } catch (err: any) {

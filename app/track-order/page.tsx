@@ -16,6 +16,7 @@ import { supabase } from '@/lib/supabase';
 import { useZechaStore } from '@/lib/store';
 import { normalizeOrderStatus } from '@/lib/order-flow';
 import { formatPrice, formatTimeIST } from '@/lib/utils';
+import { setClarityOrder } from '@/lib/clarity';
 
 interface OrderItem {
   id?: string;
@@ -166,6 +167,12 @@ function TrackOrderContent() {
   );
 
   // Initial load + 5s polling fallback + focus/visibility refetch
+  useEffect(() => {
+    if (order?.id || order?.pickup_code) {
+      setClarityOrder(order?.id, order?.pickup_code);
+    }
+  }, [order?.id, order?.pickup_code]);
+
   useEffect(() => {
     fetchOrder(false);
 
@@ -488,13 +495,13 @@ function TrackOrderContent() {
 
         {/* Floating Pickup-Code Card (shown until picked up) */}
         {showPickupCodeCard && (
-          <div className="px-5 -mt-8 relative z-20" data-testid="track-pickup-card">
-            <div className="bg-[#2B1A12] rounded-[22px] p-4 px-5 text-[#FDFBEA] shadow-[0_12px_28px_rgba(43,26,18,0.25)] flex items-center justify-between border border-[#2B1A12]">
+          <div className="px-5 -mt-8 relative z-20" data-testid="track-pickup-card" data-clarity-unmask="true">
+            <div className="bg-[#2B1A12] rounded-[22px] p-4 px-5 text-[#FDFBEA] shadow-[0_12px_28px_rgba(43,26,18,0.25)] flex items-center justify-between border border-[#2B1A12]" data-clarity-unmask="true">
               <div>
                 <span className="text-[11px] font-bold text-[#FDFBEA]/70 uppercase tracking-wider block">
                   Pickup code
                 </span>
-                <span className="font-display text-[30px] font-black text-[#FDFBEA] tracking-widest block leading-tight mt-0.5">
+                <span data-clarity-unmask="true" className="font-display text-[30px] font-black text-[#FDFBEA] tracking-widest block leading-tight mt-0.5">
                   {order.pickup_code || '7309'}
                 </span>
               </div>

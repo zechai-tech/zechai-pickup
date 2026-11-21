@@ -222,6 +222,7 @@ export function UserForm({
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
+                  data-clarity-mask="true"
                   value={password}
                   onChange={(e) => handlePasswordChange(e.target.value)}
                   required

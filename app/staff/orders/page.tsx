@@ -327,10 +327,10 @@ export default function StaffOrdersPage() {
                   )}
                 >
                   {/* Top Bar: Pickup Code & Status Badge */}
-                  <div>
+                  <div data-clarity-unmask="true">
                     <div className="flex items-center justify-between gap-2 pb-3 border-b border-border/70">
                       <div>
-                        <span className="font-display font-black text-lg text-espresso tracking-tight">
+                        <span data-clarity-unmask="true" className="font-display font-black text-lg text-espresso tracking-tight">
                           {order.pickup_code || `#${order.id.slice(0, 6)}`}
                         </span>
                         <span className="text-[11px] text-espresso/50 font-medium block">
@@ -355,24 +355,25 @@ export default function StaffOrdersPage() {
                     </div>
 
                     {/* Customer Info */}
-                    <div className="py-2.5 flex items-center justify-between text-xs">
+                    <div data-clarity-unmask="true" className="py-2.5 flex items-center justify-between text-xs">
                       <div className="font-bold text-espresso flex items-center gap-1.5">
                         <User className="w-3.5 h-3.5 text-orange" />
-                        <span>{order.customer_name || 'Walk-in / Online Guest'}</span>
+                        <span data-clarity-unmask="true">{order.customer_name || 'Walk-in / Online Guest'}</span>
                       </div>
                       {order.customer_phone && (
                         <a
                           href={`tel:${order.customer_phone}`}
+                          data-clarity-unmask="true"
                           className="text-[11px] font-bold text-espresso/70 hover:text-orange flex items-center gap-1"
                         >
                           <Phone className="w-3 h-3" />
-                          <span>{order.customer_phone}</span>
+                          <span data-clarity-unmask="true">{order.customer_phone}</span>
                         </a>
                       )}
                     </div>
 
                     {/* Item list */}
-                    <div className="bg-sand/30 rounded-xl p-3 space-y-1.5 my-2">
+                    <div data-clarity-unmask="true" className="bg-sand/30 rounded-xl p-3 space-y-1.5 my-2">
                       {(order.items || []).map((item, idx) => {
                         const quantity = item.qty || 1;
                         const itemPrice = item.price || item.unitPrice || 0;

@@ -167,12 +167,12 @@ export function OrderCard({
         </div>
 
         {/* Pickup Code & Price Hero row */}
-        <div className="flex items-center justify-between py-3">
+        <div data-clarity-unmask="true" className="flex items-center justify-between py-3">
           <div>
             <span className="text-[10px] font-black uppercase tracking-widest text-orange block">
               PICKUP CODE
             </span>
-            <span className="font-display text-3xl font-black tracking-widest text-espresso select-all">
+            <span data-clarity-unmask="true" className="font-display text-3xl font-black tracking-widest text-espresso select-all">
               {order.pickup_code}
             </span>
           </div>
@@ -188,11 +188,11 @@ export function OrderCard({
         </div>
 
         {/* Customer Details: selectable text, copy button, tel link */}
-        <div className="bg-sand/30 rounded-xl p-2.5 mb-3 flex items-center justify-between text-xs">
+        <div data-clarity-unmask="true" className="bg-sand/30 rounded-xl p-2.5 mb-3 flex items-center justify-between text-xs">
           <div>
-            <span className="font-bold text-espresso block">{order.customer_name}</span>
+            <span data-clarity-unmask="true" className="font-bold text-espresso block">{order.customer_name}</span>
             <div className="flex items-center gap-2 pt-0.5">
-              <span className="select-text text-espresso font-semibold">
+              <span data-clarity-unmask="true" className="select-text text-espresso font-semibold">
                 {order.customer_phone}
               </span>
               <button
@@ -221,7 +221,7 @@ export function OrderCard({
         </div>
 
         {/* Order Items List */}
-        <div className="space-y-1.5 py-1 mb-3">
+        <div data-clarity-unmask="true" className="space-y-1.5 py-1 mb-3">
           <span className="text-[10px] font-black uppercase tracking-wider text-espresso/50 block">
             ORDER ITEMS ({itemsList.reduce((acc, i) => acc + (i.qty || 1), 0)})
           </span>
@@ -296,7 +296,7 @@ export function OrderCard({
 
         {/* Kitchen Note */}
         {order.kitchen_note && (
-          <div className="bg-[#FBEDE3]/50 border border-orange/20 rounded-xl p-2 mb-3 text-[11px] text-espresso/80">
+          <div data-clarity-unmask="true" className="bg-[#FBEDE3]/50 border border-orange/20 rounded-xl p-2 mb-3 text-[11px] text-espresso/80">
             <span className="font-bold text-orange block">Note:</span>
             {order.kitchen_note}
           </div>

@@ -16,6 +16,7 @@ import { useZechaStore } from '@/lib/store';
 import { useToast } from '@/components/ui/Toast';
 import { formatPrice, formatTimeIST } from '@/lib/utils';
 import { computeOrderTotal } from '@/lib/pricing';
+import { setClarityOrder } from '@/lib/clarity';
 
 type VerifyStatus = 'checking' | 'processing_long' | 'success' | 'failed';
 
@@ -129,6 +130,9 @@ function OrderSuccessContent() {
             payment_method: order?.payment_method || 'UPI',
             created_at: order?.created_at || effectivePaidAt,
           });
+
+          // Microsoft Clarity tag
+          setClarityOrder(finalId, finalCode);
 
           clearCart();
           try {
@@ -278,6 +282,12 @@ function OrderSuccessContent() {
   const readyByTime = baseTimestamp
     ? formatTimeIST(new Date(new Date(baseTimestamp).getTime() + 15 * 60 * 1000))
     : formatTimeIST(new Date(Date.now() + 15 * 60 * 1000));
+
+  useEffect(() => {
+    if (orderData?.id || orderData?.pickup_code) {
+      setClarityOrder(orderData?.id, orderData?.pickup_code);
+    }
+  }, [orderData?.id, orderData?.pickup_code]);
 
   const pricing = useMemo(() => {
     if (!orderData) return null;
@@ -433,7 +443,7 @@ function OrderSuccessContent() {
         </div>
 
         {/* Ticket Card */}
-        <div className="w-full bg-[#FFFEF7] rounded-[24px] border border-[#EADFC7] shadow-sm relative overflow-hidden">
+        <div data-clarity-unmask="true" className="w-full bg-[#FFFEF7] rounded-[24px] border border-[#EADFC7] shadow-sm relative overflow-hidden">
           <div className="p-4 px-5 flex items-center justify-between">
             <div>
               <span className="text-[11px] font-bold text-[#75604F] block">Order number</span>
@@ -460,7 +470,7 @@ function OrderSuccessContent() {
               YOUR PICKUP CODE
             </span>
 
-            <div className="flex items-center justify-center gap-2.5">
+            <div data-clarity-unmask="true" className="flex items-center justify-center gap-2.5">
               {digits.map((digit, i) => (
                 <div
                   key={i}
@@ -479,7 +489,7 @@ function OrderSuccessContent() {
 
         {/* Price Breakdown Card */}
         {pricing && (
-          <div className="w-full bg-[#FFFEF7] rounded-[20px] border border-[#EADFC7] p-3.5 space-y-2 text-xs shadow-2xs">
+          <div data-clarity-unmask="true" className="w-full bg-[#FFFEF7] rounded-[20px] border border-[#EADFC7] p-3.5 space-y-2 text-xs shadow-2xs">
             <div className="flex items-center justify-between text-[#75604F]">
               <span>Item total</span>
               <span className="font-bold text-[#2B1A12] tabular-nums">{formatPrice(pricing.itemsTotal)}</span>

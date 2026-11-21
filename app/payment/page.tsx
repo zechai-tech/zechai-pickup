@@ -321,6 +321,7 @@ export default function PaymentPage() {
             <div className="pt-2 border-t border-border/60">
               <input
                 type="text"
+                data-clarity-mask="true"
                 value={upiIdInput}
                 onChange={(e) => {
                   setMethod('upi');
@@ -361,6 +362,7 @@ export default function PaymentPage() {
               <div className="pt-3 space-y-2 border-t border-border/60 mt-2.5 animate-in fade-in duration-150">
                 <input
                   type="text"
+                  data-clarity-mask="true"
                   maxLength={19}
                   value={cardNumber}
                   onChange={(e) => setCardNumber(e.target.value)}
@@ -370,6 +372,7 @@ export default function PaymentPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <input
                     type="text"
+                    data-clarity-mask="true"
                     maxLength={5}
                     value={cardExpiry}
                     onChange={(e) => setCardExpiry(e.target.value)}
@@ -378,6 +381,7 @@ export default function PaymentPage() {
                   />
                   <input
                     type="password"
+                    data-clarity-mask="true"
                     maxLength={3}
                     value={cardCvv}
                     onChange={(e) => setCardCvv(e.target.value)}

@@ -23,6 +23,7 @@ import { DEFAULT_MENU_IMAGE } from '@/lib/images';
 import { PICKUP_ETA_SHORT } from '@/lib/outlets';
 import { formatPrice } from '@/lib/utils';
 import { getAllowedSwaps, SwappableMenuItem, CartComboItem } from '@/lib/combos';
+import { setClarityOrder } from '@/lib/clarity';
 
 export default function CartPage() {
   const router = useRouter();
@@ -231,7 +232,11 @@ export default function CartPage() {
       }
 
       const orderId = createData.order_id;
+      const pickupCode = createData.pickup_code;
       const verifiedTotal = Number(createData.total);
+
+      // Microsoft Clarity: tag order_id and pickup_code on order creation success
+      setClarityOrder(orderId, pickupCode);
 
       if (createData.already_paid) {
         isNavigatingToSuccessRef.current = true;
@@ -514,7 +519,7 @@ export default function CartPage() {
         </header>
 
         {/* Item Cards: Each item is its OWN card (14px padding, 20px radius, 12px gap between cards) */}
-        <div className="space-y-3">
+        <div data-clarity-unmask="true" className="space-y-3">
           {cart.map((item) => (
             <div
               key={item.lineId}
@@ -686,6 +691,7 @@ export default function CartPage() {
           </div>
           <input
             type="text"
+            data-clarity-unmask="true"
             value={kitchenNote}
             onChange={(e) => setKitchenNote(e.target.value)}
             placeholder="Note for the kitchen (optional)"
@@ -870,6 +876,7 @@ export default function CartPage() {
                 {/* Numeric Input (max 10 digits) */}
                 <input
                   type="tel"
+                  data-clarity-unmask="true"
                   inputMode="numeric"
                   pattern="[0-9]*"
                   value={phone}

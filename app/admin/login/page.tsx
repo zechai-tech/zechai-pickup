@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { useAdminStore } from '@/stores/admin-store';
 import { Button } from '@/components/ui/Button';
 import { Lock, Mail, AlertCircle, ArrowRight, ShieldCheck, Eye, EyeOff } from 'lucide-react';
+import { setClarityUser } from '@/lib/clarity';
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -95,6 +96,13 @@ export default function AdminLoginPage() {
       // 3. Store user in Zustand
       setUser(data.user, authData.session?.access_token || null);
 
+      // Microsoft Clarity: tag role and outlet on login
+      const userOutlet =
+        data.user.outlet?.name ||
+        data.user.outlet_name ||
+        (data.user.role === 'admin' || data.user.role === 'super_admin' ? 'All Outlets' : '');
+      setClarityUser(data.user.role, userOutlet);
+
       // 4. Role-based routing: staff goes to /staff/orders, admin/manager to /admin/dashboard
       if (data.user.role === 'staff' || data.user.role === 'ordering_staff') {
         router.push('/staff/orders');
@@ -171,6 +179,7 @@ export default function AdminLoginPage() {
           <div className="relative">
             <input
               type={showPassword ? 'text' : 'password'}
+              data-clarity-mask="true"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
