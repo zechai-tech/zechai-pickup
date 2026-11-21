@@ -64,7 +64,7 @@ function MenuPageContent() {
       ? previewThemeParam
       : menuTheme;
 
-  const { count, toPay } = getCartSummary(cart);
+  const { count, itemsTotal } = getCartSummary(cart);
 
   // Guard: if no outlet selected (and not previewing an outlet), send user to /outlets
   useEffect(() => {
@@ -517,20 +517,17 @@ function MenuPageContent() {
             {combo.name}
           </h3>
 
-          <div className="flex items-center gap-2 mt-0.5 mb-1 flex-wrap">
-            {combo.items_total && combo.items_total > combo.price && (
-              <span className="text-[13px] text-[#75604F] line-through font-semibold">
-                {formatPrice(combo.items_total)}
+          <div className="mt-1 mb-1">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#FFD23F] text-[#2B1A12]">
+              {combo.items_total && combo.items_total > combo.price && (
+                <span className="text-[12px] text-[#2B1A12]/75 line-through font-semibold">
+                  {formatPrice(combo.items_total)}
+                </span>
+              )}
+              <span className="font-black text-[14px] text-[#2B1A12]">
+                {formatPrice(combo.price)}
               </span>
-            )}
-            <span className="font-black text-[15px] text-[#2B1A12]">
-              {formatPrice(combo.price)}
             </span>
-            {combo.savings > 0 && (
-              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-black bg-[#FFD23F] text-[#2B1A12] shadow-2xs">
-                Save ₹{combo.savings}
-              </span>
-            )}
           </div>
 
           {combo.description && (
@@ -620,11 +617,6 @@ function MenuPageContent() {
               sizes="(max-width: 430px) 46vw, 198px"
               className="object-cover"
             />
-            {combo.savings > 0 && (
-              <span className="absolute top-2 left-2 bg-[#FFD23F] text-[#2B1A12] text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs">
-                Save ₹{combo.savings}
-              </span>
-            )}
           </div>
 
           <div className="mt-2 flex items-start gap-1.5">
@@ -647,16 +639,16 @@ function MenuPageContent() {
         </div>
 
         <div className="pt-1 flex items-center justify-between gap-1">
-          <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-[#FFD23F] text-[#2B1A12]">
             {combo.items_total && combo.items_total > combo.price && (
-              <span className="text-[12px] text-[#75604F] line-through font-semibold">
+              <span className="text-[11px] text-[#2B1A12]/75 line-through font-semibold">
                 {formatPrice(combo.items_total)}
               </span>
             )}
-            <span className="font-black text-[15px] text-[#2B1A12]">
+            <span className="font-black text-[13px] text-[#2B1A12]">
               {formatPrice(combo.price)}
             </span>
-          </div>
+          </span>
 
           {!combo.is_available ? (
             <span className="h-[30px] px-2.5 rounded-[8px] bg-[#F4E7CC]/60 text-[#75604F] font-bold text-[10px] uppercase flex items-center justify-center">
@@ -1120,7 +1112,7 @@ function MenuPageContent() {
                   {count} {count === 1 ? 'item' : 'items'}
                 </span>
                 <span className="font-extrabold text-[17px] text-[#FDFBEA] tabular-nums">
-                  {formatPrice(toPay)}
+                  {formatPrice(itemsTotal)}
                 </span>
               </div>
             </div>

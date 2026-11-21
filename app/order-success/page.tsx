@@ -367,13 +367,8 @@ function OrderSuccessContent() {
     <div style="border-top:1px solid #eadfc7;padding-top:10px;margin-top:8px;font-size:13px;">
       <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
         <span class="muted">Item Total</span>
-        <span>${pricing && pricing.comboSavings > 0 ? `<span style="text-decoration:line-through;color:#75604f;margin-right:6px;">₹${pricing.originalItemTotal}</span>` : ''}₹${pricing ? pricing.itemsTotal : Math.round(orderData.total)}</span>
+        <span>₹${pricing ? pricing.itemsTotal : Math.round(orderData.total)}</span>
       </div>
-      ${pricing && pricing.comboSavings > 0 ? `
-      <div style="display:flex;justify-content:space-between;margin-bottom:4px;color:#2f7a3e;">
-        <span>Combo Offer</span>
-        <span>−₹${pricing.comboSavings}</span>
-      </div>` : ''}
       <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
         <span class="muted">Packaging</span>
         <span>₹${pricing ? pricing.packagingFee : 0}</span>
@@ -487,22 +482,8 @@ function OrderSuccessContent() {
           <div className="w-full bg-[#FFFEF7] rounded-[20px] border border-[#EADFC7] p-3.5 space-y-2 text-xs shadow-2xs">
             <div className="flex items-center justify-between text-[#75604F]">
               <span>Item total</span>
-              <div className="flex items-center gap-1.5 font-bold text-[#2B1A12] tabular-nums">
-                {pricing.comboSavings > 0 && (
-                  <span className="line-through font-normal text-[#75604F]">
-                    {formatPrice(pricing.originalItemTotal)}
-                  </span>
-                )}
-                <span>{formatPrice(pricing.itemsTotal)}</span>
-              </div>
+              <span className="font-bold text-[#2B1A12] tabular-nums">{formatPrice(pricing.itemsTotal)}</span>
             </div>
-
-            {pricing.comboSavings > 0 && (
-              <div className="flex items-center justify-between text-[#2F7A3E]">
-                <span>Combo offer</span>
-                <span className="font-bold tabular-nums">−{formatPrice(pricing.comboSavings)}</span>
-              </div>
-            )}
 
             <div className="flex items-center justify-between text-[#75604F]">
               <span>Packaging</span>
@@ -526,7 +507,7 @@ function OrderSuccessContent() {
         </div>
 
         <p className="text-[11px] text-[#75604F] font-semibold text-center">
-          Save your pickup code: <span className="font-black text-[#2B1A12]">{displayCode}</span>
+          Pickup code: <span className="font-black text-[#2B1A12]">{displayCode}</span>
         </p>
       </div>
 
