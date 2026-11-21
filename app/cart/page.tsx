@@ -18,9 +18,11 @@ import { supabase } from '@/lib/supabase';
 import { useToast } from '@/components/ui/Toast';
 import { SafeImage } from '@/components/ui/SafeImage';
 import { CupMarkSvg } from '@/components/ui/CupMarkSvg';
+import { VegBadge } from '@/components/ui/VegBadge';
 import { DEFAULT_MENU_IMAGE } from '@/lib/images';
 import { PICKUP_ETA_SHORT } from '@/lib/outlets';
 import { formatPrice } from '@/lib/utils';
+import { getAllowedSwaps, SwappableMenuItem, CartComboItem } from '@/lib/combos';
 
 export default function CartPage() {
   const router = useRouter();
@@ -29,10 +31,33 @@ export default function CartPage() {
     cart,
     customer,
     updateCartQty,
+    updateComboItemSwap,
     removeFromCart,
     clearCart,
     setCustomer,
   } = useZechaStore();
+
+  const [outletMenuItems, setOutletMenuItems] = useState<SwappableMenuItem[]>([]);
+  const [swapSheetData, setSwapSheetData] = useState<{
+    lineId: string;
+    itemIndex: number;
+    currentItem: CartComboItem;
+    allOptions: SwappableMenuItem[];
+  } | null>(null);
+
+  useEffect(() => {
+    if (!outlet?.id) return;
+    fetch(`/api/menu?outlet_id=${encodeURIComponent(outlet.id)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data && Array.isArray(data.items)) {
+          setOutletMenuItems(data.items);
+        }
+      })
+      .catch((err) => {
+        console.warn('Failed to load menu items for cart swaps:', err);
+      });
+  }, [outlet?.id]);
 
   const {
     count,
@@ -65,9 +90,9 @@ export default function CartPage() {
     }
   }, [cart.length, submitting, router]);
 
-  // Lock body scroll when phone modal is open
+  // Lock body scroll when phone modal or swap modal is open
   useEffect(() => {
-    if (isPhoneModalOpen) {
+    if (isPhoneModalOpen || Boolean(swapSheetData)) {
       document.body.style.overflow = 'hidden';
     } else {
       document.body.style.overflow = '';
@@ -75,7 +100,45 @@ export default function CartPage() {
     return () => {
       document.body.style.overflow = '';
     };
-  }, [isPhoneModalOpen]);
+  }, [isPhoneModalOpen, swapSheetData]);
+
+  const handleOpenSwapSheet = (
+    lineId: string,
+    cIdx: number,
+    ci: CartComboItem,
+    swaps: SwappableMenuItem[]
+  ) => {
+    const defaultId = ci.default_item_id || ci.menu_item_id;
+    const defaultName = ci.default_name || ci.name;
+    const defaultFromMenu = outletMenuItems.find((m) => m.id === defaultId);
+    const defaultOption: SwappableMenuItem = defaultFromMenu || {
+      id: defaultId,
+      name: defaultName,
+      category: ci.category || null,
+      price: ci.unit_price || 0,
+      is_veg: ci.is_veg ?? true,
+      is_available: true,
+    };
+
+    const allOptionsMap = new Map<string, SwappableMenuItem>();
+    allOptionsMap.set(defaultOption.id, defaultOption);
+    for (const s of swaps) {
+      allOptionsMap.set(s.id, s);
+    }
+
+    setSwapSheetData({
+      lineId,
+      itemIndex: cIdx,
+      currentItem: ci,
+      allOptions: Array.from(allOptionsMap.values()),
+    });
+  };
+
+  const handleSelectSwap = (selectedOpt: SwappableMenuItem) => {
+    if (!swapSheetData) return;
+    updateComboItemSwap(swapSheetData.lineId, swapSheetData.itemIndex, selectedOpt);
+    setSwapSheetData(null);
+  };
 
   // Dynamically load Cashfree checkout script
   const loadCashfreeScript = (): Promise<boolean> => {
@@ -148,6 +211,14 @@ export default function CartPage() {
             combo_id: item.isCombo ? item.itemId : undefined,
             menu_item_id: item.isCombo ? undefined : item.itemId,
             quantity: item.qty,
+            combo_items:
+              item.isCombo && item.comboItems
+                ? item.comboItems.map((ci) => ({
+                    menu_item_id: ci.menu_item_id,
+                    default_item_id: ci.default_item_id || ci.menu_item_id,
+                    quantity: ci.quantity,
+                  }))
+                : undefined,
           })),
         }),
       });
@@ -469,11 +540,60 @@ export default function CartPage() {
                   {item.name}
                 </h3>
                 {item.isCombo ? (
-                  <p className="text-[12px] text-[#75604F] mt-0.5 truncate">
-                    {item.comboItems && item.comboItems.length > 0
-                      ? item.comboItems.map((ci) => `${ci.quantity > 1 ? `${ci.quantity}x ` : ''}${ci.name}`).join(' · ')
-                      : 'Combo pack'}
-                  </p>
+                  <div className="mt-1 space-y-1">
+                    {item.comboItems && item.comboItems.length > 0 ? (
+                      item.comboItems.map((ci, cIdx) => {
+                        const refMenuItem = outletMenuItems.find(
+                          (m) => m.id === (ci.menu_item_id || ci.default_item_id)
+                        );
+                        const effectiveCi = {
+                          ...ci,
+                          category: ci.category || refMenuItem?.category,
+                          price: ci.unit_price ?? refMenuItem?.price,
+                          unit_price: ci.unit_price ?? refMenuItem?.price,
+                          is_veg: ci.is_veg ?? refMenuItem?.is_veg,
+                          outlet_id: ci.outlet_id || refMenuItem?.outlet_id,
+                        };
+                        const swaps = getAllowedSwaps(effectiveCi, outletMenuItems);
+                        const hasSwaps = swaps.length > 0;
+                        const isChanged = Boolean(ci.is_changed);
+
+                        return (
+                          <div
+                            key={cIdx}
+                            className="flex items-center justify-between gap-1 text-[12px] leading-tight"
+                          >
+                            <div className="flex items-center gap-1.5 min-w-0 pr-1">
+                              <VegBadge isVeg={effectiveCi.is_veg ?? true} size="sm" />
+                              <span className="text-[#2B1A12] font-medium truncate">
+                                {ci.quantity > 1 ? `${ci.quantity}x ` : ''}
+                                {ci.name}
+                              </span>
+                              {isChanged && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-black uppercase tracking-wider bg-orange/15 text-orange shrink-0">
+                                  Changed
+                                </span>
+                              )}
+                            </div>
+                            {hasSwaps && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenSwapSheet(item.lineId, cIdx, effectiveCi, swaps);
+                                }}
+                                className="text-xs font-bold text-[#CE5535] hover:text-[#A8401F] underline shrink-0 px-1 py-0.5"
+                              >
+                                Change
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <p className="text-[12px] text-[#75604F]">Combo pack</p>
+                    )}
+                  </div>
                 ) : item.selectedSize ? (
                   <p className="text-[12px] text-[#75604F] mt-0.5 truncate">
                     {item.selectedSize}
@@ -655,6 +775,87 @@ export default function CartPage() {
           </div>
         </button>
       </div>
+
+      {/* Flavour Swap Bottom Sheet */}
+      {swapSheetData && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#2B1A12]/60 backdrop-blur-xs p-0 animate-in fade-in duration-200">
+          <div className="bg-[#FFFEF7] w-full max-w-[430px] rounded-t-[32px] border-t border-[#EADFC7] p-5 pb-8 shadow-2xl relative animate-in slide-in-from-bottom duration-250 space-y-4">
+            {/* Sheet Handle */}
+            <div className="w-12 h-1.5 rounded-full bg-[#EADFC7] mx-auto mb-2" />
+
+            {/* Header: Item name + Close Button */}
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="font-display text-[20px] font-extrabold text-[#2B1A12] leading-tight">
+                  {swapSheetData.currentItem.default_name || swapSheetData.currentItem.name}
+                </h3>
+                <p className="text-xs text-[#2F7A3E] font-bold mt-0.5">
+                  Same price, no extra charge
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSwapSheetData(null)}
+                className="w-8 h-8 rounded-full bg-[#F4E7CC] flex items-center justify-center text-[#2B1A12] hover:bg-[#EBD8B7] transition-colors shrink-0"
+                aria-label="Close"
+              >
+                <X className="w-4 h-4 stroke-[2.5]" />
+              </button>
+            </div>
+
+            {/* List of allowed alternatives (including default) */}
+            <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+              {swapSheetData.allOptions.map((opt) => {
+                const isSelected = opt.id === swapSheetData.currentItem.menu_item_id;
+
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => handleSelectSwap(opt)}
+                    className={`w-full p-3.5 rounded-[16px] border text-left flex items-center justify-between gap-3 transition-all ${
+                      isSelected
+                        ? 'bg-[#FBEDE3]/60 border-[#CE5535] shadow-xs'
+                        : 'bg-white border-[#EADFC7] hover:border-[#E3D7BC]'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <VegBadge isVeg={opt.is_veg} size="sm" />
+                      <div className="min-w-0">
+                        <span className="font-extrabold text-sm text-[#2B1A12] block truncate">
+                          {opt.name}
+                        </span>
+                        {opt.id ===
+                          (swapSheetData.currentItem.default_item_id ||
+                            swapSheetData.currentItem.menu_item_id) && (
+                          <span className="text-[10px] text-[#75604F] font-semibold">
+                            Default combo flavour
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 flex items-center gap-2">
+                      <span className="text-xs font-bold text-[#75604F]">
+                        {formatPrice(opt.price)}
+                      </span>
+                      <div
+                        className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                          isSelected
+                            ? 'border-[#CE5535] bg-[#CE5535] text-white'
+                            : 'border-[#EADFC7] bg-white'
+                        }`}
+                      >
+                        {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* SCREEN 5b: Phone Number Bottom Sheet */}
       {isPhoneModalOpen && (

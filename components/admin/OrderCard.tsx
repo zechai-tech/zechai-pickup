@@ -266,6 +266,11 @@ export function OrderCard({
                                 {(ci.quantity || 1) * qty}x
                               </span>{' '}
                               {ci.name}
+                              {Boolean(ci.changed) && (
+                                <span className="ml-1.5 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-orange/15 text-orange">
+                                  Changed
+                                </span>
+                              )}
                             </span>
                           </div>
                         ))}

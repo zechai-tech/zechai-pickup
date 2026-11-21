@@ -60,6 +60,21 @@ export interface ComboItemEntry {
   image_url?: string;
   is_veg?: boolean;
   is_available?: boolean;
+  category?: string | null;
+  outlet_id?: string;
+}
+
+export interface CartComboItem {
+  menu_item_id: string;
+  name: string;
+  quantity: number;
+  unit_price?: number;
+  category?: string | null;
+  is_veg?: boolean;
+  outlet_id?: string;
+  default_item_id?: string;
+  default_name?: string;
+  is_changed?: boolean;
 }
 
 export interface Combo {
@@ -101,10 +116,7 @@ export interface CartItem {
   isCombo?: boolean;
   originalPrice?: number;
   savings?: number;
-  comboItems?: {
-    name: string;
-    quantity: number;
-  }[];
+  comboItems?: CartComboItem[];
 }
 
 export interface CustomerDetails {

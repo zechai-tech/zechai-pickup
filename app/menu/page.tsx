@@ -228,15 +228,14 @@ function MenuPageContent() {
   };
 
   const getComboQty = (comboId: string) => {
-    const lineId = 'combo-' + comboId;
-    const found = cart.find((i) => i.lineId === lineId || (i.isCombo && i.itemId === comboId));
-    return found ? found.qty : 0;
+    return cart
+      .filter((i) => i.isCombo && i.itemId === comboId)
+      .reduce((sum, i) => sum + i.qty, 0);
   };
 
   const getComboLineId = (comboId: string) => {
-    const lineId = 'combo-' + comboId;
-    const found = cart.find((i) => i.lineId === lineId || (i.isCombo && i.itemId === comboId));
-    return found ? found.lineId : lineId;
+    const found = cart.find((i) => i.isCombo && i.itemId === comboId);
+    return found ? found.lineId : 'combo-' + comboId;
   };
 
   const handleAddCombo = (combo: Combo) => {
@@ -246,11 +245,22 @@ function MenuPageContent() {
     }
     addCombo({
       id: combo.id,
+      outlet_id: combo.outlet_id,
       name: combo.name,
       price: combo.price,
       image: combo.image || combo.image_url || undefined,
       isVeg: combo.is_veg,
-      items: (combo.items || []).map((it) => ({ name: it.name, quantity: it.quantity })),
+      items_total: combo.items_total,
+      savings: combo.savings,
+      items: (combo.items || []).map((it) => ({
+        menu_item_id: it.menu_item_id,
+        name: it.name,
+        quantity: it.quantity,
+        price: it.price,
+        category: it.category,
+        is_veg: it.is_veg,
+        outlet_id: it.outlet_id || combo.outlet_id,
+      })),
     });
     showToast(`Added ${combo.name} to cart`, 'success');
   };

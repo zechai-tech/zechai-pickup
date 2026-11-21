@@ -6,7 +6,17 @@ import { verifyAndSyncOrder } from '@/lib/order-sync';
 function normalizeCartSignature(rawItems: any[]): string {
   if (!Array.isArray(rawItems)) return '';
   return rawItems
-    .map((it) => `${String(it.combo_id || it.menu_item_id || it.id || '')}:${Number(it.quantity ?? it.qty ?? 1)}`)
+    .map((it) => {
+      const base = `${String(it.combo_id || it.menu_item_id || it.id || '')}:${Number(it.quantity ?? it.qty ?? 1)}`;
+      if (it.combo_items && Array.isArray(it.combo_items)) {
+        const sub = it.combo_items
+          .map((ci: any) => `${ci.menu_item_id || ci.name}:${ci.quantity}`)
+          .sort()
+          .join(',');
+        return `${base}[${sub}]`;
+      }
+      return base;
+    })
     .sort()
     .join('|');
 }
@@ -67,7 +77,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Validate each item structure
-    const allowedItemKeys = ['menu_item_id', 'combo_id', 'quantity'];
+    const allowedItemKeys = ['menu_item_id', 'combo_id', 'quantity', 'combo_items'];
     const menuItemIds: string[] = [];
     const comboIds: string[] = [];
 
@@ -108,6 +118,14 @@ export async function POST(req: NextRequest) {
         menuItemIds.push(it.menu_item_id.trim());
       } else {
         comboIds.push(it.combo_id.trim());
+        // Collect any candidate swapped item IDs to look up in DB
+        if (Array.isArray(it.combo_items)) {
+          for (const ci of it.combo_items) {
+            if (ci && typeof ci.menu_item_id === 'string') {
+              menuItemIds.push(ci.menu_item_id.trim());
+            }
+          }
+        }
       }
     }
 
@@ -135,7 +153,7 @@ export async function POST(req: NextRequest) {
     const dbItemsMap = new Map<string, any>();
     if (uniqueMenuItemIds.length > 0) {
       const menuRes = await query(
-        `SELECT id, name, price, outlet_id, is_available, image_url 
+        `SELECT id, name, price, outlet_id, is_available, image_url, category, is_veg 
          FROM public.menu_items 
          WHERE id = ANY($1)`,
         [uniqueMenuItemIds]
@@ -174,7 +192,7 @@ export async function POST(req: NextRequest) {
       // Load all included items and their live availability for these combos
       const comboItemsRes = await query(
         `SELECT ci.combo_id, ci.menu_item_id, ci.quantity,
-                m.name, m.price, m.outlet_id, m.is_available, m.is_veg
+                m.name, m.price, m.outlet_id, m.is_available, m.is_veg, m.category
          FROM public.combo_items ci
          JOIN public.menu_items m ON ci.menu_item_id = m.id
          WHERE ci.combo_id = ANY($1)`,
@@ -255,15 +273,88 @@ export async function POST(req: NextRequest) {
 
         const comboUnitPrice = Math.round(Number(dbCombo.price) || 0);
 
-        // Snapshot of included items at this exact moment
-        const itemsSnapshot = includedItems.map((ci) => ({
-          menu_item_id: ci.menu_item_id,
-          name: ci.name,
-          quantity: Number(ci.quantity) || 1,
-          unit_price: Math.round(Number(ci.price) || 0),
-        }));
+        // Process swaps if reqItem.combo_items is provided
+        const reqComboItems = Array.isArray(reqItem.combo_items) ? reqItem.combo_items : null;
+        let finalIncludedItems: any[] = [];
 
-        const originalItemsTotal = itemsSnapshot.reduce(
+        if (reqComboItems) {
+          if (reqComboItems.length !== includedItems.length) {
+            return NextResponse.json(
+              { error: 'One of the combo items is no longer available. Please review your cart.' },
+              { status: 400 }
+            );
+          }
+
+          for (let cIdx = 0; cIdx < includedItems.length; cIdx++) {
+            const defaultItem = includedItems[cIdx];
+            const reqCi =
+              reqComboItems.find(
+                (rc: any) =>
+                  rc.default_item_id === defaultItem.menu_item_id ||
+                  rc.original_item_id === defaultItem.menu_item_id
+              ) || reqComboItems[cIdx];
+
+            if (!reqCi || !reqCi.menu_item_id) {
+              return NextResponse.json(
+                { error: 'One of the combo items is no longer available. Please review your cart.' },
+                { status: 400 }
+              );
+            }
+
+            const candidateId = String(reqCi.menu_item_id).trim();
+
+            if (candidateId === defaultItem.menu_item_id) {
+              // Not swapped - using default
+              finalIncludedItems.push({
+                menu_item_id: defaultItem.menu_item_id,
+                name: defaultItem.name,
+                quantity: Number(defaultItem.quantity) || 1,
+                unit_price: Math.round(Number(defaultItem.price) || 0),
+              });
+            } else {
+              // Swap requested - validate against SWAP RULE:
+              // 1. Same outlet
+              // 2. Same category
+              // 3. Exactly same price
+              // 4. Same veg / non-veg type
+              // 5. Available (not sold out)
+              // 6. Not the same as defaultItem (already true)
+              const candidate = dbItemsMap.get(candidateId);
+              if (
+                !candidate ||
+                candidate.outlet_id !== outlet_id ||
+                !candidate.is_available ||
+                (candidate.category || '').trim().toLowerCase() !== (defaultItem.category || '').trim().toLowerCase() ||
+                Math.round(Number(candidate.price) || 0) !== Math.round(Number(defaultItem.price) || 0) ||
+                Boolean(candidate.is_veg) !== Boolean(defaultItem.is_veg)
+              ) {
+                return NextResponse.json(
+                  { error: 'One of the combo items is no longer available. Please review your cart.' },
+                  { status: 400 }
+                );
+              }
+
+              finalIncludedItems.push({
+                menu_item_id: candidate.id,
+                name: candidate.name,
+                quantity: Number(defaultItem.quantity) || 1,
+                unit_price: Math.round(Number(candidate.price) || 0),
+                changed: true,
+                original_name: defaultItem.name,
+              });
+            }
+          }
+        } else {
+          // No swaps requested - use default snapshot
+          finalIncludedItems = includedItems.map((ci) => ({
+            menu_item_id: ci.menu_item_id,
+            name: ci.name,
+            quantity: Number(ci.quantity) || 1,
+            unit_price: Math.round(Number(ci.price) || 0),
+          }));
+        }
+
+        const originalItemsTotal = finalIncludedItems.reduce(
           (sum, ci) => sum + (Number(ci.unit_price) || 0) * (Number(ci.quantity) || 1),
           0
         );
@@ -281,7 +372,7 @@ export async function POST(req: NextRequest) {
           quantity: quantity,
           qty: quantity,
           ...(dbCombo.image_url ? { image: dbCombo.image_url } : {}),
-          combo_items: itemsSnapshot,
+          combo_items: finalIncludedItems,
         });
       }
     }

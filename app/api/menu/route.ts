@@ -111,7 +111,7 @@ export async function GET(req: NextRequest) {
         const comboIds = combosRes.rows.map((c: any) => c.id);
         const comboItemsRes = await query(
           `SELECT ci.combo_id, ci.menu_item_id, ci.quantity,
-                  m.name, m.price, m.image_url, m.is_available, m.is_veg
+                  m.name, m.price, m.image_url, m.is_available, m.is_veg, m.category, m.outlet_id
            FROM public.combo_items ci
            JOIN public.menu_items m ON ci.menu_item_id = m.id
            WHERE ci.combo_id = ANY($1)
@@ -130,6 +130,8 @@ export async function GET(req: NextRequest) {
             image_url: row.image_url,
             is_available: row.is_available ?? true,
             is_veg: row.is_veg ?? true,
+            category: row.category,
+            outlet_id: row.outlet_id,
           });
           itemsByCombo.set(row.combo_id, list);
         }
