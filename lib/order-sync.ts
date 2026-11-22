@@ -1,4 +1,5 @@
 import { query } from '@/lib/db';
+import { sendOrderPush } from '@/lib/push';
 
 export interface SyncResult {
   orderId: string;
@@ -243,6 +244,13 @@ export async function verifyAndSyncOrder(
          RETURNING id, status`,
         [cfPaymentId, paymentMethod, paidAt, orderId]
       );
+
+      // Trigger idempotent push notification to portal staff/managers
+      if (updateRes.rows.length > 0) {
+        sendOrderPush(orderId).catch((e) => {
+          console.warn('[OneSignal Push] Error in verifyAndSyncOrder push trigger:', e);
+        });
+      }
 
       return {
         orderId,

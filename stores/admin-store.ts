@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { AppUser, Outlet, UserRole } from '@/types/supabase';
+import { logoutOneSignalUser } from '@/lib/onesignal-client';
 
 export interface UserScope {
   role: UserRole;
@@ -82,6 +83,7 @@ export const useAdminStore = create<AdminState>()(
       setAuthInitialized: (initialized) => set({ isAuthInitialized: initialized }),
 
       logout: () => {
+        logoutOneSignalUser();
         set({
           currentUser: null,
           user: null,

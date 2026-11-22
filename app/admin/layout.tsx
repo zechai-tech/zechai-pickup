@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Script from 'next/script';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAdminStore } from '@/stores/admin-store';
 import { supabase } from '@/lib/supabase';
 import { Sidebar } from '@/components/admin/Sidebar';
 import { TopBar } from '@/components/admin/TopBar';
 import { setClarityUser } from '@/lib/clarity';
+import { initOneSignal, loginOneSignalUser, logoutOneSignalUser } from '@/lib/onesignal-client';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -14,6 +16,18 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const { currentUser, setUser, logout, setAuthInitialized } = useAdminStore();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // Initialize OneSignal on Portal mount
+  useEffect(() => {
+    initOneSignal();
+  }, []);
+
+  // Sync OneSignal login with current Portal user
+  useEffect(() => {
+    if (currentUser?.id) {
+      loginOneSignalUser(currentUser.id);
+    }
+  }, [currentUser?.id]);
 
   // Clean layout for login page without topbar/sidebar
   const isLoginPage = pathname === '/admin/login';
@@ -92,6 +106,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'SIGNED_OUT' || !session) {
+        logoutOneSignalUser();
         logout();
         router.replace('/admin/login');
       } else if (session?.access_token) {
@@ -122,6 +137,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (isLoginPage) {
     return (
       <div className="min-h-screen bg-cream text-espresso flex flex-col justify-center items-center p-4">
+        <link rel="manifest" href="/admin-manifest.json" />
+        <link rel="apple-touch-icon" href="/admin-apple-touch-icon.png" />
+        <Script
+          src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
+          strategy="afterInteractive"
+        />
         {children}
       </div>
     );
@@ -130,6 +151,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#FDFBEA]">
+        <link rel="manifest" href="/admin-manifest.json" />
+        <link rel="apple-touch-icon" href="/admin-apple-touch-icon.png" />
+        <Script
+          src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
+          strategy="afterInteractive"
+        />
         <div className="text-center">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#CE5535] mx-auto mb-4" />
           <p className="text-[#75604F] text-xs font-bold tracking-wide">Restoring session...</p>
@@ -140,6 +167,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="flex h-screen w-full bg-cream text-espresso overflow-hidden font-sans">
+      <link rel="manifest" href="/admin-manifest.json" />
+      <link rel="apple-touch-icon" href="/admin-apple-touch-icon.png" />
+      <Script
+        src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
+        strategy="afterInteractive"
+      />
       {/* Sidebar for Desktop & Tablet + Mobile Drawer */}
       <Sidebar isOpen={mobileMenuOpen} onClose={() => setMobileMenuOpen(false)} />
 

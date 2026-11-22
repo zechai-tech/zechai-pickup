@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { query } from '@/lib/db';
+import { sendOrderPush } from '@/lib/push';
 
 export async function GET() {
   return new NextResponse('ok', {
@@ -141,7 +142,12 @@ export async function POST(req: NextRequest) {
           [cfPaymentId, paymentMethod, paidAt, orderId]
         );
         rowUpdated = updRes.rows.length > 0;
-        if (rowUpdated) finalStatus = updRes.rows[0].status;
+        if (rowUpdated) {
+          finalStatus = updRes.rows[0].status;
+          sendOrderPush(orderId).catch((e) => {
+            console.warn('[OneSignal Push] Error in webhook push trigger:', e);
+          });
+        }
       }
 
       console.log(

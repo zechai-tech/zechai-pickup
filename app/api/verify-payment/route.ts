@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 import { query } from '@/lib/db';
+import { sendOrderPush } from '@/lib/push';
 
 export async function POST(req: Request) {
   try {
@@ -55,6 +56,10 @@ export async function POST(req: Request) {
          WHERE id = $2`,
         [razorpay_payment_id, order_id]
       );
+
+      sendOrderPush(order_id).catch((e) => {
+        console.warn('[OneSignal Push] Error in razorpay verify push trigger:', e);
+      });
     }
 
     return NextResponse.json({

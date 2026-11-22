@@ -9,6 +9,7 @@ import { StatusBadge } from '@/components/admin/StatusBadge';
 import { formatPrice, cn } from '@/lib/utils';
 import { normalizeOrderStatus } from '@/lib/order-flow';
 import { useToast } from '@/components/ui/Toast';
+import { OrderAlertsBanner } from '@/components/admin/OrderAlertsBanner';
 import {
   Store,
   ShoppingBag,
@@ -192,6 +193,9 @@ export default function AdminDashboardPage() {
             </p>
           </div>
         </div>
+
+        {/* Push Notification Alerts Banner */}
+        <OrderAlertsBanner />
 
         {/* Outlet Selector (Pills) - ADMIN ONLY */}
         {isAdmin && (

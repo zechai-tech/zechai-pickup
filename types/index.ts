@@ -151,6 +151,7 @@ export interface Order {
   gst: number;
   grandTotal: number;
   customer: CustomerDetails;
+  push_notified_at?: string | null;
   statusHistory: {
     placedAt: number;
     acceptedAt?: number;

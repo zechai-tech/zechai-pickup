@@ -136,6 +136,7 @@ export interface Order {
   refund_required?: boolean | null;
   refund_done?: boolean | null;
   kitchen_note?: string | null;
+  push_notified_at?: string | null;
   created_at: string;
   updated_at: string;
   outlet?: Outlet | null;

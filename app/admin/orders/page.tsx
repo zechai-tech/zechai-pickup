@@ -6,6 +6,7 @@ import { RoleGuard } from '@/components/admin/RoleGuard';
 import { Order, OrderStatus, Outlet } from '@/types/supabase';
 import { OrderCard } from '@/components/admin/OrderCard';
 import { CancelOrderModal } from '@/components/admin/CancelOrderModal';
+import { OrderAlertsBanner } from '@/components/admin/OrderAlertsBanner';
 import { supabase } from '@/lib/supabase';
 import { playNewOrderSound } from '@/components/admin/NotificationSound';
 import { useToast } from '@/components/ui/Toast';
@@ -581,6 +582,9 @@ export default function AdminOrdersPage() {
             </button>
           </div>
         </div>
+
+        {/* Push Notification Alerts Banner */}
+        <OrderAlertsBanner />
 
         {/* Live Filter Tabs */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
