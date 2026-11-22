@@ -29,11 +29,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
   }, [currentUser?.id]);
 
-  // Clean layout for login page without topbar/sidebar
+  // Clean layout for login page and root admin redirect without topbar/sidebar
   const isLoginPage = pathname === '/admin/login';
+  const isRootAdmin = pathname === '/admin' || pathname === '/admin/';
+  const isCleanLayout = isLoginPage || isRootAdmin;
 
   useEffect(() => {
-    if (isLoginPage) {
+    if (isCleanLayout) {
       setIsLoading(false);
       return;
     }
@@ -121,7 +123,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       isMounted = false;
       subscription.unsubscribe();
     };
-  }, [isLoginPage, router, setUser, logout, setAuthInitialized]);
+  }, [isCleanLayout, router, setUser, logout, setAuthInitialized]);
 
   // Tag Clarity with role and outlet whenever user session is active
   useEffect(() => {
@@ -134,7 +136,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     }
   }, [currentUser]);
 
-  if (isLoginPage) {
+  if (isCleanLayout) {
     return (
       <div className="min-h-screen bg-cream text-espresso flex flex-col justify-center items-center p-4">
         <link rel="manifest" href="/admin-manifest.json" />
