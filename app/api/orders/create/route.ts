@@ -155,7 +155,7 @@ export async function POST(req: NextRequest) {
       const menuRes = await query(
         `SELECT id, name, price, outlet_id, is_available, image_url, category, is_veg 
          FROM public.menu_items 
-         WHERE id = ANY($1)`,
+         WHERE id = ANY($1) AND deleted_at IS NULL`,
         [uniqueMenuItemIds]
       );
       menuRes.rows.forEach((r) => dbItemsMap.set(r.id, r));
@@ -177,7 +177,7 @@ export async function POST(req: NextRequest) {
       const combosRes = await query(
         `SELECT id, outlet_id, name, price, image_url 
          FROM public.combos 
-         WHERE id = ANY($1)`,
+         WHERE id = ANY($1) AND deleted_at IS NULL`,
         [uniqueComboIds]
       );
       combosRes.rows.forEach((r) => dbCombosMap.set(r.id, r));
@@ -195,7 +195,7 @@ export async function POST(req: NextRequest) {
                 m.name, m.price, m.outlet_id, m.is_available, m.is_veg, m.category
          FROM public.combo_items ci
          JOIN public.menu_items m ON ci.menu_item_id = m.id
-         WHERE ci.combo_id = ANY($1)`,
+         WHERE ci.combo_id = ANY($1) AND m.deleted_at IS NULL`,
         [uniqueComboIds]
       );
 

@@ -60,6 +60,7 @@ export async function GET(req: NextRequest) {
        WHERE ob.outlet_id = $1::uuid
          AND m.outlet_id = $1::uuid
          AND m.is_available = true
+         AND m.deleted_at IS NULL
        ORDER BY ob.sort_order ASC, ob.created_at ASC
        LIMIT $2`,
       [outletId, MAX_BESTSELLERS]
@@ -77,6 +78,7 @@ export async function GET(req: NextRequest) {
        INNER JOIN public.categories c ON m.category = c.name
        WHERE m.outlet_id = $1::uuid
          AND m.is_available = true
+         AND m.deleted_at IS NULL
        ORDER BY c.sort_order ASC, m.sort_order ASC, m.created_at ASC`,
       [outletId]
     );
@@ -104,7 +106,7 @@ export async function GET(req: NextRequest) {
     let combos: any[] = [];
     try {
       const combosRes = await query(
-        `SELECT c.* FROM public.combos c WHERE c.outlet_id = $1::uuid ORDER BY c.sort_order ASC, c.created_at DESC`,
+        `SELECT c.* FROM public.combos c WHERE c.outlet_id = $1::uuid AND c.deleted_at IS NULL ORDER BY c.sort_order ASC, c.created_at DESC`,
         [outletId]
       );
       if (combosRes.rows.length > 0) {
@@ -115,6 +117,7 @@ export async function GET(req: NextRequest) {
            FROM public.combo_items ci
            JOIN public.menu_items m ON ci.menu_item_id = m.id
            WHERE ci.combo_id = ANY($1)
+             AND m.deleted_at IS NULL
            ORDER BY ci.created_at ASC`,
           [comboIds]
         );

@@ -29,6 +29,7 @@ export async function GET(
        INNER JOIN public.categories c ON m.category = c.name
        WHERE m.id = $1::uuid
          AND m.is_available = true
+         AND m.deleted_at IS NULL
        LIMIT 1`,
       [id]
     );

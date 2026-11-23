@@ -12,6 +12,7 @@ import { MenuItem, MenuTheme, Outlet } from '@/types/supabase';
 import { Combo } from '@/types';
 import { MenuItemForm } from '@/components/admin/MenuItemForm';
 import { ComboForm } from '@/components/admin/ComboForm';
+import { DeleteMenuConfirmModal, AffectedCombo } from '@/components/admin/DeleteMenuConfirmModal';
 import { Button } from '@/components/ui/Button';
 import { VegBadge } from '@/components/ui/VegBadge';
 import { useToast } from '@/components/ui/Toast';
@@ -67,13 +68,27 @@ export default function AdminMenuPage() {
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
   const themePickerRef = useRef<HTMLDivElement>(null);
 
+  // Delete Confirmation Modal State
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    id: string;
+    name: string;
+    type: 'item' | 'combo';
+    scope: 'all' | 'single';
+    outletsCount: number;
+    outletName?: string;
+    affectedCombos: AffectedCombo[];
+  } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const isAllOutlets = isAdmin && selectedOutletId === 'all';
   const activeOutletId = isAdmin
-    ? selectedOutletId || (outlets.length > 0 ? outlets[0].id : '')
+    ? selectedOutletId || 'all'
     : currentUser?.outlet_id || '';
 
   const activeOutlet = useMemo(
-    () => outlets.find((o) => o.id === activeOutletId) || null,
-    [outlets, activeOutletId]
+    () => (isAllOutlets ? null : outlets.find((o) => o.id === activeOutletId) || null),
+    [outlets, activeOutletId, isAllOutlets]
   );
   const activeMenuTheme: MenuTheme = activeOutlet?.menu_theme === 'grid' ? 'grid' : 'classic';
 
@@ -84,8 +99,8 @@ export default function AdminMenuPage() {
         const data = await res.json();
         const list = data.outlets || [];
         setOutlets(list);
-        if (isAdmin && !selectedOutletId && list.length > 0) {
-          setSelectedOutletId(list[0].id);
+        if (isAdmin && !selectedOutletId) {
+          setSelectedOutletId('all');
         }
       } catch (e) {
         console.error('Error fetching outlets:', e);
@@ -201,19 +216,35 @@ export default function AdminMenuPage() {
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete ${name}?`)) return;
-    const prevItems = items;
-    setItems((curr) => curr.filter((i) => i.id !== id));
+  const handleDelete = async (item: MenuItem) => {
+    const scope = isAllOutlets ? 'all' : 'single';
+
     try {
-      const res = await fetch(`/api/admin/menu?id=${encodeURIComponent(id)}`, {
-        method: 'DELETE',
+      const token = await getToken();
+      const res = await fetch(
+        `/api/admin/menu/delete-impact?id=${encodeURIComponent(item.id)}&scope=${scope}&outlet_id=${encodeURIComponent(activeOutletId || '')}`,
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        }
+      );
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        showToast(data.error || 'Failed to check delete impact', 'error');
+        return;
+      }
+
+      setDeleteTarget({
+        id: item.id,
+        name: data.itemName || item.name,
+        type: 'item',
+        scope: data.scope,
+        outletsCount: data.outletsCount || 1,
+        outletName: data.outletName || activeOutlet?.name,
+        affectedCombos: data.affectedCombos || [],
       });
-      if (!res.ok) throw new Error('Failed to delete item');
-      showToast(`Deleted "${name}"`, 'success');
-    } catch (e: any) {
-      setItems(prevItems);
-      showToast(e?.message || 'Failed to delete item', 'error');
+      setDeleteModalOpen(true);
+    } catch (err: any) {
+      showToast(err?.message || 'Error checking delete impact', 'error');
     }
   };
 
@@ -237,25 +268,65 @@ export default function AdminMenuPage() {
     setIsComboModalOpen(true);
   };
 
-  const handleDeleteCombo = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to delete combo "${name}"?`)) return;
-    const prevCombos = combos;
-    setCombos((curr) => curr.filter((c) => c.id !== id));
+  const handleDeleteCombo = async (combo: Combo) => {
+    const scope = isAllOutlets ? 'all' : 'single';
+
     try {
       const token = await getToken();
-      const res = await fetch(`/api/admin/combos?id=${encodeURIComponent(id)}`, {
-        method: 'DELETE',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || 'Failed to delete combo');
+      const res = await fetch(
+        `/api/admin/combos/delete-impact?id=${encodeURIComponent(combo.id)}&scope=${scope}`,
+        {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        }
+      );
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        showToast(data.error || 'Failed to check delete impact', 'error');
+        return;
       }
-      showToast(`Deleted combo "${name}"`, 'success');
-      fetchCombos();
-    } catch (e: any) {
-      setCombos(prevCombos);
-      showToast(e?.message || 'Failed to delete combo', 'error');
+
+      setDeleteTarget({
+        id: combo.id,
+        name: data.comboName || combo.name,
+        type: 'combo',
+        scope: data.scope,
+        outletsCount: data.outletsCount || 1,
+        outletName: data.outletName || activeOutlet?.name,
+        affectedCombos: [],
+      });
+      setDeleteModalOpen(true);
+    } catch (err: any) {
+      showToast(err?.message || 'Error checking delete impact', 'error');
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    setIsDeleting(true);
+    try {
+      const token = await getToken();
+      const endpoint = deleteTarget.type === 'combo' ? '/api/admin/combos' : '/api/admin/menu';
+      const res = await fetch(
+        `${endpoint}?id=${encodeURIComponent(deleteTarget.id)}&scope=${deleteTarget.scope}&outlet_id=${encodeURIComponent(activeOutletId || '')}`,
+        {
+          method: 'DELETE',
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        }
+      );
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || 'Failed to delete');
+      }
+
+      showToast(data.message || `Deleted "${deleteTarget.name}"`, 'success');
+      setDeleteModalOpen(false);
+      setDeleteTarget(null);
+      await fetchMenuItems();
+      await fetchCombos();
+    } catch (err: any) {
+      showToast(err?.message || 'Delete failed', 'error');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -369,6 +440,7 @@ export default function AdminMenuPage() {
                   onChange={(e) => setSelectedOutletId(e.target.value)}
                   className="bg-transparent text-xs font-bold text-espresso focus:outline-none cursor-pointer"
                 >
+                  <option value="all">All Outlets</option>
                   {outlets.map((o) => (
                     <option key={o.id} value={o.id}>
                       {o.name}
@@ -682,11 +754,16 @@ export default function AdminMenuPage() {
                           sizes="(max-width: 1024px) 50vw, 25vw"
                           className="object-cover"
                         />
-                        <div className="absolute top-2 left-2 flex items-center gap-1.5">
+                        <div className="absolute top-2 left-2 flex items-center gap-1.5 flex-wrap max-w-[70%]">
                           <VegBadge isVeg={combo.is_veg} size="sm" />
                           <span className="bg-orange text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs">
                             Combo
                           </span>
+                          {isAllOutlets && (
+                            <span className="bg-espresso text-cream text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs">
+                              {combo.is_shared ? `All ${combo.outlets_count || outlets.length} Outlets` : `Only at ${combo.outlet_name || 'outlet'}`}
+                            </span>
+                          )}
                         </div>
 
                         <div className="absolute top-2 right-2">
@@ -772,7 +849,7 @@ export default function AdminMenuPage() {
                                 <Edit2 className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={() => handleDeleteCombo(combo.id, combo.name)}
+                                onClick={() => handleDeleteCombo(combo)}
                                 className="p-1.5 rounded-lg hover:bg-[#FDF0F0] text-espresso/70 hover:text-brandRed transition-colors"
                                 title="Delete combo"
                               >
@@ -850,8 +927,13 @@ export default function AdminMenuPage() {
                         sizes="(max-width: 1024px) 50vw, 25vw"
                         className="object-cover"
                       />
-                      <div className="absolute top-2 left-2 flex items-center gap-1.5">
+                      <div className="absolute top-2 left-2 flex items-center gap-1.5 flex-wrap max-w-[70%]">
                         <VegBadge isVeg={item.is_veg} size="sm" />
+                        {isAllOutlets && (
+                          <span className="bg-espresso text-cream text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs">
+                            {item.is_shared ? `All ${item.outlets_count || outlets.length} Outlets` : `Only at ${item.outlet_name || 'outlet'}`}
+                          </span>
+                        )}
                         {hasNoCategory && (
                           <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black px-2 py-0.5 rounded-full shadow-xs">
                             No category
@@ -942,7 +1024,7 @@ export default function AdminMenuPage() {
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => handleDelete(item.id, item.name)}
+                            onClick={() => handleDelete(item)}
                             className="p-1.5 rounded-lg hover:bg-[#FDF0F0] text-espresso/40 hover:text-brandRed transition-colors"
                             title="Delete item"
                           >
@@ -985,6 +1067,11 @@ export default function AdminMenuPage() {
                         <div className="flex items-center gap-1.5 flex-wrap">
                           <VegBadge isVeg={item.is_veg} size="sm" />
                           <h3 className="font-bold text-xs text-espresso truncate">{item.name}</h3>
+                          {isAllOutlets && (
+                            <span className="bg-espresso text-cream text-[9px] font-black px-1.5 py-0.5 rounded-full">
+                              {item.is_shared ? `All ${item.outlets_count || outlets.length} Outlets` : `Only at ${item.outlet_name || 'outlet'}`}
+                            </span>
+                          )}
                           {hasNoCategory && (
                             <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[9px] font-black px-1.5 py-0.5 rounded-full">
                               No category
@@ -1016,7 +1103,7 @@ export default function AdminMenuPage() {
                             <Edit2 className="w-3 h-3" />
                           </button>
                           <button
-                            onClick={() => handleDelete(item.id, item.name)}
+                            onClick={() => handleDelete(item)}
                             className="p-1 rounded bg-sand/40 text-brandRed"
                           >
                             <Trash2 className="w-3 h-3" />
@@ -1137,6 +1224,23 @@ export default function AdminMenuPage() {
             </div>
           </div>
         )}
+
+        {/* Delete Confirmation Dialog */}
+        <DeleteMenuConfirmModal
+          isOpen={deleteModalOpen}
+          onClose={() => {
+            setDeleteModalOpen(false);
+            setDeleteTarget(null);
+          }}
+          onConfirm={handleConfirmDelete}
+          isDeleting={isDeleting}
+          itemName={deleteTarget?.name || ''}
+          itemType={deleteTarget?.type || 'item'}
+          scope={deleteTarget?.scope || 'single'}
+          outletsCount={deleteTarget?.outletsCount || 1}
+          outletName={deleteTarget?.outletName || activeOutlet?.name}
+          affectedCombos={deleteTarget?.affectedCombos || []}
+        />
       </div>
     </RoleGuard>
   );

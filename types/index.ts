@@ -80,6 +80,11 @@ export interface CartComboItem {
 export interface Combo {
   id: string;
   outlet_id: string;
+  master_combo_id?: string | null;
+  deleted_at?: string | null;
+  is_shared?: boolean;
+  outlets_count?: number;
+  outlet_name?: string | null;
   name: string;
   description: string | null;
   image_url: string | null;

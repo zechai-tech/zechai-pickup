@@ -30,6 +30,11 @@ export interface AppUser {
 export interface MenuItem {
   id: string;
   outlet_id: string;
+  master_item_id?: string | null;
+  deleted_at?: string | null;
+  is_shared?: boolean;
+  outlets_count?: number;
+  outlet_name?: string | null;
   name: string;
   description: string | null;
   price: number;

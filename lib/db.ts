@@ -19,4 +19,9 @@ export async function query(text: string, params?: unknown[]) {
   return res;
 }
 
+export async function getClient() {
+  return await pool.connect();
+}
+
+export { pool };
 export default pool;

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { query } from '@/lib/db';
+import { validatePortalAdmin } from '@/lib/portal-auth';
+import { copySharedMenuToOutlet } from '@/lib/outlet-menu-copy';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -71,8 +73,17 @@ export async function POST(req: NextRequest) {
       ]
     );
 
+    const newOutlet = res.rows[0];
+
+    // Copy live shared items and combos to new outlet
+    try {
+      await copySharedMenuToOutlet(newOutlet.id);
+    } catch (copyErr) {
+      console.error('[Outlets POST] Failed to copy shared menu:', copyErr);
+    }
+
     revalidateOutletViews();
-    return NextResponse.json({ outlet: res.rows[0] });
+    return NextResponse.json({ outlet: newOutlet });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

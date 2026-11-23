@@ -31,6 +31,7 @@ async function fetchOutletBestsellers(outletId: string) {
      WHERE ob.outlet_id = $1::uuid
        AND m.outlet_id = $1::uuid
        AND m.is_available = true
+       AND m.deleted_at IS NULL
      ORDER BY ob.sort_order ASC, ob.created_at ASC
      LIMIT $2`,
     [outletId, MAX_BESTSELLERS]
@@ -65,6 +66,7 @@ export async function GET(req: NextRequest) {
          FROM public.menu_items m
          LEFT JOIN public.categories c ON m.category = c.name
          WHERE m.outlet_id = $1::uuid
+           AND m.deleted_at IS NULL
          ORDER BY COALESCE(c.sort_order, 999) ASC, m.sort_order ASC, m.name ASC`,
         [targetOutletId]
       ),
@@ -139,6 +141,7 @@ export async function PUT(req: NextRequest) {
          FROM public.menu_items
          WHERE outlet_id = $1::uuid
            AND is_available = true
+           AND deleted_at IS NULL
            AND id = ANY($2::uuid[])`,
         [targetOutletId, itemIds]
       );
