@@ -214,9 +214,98 @@ export async function POST(req: NextRequest) {
 
     const itemIds = Array.from(uniqueItemMap.keys());
 
-    // Validate that all items exist and belong to the same outlet
+    // 1. All Outlets creation (includes inactive outlets too)
+    if (outlet_id === 'all') {
+      const dbItemsRes = await query(
+        `SELECT id, master_item_id, name FROM public.menu_items WHERE id = ANY($1) AND deleted_at IS NULL`,
+        [itemIds]
+      );
+
+      if (dbItemsRes.rows.length !== itemIds.length) {
+        return NextResponse.json(
+          { error: 'One or more selected menu items do not exist' },
+          { status: 400 }
+        );
+      }
+
+      const itemMasterMap = new Map<string, number>();
+      for (const row of dbItemsRes.rows) {
+        if (!row.master_item_id) {
+          return NextResponse.json(
+            { error: `"${row.name}" is an outlet-only item and cannot be included in a shared combo` },
+            { status: 400 }
+          );
+        }
+        itemMasterMap.set(row.master_item_id, uniqueItemMap.get(row.id) || 1);
+      }
+
+      // Query all outlets (both active and inactive)
+      const outletsRes = await query(`SELECT id FROM public.outlets`);
+      const allOutlets = outletsRes.rows;
+      if (allOutlets.length === 0) {
+        return NextResponse.json({ error: 'No outlets found' }, { status: 400 });
+      }
+
+      const client = await getClient();
+      try {
+        await client.query('BEGIN');
+        const masterComboIdRes = await client.query('SELECT gen_random_uuid() AS id');
+        const masterComboId = masterComboIdRes.rows[0].id;
+        const masterItemIds = Array.from(itemMasterMap.keys());
+
+        let firstCombo: any = null;
+        for (const o of allOutlets) {
+          const outletItemsRes = await client.query(
+            `SELECT id, master_item_id FROM public.menu_items
+             WHERE outlet_id = $1 AND master_item_id = ANY($2) AND deleted_at IS NULL`,
+            [o.id, masterItemIds]
+          );
+
+          if (outletItemsRes.rows.length !== masterItemIds.length) {
+            continue;
+          }
+
+          const insCombo = await client.query(
+            `INSERT INTO public.combos (outlet_id, master_combo_id, name, description, image_url, price, sort_order)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             RETURNING *`,
+            [
+              o.id,
+              masterComboId,
+              cleanName,
+              description ? String(description).trim() : null,
+              image_url || '/assets/chai.v1.webp',
+              numericPrice,
+              Number(sort_order || 0),
+            ]
+          );
+
+          if (!firstCombo) firstCombo = insCombo.rows[0];
+
+          for (const itemRow of outletItemsRes.rows) {
+            const qty = itemMasterMap.get(itemRow.master_item_id) || 1;
+            await client.query(
+              `INSERT INTO public.combo_items (combo_id, menu_item_id, quantity)
+               VALUES ($1, $2, $3)`,
+              [insCombo.rows[0].id, itemRow.id, qty]
+            );
+          }
+        }
+
+        await client.query('COMMIT');
+        revalidateMenuRoutes();
+        return NextResponse.json({ combo: firstCombo }, { status: 201 });
+      } catch (err: any) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    }
+
+    // 2. Single outlet creation
     const dbItemsRes = await query(
-      `SELECT id, outlet_id FROM public.menu_items WHERE id = ANY($1)`,
+      `SELECT id, outlet_id FROM public.menu_items WHERE id = ANY($1) AND deleted_at IS NULL`,
       [itemIds]
     );
 
@@ -279,7 +368,7 @@ export async function PUT(req: NextRequest) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const { id, name, description, image_url, price, items, sort_order } = body;
+    const { id, name, description, image_url, price, items, sort_order, outlet_id, scope } = body;
 
     if (!id || typeof id !== 'string') {
       return NextResponse.json({ error: 'Valid combo ID is required' }, { status: 400 });
@@ -333,6 +422,107 @@ export async function PUT(req: NextRequest) {
     }
 
     fields.push(`updated_at = now()`);
+
+    const isSharedComboUpdate = (scope === 'all' || outlet_id === 'all') && !!existingCombo.master_combo_id;
+
+    if (isSharedComboUpdate) {
+      const client = await getClient();
+      try {
+        await client.query('BEGIN');
+
+        // 1. Update combo details across all outlets (active and inactive)
+        params.push(existingCombo.master_combo_id);
+        const updateRes = await client.query(
+          `UPDATE public.combos
+           SET ${fields.join(', ')}
+           WHERE master_combo_id = $${idx} AND deleted_at IS NULL
+           RETURNING *`,
+          params
+        );
+
+        // 2. If items provided, update combo_items for all outlets (active and inactive)
+        if (items !== undefined) {
+          if (!Array.isArray(items) || items.length === 0) {
+            await client.query('ROLLBACK');
+            return NextResponse.json(
+              { error: 'A combo must contain at least 2 distinct menu items' },
+              { status: 400 }
+            );
+          }
+
+          const uniqueItemMap = new Map<string, number>();
+          for (const it of items) {
+            if (!it || !it.menu_item_id) continue;
+            const itemId = String(it.menu_item_id).trim();
+            const qty = Math.max(1, Math.round(Number(it.quantity) || 1));
+            uniqueItemMap.set(itemId, qty);
+          }
+
+          if (uniqueItemMap.size < 2) {
+            await client.query('ROLLBACK');
+            return NextResponse.json(
+              { error: 'A combo must contain at least 2 distinct menu items' },
+              { status: 400 }
+            );
+          }
+
+          const itemIds = Array.from(uniqueItemMap.keys());
+          const dbItemsRes = await client.query(
+            `SELECT id, master_item_id, name FROM public.menu_items WHERE id = ANY($1) AND deleted_at IS NULL`,
+            [itemIds]
+          );
+
+          const itemMasterMap = new Map<string, number>();
+          for (const r of dbItemsRes.rows) {
+            if (!r.master_item_id) {
+              await client.query('ROLLBACK');
+              return NextResponse.json(
+                { error: `"${r.name}" is an outlet-only item and cannot be in a shared combo.` },
+                { status: 400 }
+              );
+            }
+            itemMasterMap.set(r.master_item_id, uniqueItemMap.get(r.id) || 1);
+          }
+
+          const masterItemIds = Array.from(itemMasterMap.keys());
+
+          // Find all combos across all outlets (active and inactive)
+          const targetCombos = await client.query(
+            `SELECT id, outlet_id FROM public.combos WHERE master_combo_id = $1 AND deleted_at IS NULL`,
+            [existingCombo.master_combo_id]
+          );
+
+          for (const tc of targetCombos.rows) {
+            const outletItemsRes = await client.query(
+              `SELECT id, master_item_id FROM public.menu_items
+               WHERE outlet_id = $1 AND master_item_id = ANY($2) AND deleted_at IS NULL`,
+              [tc.outlet_id, masterItemIds]
+            );
+
+            if (outletItemsRes.rows.length === masterItemIds.length) {
+              await client.query(`DELETE FROM public.combo_items WHERE combo_id = $1`, [tc.id]);
+              for (const oItem of outletItemsRes.rows) {
+                const qty = itemMasterMap.get(oItem.master_item_id) || 1;
+                await client.query(
+                  `INSERT INTO public.combo_items (combo_id, menu_item_id, quantity)
+                   VALUES ($1, $2, $3)`,
+                  [tc.id, oItem.id, qty]
+                );
+              }
+            }
+          }
+        }
+
+        await client.query('COMMIT');
+        revalidateMenuRoutes();
+        return NextResponse.json({ combo: updateRes.rows[0], updatedCount: updateRes.rowCount });
+      } catch (err: any) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    }
 
     params.push(id);
     const updateRes = await query(

@@ -54,6 +54,7 @@ export function ComboForm({
   const [previewObjectUrl, setPreviewObjectUrl] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showConfirmAllModal, setShowConfirmAllModal] = useState(false);
 
   // Initialize or reset form on open or comboToEdit change
   useEffect(() => {
@@ -80,6 +81,7 @@ export function ComboForm({
     setUploadStats('');
     setError(null);
     setSearchFilter('');
+    setShowConfirmAllModal(false);
   }, [comboToEdit, isOpen]);
 
   const itemsMap = useMemo(() => {
@@ -200,6 +202,55 @@ export function ComboForm({
     }
   };
 
+  const performSave = async () => {
+    setSubmitting(true);
+    setError(null);
+
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token || sessionToken;
+
+      const itemsPayload = Array.from(selectedItems.entries()).map(([itemId, qty]) => ({
+        menu_item_id: itemId,
+        quantity: qty,
+      }));
+
+      const payload = {
+        id: comboToEdit?.id,
+        outlet_id: outletId,
+        scope: outletId === 'all' ? 'all' : 'single',
+        name: name.trim(),
+        description: description.trim() || null,
+        image_url: imageUrl,
+        price: Number(price),
+        items: itemsPayload,
+      };
+
+      const res = await fetch('/api/admin/combos', {
+        method: comboToEdit ? 'PUT' : 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to save combo');
+      }
+
+      setShowConfirmAllModal(false);
+      onSuccess();
+      onClose();
+    } catch (err: any) {
+      setError(err.message || 'Failed to save combo');
+      setShowConfirmAllModal(false);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!outletId) {
@@ -222,50 +273,12 @@ export function ComboForm({
       return;
     }
 
-    setSubmitting(true);
-    setError(null);
-
-    try {
-      // Get fresh session token
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token || sessionToken;
-
-      const itemsPayload = Array.from(selectedItems.entries()).map(([itemId, qty]) => ({
-        menu_item_id: itemId,
-        quantity: qty,
-      }));
-
-      const payload = {
-        id: comboToEdit?.id,
-        outlet_id: outletId,
-        name: name.trim(),
-        description: description.trim() || null,
-        image_url: imageUrl,
-        price: Number(price),
-        items: itemsPayload,
-      };
-
-      const res = await fetch('/api/admin/combos', {
-        method: comboToEdit ? 'PUT' : 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json();
-      if (!res.ok) {
-        throw new Error(data.error || 'Failed to save combo');
-      }
-
-      onSuccess();
-      onClose();
-    } catch (err: any) {
-      setError(err.message || 'Failed to save combo');
-    } finally {
-      setSubmitting(false);
+    if (comboToEdit && outletId === 'all' && !showConfirmAllModal) {
+      setShowConfirmAllModal(true);
+      return;
     }
+
+    await performSave();
   };
 
   if (!isOpen) return null;
@@ -610,6 +623,45 @@ export function ComboForm({
             </Button>
           </div>
         </form>
+
+        {/* All Outlets Update Confirmation Overlay */}
+        {showConfirmAllModal && (
+          <div className="absolute inset-0 z-20 bg-card rounded-[28px] p-6 flex flex-col justify-between animate-in fade-in duration-150">
+            <div>
+              <div className="w-11 h-11 rounded-2xl bg-orange/15 border border-orange/30 flex items-center justify-center text-orange-dark mb-4">
+                <Package className="w-6 h-6" />
+              </div>
+              <h3 className="font-display font-black text-lg text-espresso tracking-tight">
+                Update Combo Across All Outlets?
+              </h3>
+              <p className="text-sm font-semibold text-espresso/80 mt-2 leading-relaxed">
+                Update <strong>&ldquo;{name}&rdquo;</strong> across all outlets?
+              </p>
+              <p className="text-xs text-espresso/60 mt-1 leading-relaxed">
+                This will update the combo details, price, and included items across all outlets.
+              </p>
+            </div>
+
+            <div className="pt-4 border-t border-border flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowConfirmAllModal(false)}
+                disabled={submitting}
+                className="px-4 py-2.5 rounded-full border border-border font-bold text-xs text-espresso hover:bg-sand/40"
+              >
+                Cancel
+              </button>
+              <Button
+                type="button"
+                onClick={performSave}
+                isLoading={submitting}
+                className="h-11 px-6 text-sm font-bold shadow-orange"
+              >
+                Confirm &amp; Update All Outlets
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

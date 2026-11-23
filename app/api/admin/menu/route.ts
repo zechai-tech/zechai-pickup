@@ -125,12 +125,12 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check if adding to "all" outlets
+    // Check if adding to "all" outlets (includes inactive outlets too, so when switched on they have the full menu)
     if (outlet_id === 'all') {
-      const outletsRes = await query(`SELECT id FROM public.outlets WHERE is_active = true`);
-      const activeOutlets = outletsRes.rows;
-      if (activeOutlets.length === 0) {
-        return NextResponse.json({ error: 'No active outlets found' }, { status: 400 });
+      const outletsRes = await query(`SELECT id FROM public.outlets`);
+      const allOutlets = outletsRes.rows;
+      if (allOutlets.length === 0) {
+        return NextResponse.json({ error: 'No outlets found' }, { status: 400 });
       }
 
       const client = await getClient();
@@ -140,7 +140,7 @@ export async function POST(req: NextRequest) {
         const masterItemId = masterIdRes.rows[0].id;
 
         let firstRow: any = null;
-        for (const o of activeOutlets) {
+        for (const o of allOutlets) {
           const insRes = await client.query(
             `INSERT INTO public.menu_items (
                outlet_id, master_item_id, name, description, price, category, image_url,
@@ -296,6 +296,34 @@ export async function PUT(req: NextRequest) {
          RETURNING *`,
         params
       );
+
+      // Ensure all outlets (both active and inactive) have a copy of this shared item
+      const allOutletsRes = await query(`SELECT id FROM public.outlets`);
+      for (const o of allOutletsRes.rows) {
+        const hasCopy = await query(
+          `SELECT id FROM public.menu_items WHERE outlet_id =  AND master_item_id =  AND deleted_at IS NULL LIMIT 1`,
+          [o.id, currentItem.master_item_id]
+        );
+        if (hasCopy.rows.length === 0) {
+          await query(
+            `INSERT INTO public.menu_items (
+               outlet_id, master_item_id, name, description, price, category, image_url,
+               is_available, is_bestseller, is_veg, sort_order
+             ) VALUES (, , , , , , , true, false, , )`,
+            [
+              o.id,
+              currentItem.master_item_id,
+              name !== undefined ? String(name).trim() : currentItem.name,
+              description !== undefined ? (description ? String(description).trim() : null) : currentItem.description,
+              price !== undefined ? price : currentItem.price,
+              category !== undefined ? (category === '' ? null : category) : currentItem.category,
+              image_url !== undefined ? image_url : currentItem.image_url,
+              is_veg !== undefined ? is_veg : currentItem.is_veg,
+              sort_order !== undefined ? sort_order : (currentItem.sort_order || 0),
+            ]
+          );
+        }
+      }
 
       revalidateMenuRoutes();
       return NextResponse.json({
