@@ -1,7 +1,5 @@
 import { query, getClient } from '@/lib/db';
 
-const TALIPARAMBA_OUTLET_ID = 'bf8a0488-6847-4802-bfdc-ae4bdd194817';
-
 /**
  * Copies currently live shared menu items and shared combos to a target outlet.
  *
@@ -26,6 +24,12 @@ export async function copySharedMenuToOutlet(
   }
 
   try {
+    // 0. Resolve standard outlet ID (Taliparamba) dynamically by name
+    const taliRes = await client.query(
+      `SELECT id FROM public.outlets WHERE lower(name) LIKE '%taliparamba%' LIMIT 1`
+    );
+    const taliparambaOutletId = taliRes.rows[0]?.id || null;
+
     // 1. Fetch live shared items (de-duplicated by master_item_id, preferring Taliparamba)
     const itemsRes = await client.query(
       `SELECT DISTINCT ON (m.master_item_id)
@@ -37,7 +41,7 @@ export async function copySharedMenuToOutlet(
        ORDER BY m.master_item_id,
          CASE WHEN m.outlet_id = $1 THEN 0 ELSE 1 END,
          m.created_at DESC`,
-      [TALIPARAMBA_OUTLET_ID]
+      [taliparambaOutletId]
     );
 
     const masterToNewItemId = new Map<string, string>();
@@ -90,7 +94,7 @@ export async function copySharedMenuToOutlet(
        ORDER BY c.master_combo_id,
          CASE WHEN c.outlet_id = $1 THEN 0 ELSE 1 END,
          c.created_at DESC`,
-      [TALIPARAMBA_OUTLET_ID]
+      [taliparambaOutletId]
     );
 
     let combosCopied = 0;

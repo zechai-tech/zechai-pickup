@@ -69,7 +69,7 @@ export async function GET(req: NextRequest) {
            FROM live_items li
            JOIN counts cnt ON li.master_item_id = cnt.master_item_id
            ORDER BY li.master_item_id,
-             CASE WHEN li.outlet_id = 'bf8a0488-6847-4802-bfdc-ae4bdd194817' THEN 0 ELSE 1 END,
+             CASE WHEN li.outlet_id IN (SELECT id FROM public.outlets WHERE lower(name) LIKE '%taliparamba%') THEN 0 ELSE 1 END,
              li.created_at DESC
          ),
          outlet_only AS (
@@ -77,9 +77,11 @@ export async function GET(req: NextRequest) {
            FROM live_items li
            WHERE li.master_item_id IS NULL
          )
-         SELECT * FROM deduped_shared
-         UNION ALL
-         SELECT * FROM outlet_only
+         SELECT * FROM (
+           SELECT * FROM deduped_shared
+           UNION ALL
+           SELECT * FROM outlet_only
+         ) combined
          ORDER BY (category IS NULL) DESC, COALESCE(category_sort_order, 999) ASC, sort_order ASC, created_at DESC`
       );
       return NextResponse.json(
@@ -218,10 +220,92 @@ export async function PUT(req: NextRequest) {
       is_available,
       is_veg,
       sort_order,
+      outlet_id,
+      scope,
     } = body;
 
     if (!id) return NextResponse.json({ error: 'ID is required' }, { status: 400 });
 
+    const itemRes = await query(
+      `SELECT m.*, o.name AS outlet_name
+       FROM public.menu_items m
+       LEFT JOIN public.outlets o ON m.outlet_id = o.id
+       WHERE m.id =  AND m.deleted_at IS NULL
+       LIMIT 1`,
+      [id]
+    );
+
+    if (itemRes.rows.length === 0) {
+      return NextResponse.json({ error: 'Menu item not found' }, { status: 404 });
+    }
+
+    const currentItem = itemRes.rows[0];
+    const isSharedScope = (scope === 'all' || outlet_id === 'all') && !!currentItem.master_item_id;
+
+    if (isSharedScope) {
+      const fields: string[] = [];
+      const params: unknown[] = [];
+      let idx = 1;
+
+      if (name !== undefined) {
+        fields.push(`name = $${idx++}`);
+        params.push(String(name).trim());
+      }
+      if (description !== undefined) {
+        fields.push(`description = $${idx++}`);
+        params.push(description ? String(description).trim() : null);
+      }
+      if (price !== undefined) {
+        fields.push(`price = $${idx++}`);
+        params.push(price);
+      }
+      if (category !== undefined) {
+        if (category !== null && category !== '' && !isValidMenuCategory(category)) {
+          return NextResponse.json(
+            { error: 'Invalid category selected' },
+            { status: 400 }
+          );
+        }
+        fields.push(`category = $${idx++}`);
+        params.push(category === '' ? null : category);
+      }
+      if (image_url !== undefined) {
+        fields.push(`image_url = $${idx++}`);
+        params.push(image_url);
+      }
+      // Rule: 'Edit a shared item in All Outlets -> updates every outlet (never availability)'
+      // Never update is_available across all outlets
+      if (is_veg !== undefined) {
+        fields.push(`is_veg = $${idx++}`);
+        params.push(is_veg);
+      }
+      if (sort_order !== undefined) {
+        fields.push(`sort_order = $${idx++}`);
+        params.push(sort_order);
+      }
+
+      if (fields.length === 0) {
+        return NextResponse.json({ error: 'No fields to update' }, { status: 400 });
+      }
+
+      params.push(currentItem.master_item_id);
+      const res = await query(
+        `UPDATE public.menu_items
+         SET ${fields.join(', ')}
+         WHERE master_item_id = $${idx} AND deleted_at IS NULL
+         RETURNING *`,
+        params
+      );
+
+      revalidateMenuRoutes();
+      return NextResponse.json({
+        item: res.rows[0],
+        updatedCount: res.rowCount,
+        message: `Updated "${res.rows[0]?.name}" across all ${res.rowCount} outlets.`,
+      });
+    }
+
+    // Single outlet update:
     const fields: string[] = [];
     const params: unknown[] = [];
     let idx = 1;

@@ -202,6 +202,8 @@ export default function AdminMenuPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: item.id,
+          outlet_id: activeOutletId,
+          scope: isAllOutlets ? 'all' : 'single',
           category: nextCategory,
         }),
       });

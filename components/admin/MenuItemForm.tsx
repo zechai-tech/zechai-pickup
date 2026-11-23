@@ -38,6 +38,7 @@ export function MenuItemForm({
   const [previewObjectUrl, setPreviewObjectUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showConfirmAllModal, setShowConfirmAllModal] = useState(false);
 
   useEffect(() => {
     if (itemToEdit) {
@@ -62,6 +63,7 @@ export function MenuItemForm({
     setUploadStats('');
     setPreviewObjectUrl(null);
     setError('');
+    setShowConfirmAllModal(false);
   }, [itemToEdit, isOpen]);
 
   useEffect(() => {
@@ -112,6 +114,42 @@ export function MenuItemForm({
     }
   };
 
+  const performSave = async () => {
+    setLoading(true);
+    try {
+      const isAll = outletId === 'all';
+      const res = await fetch('/api/admin/menu', {
+        method: itemToEdit ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: itemToEdit?.id,
+          outlet_id: outletId,
+          scope: isAll ? 'all' : 'single',
+          name: name.trim(),
+          description: description.trim() || null,
+          price: Number(price),
+          category,
+          image_url: imageUrl || DEFAULT_MENU_IMAGE,
+          is_available: isAvailable,
+          is_veg: isVeg,
+          sort_order: Number(sortOrder) || 0,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save menu item');
+
+      setShowConfirmAllModal(false);
+      onSuccess();
+      onClose();
+    } catch (err: any) {
+      setError(err.message);
+      setShowConfirmAllModal(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim() || price === '') {
@@ -129,35 +167,12 @@ export function MenuItemForm({
       return;
     }
 
-    setLoading(true);
-    try {
-      const res = await fetch('/api/admin/menu', {
-        method: itemToEdit ? 'PUT' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          id: itemToEdit?.id,
-          outlet_id: outletId,
-          name: name.trim(),
-          description: description.trim() || null,
-          price: Number(price),
-          category,
-          image_url: imageUrl || DEFAULT_MENU_IMAGE,
-          is_available: isAvailable,
-          is_veg: isVeg,
-          sort_order: Number(sortOrder) || 0,
-        }),
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to save menu item');
-
-      onSuccess();
-      onClose();
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
+    if (itemToEdit && outletId === 'all' && !showConfirmAllModal) {
+      setShowConfirmAllModal(true);
+      return;
     }
+
+    await performSave();
   };
 
   return (
@@ -325,15 +340,22 @@ export function MenuItemForm({
 
           {/* Toggles Row */}
           <div className="grid grid-cols-2 gap-2 pt-2">
-            <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-sand/20 cursor-pointer text-xs font-bold text-espresso select-none">
-              <input
-                type="checkbox"
-                checked={isAvailable}
-                onChange={(e) => setIsAvailable(e.target.checked)}
-                className="rounded accent-orange w-4 h-4"
-              />
-              <span>Available</span>
-            </label>
+            {outletId === 'all' && itemToEdit ? (
+              <div className="p-2.5 rounded-xl border border-border bg-sand/15 text-xs font-bold text-espresso/60 flex flex-col justify-center select-none">
+                <span className="text-[11px] font-bold text-espresso/70">Availability</span>
+                <span className="text-[10px] text-espresso/50 font-medium">Managed per outlet</span>
+              </div>
+            ) : (
+              <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-sand/20 cursor-pointer text-xs font-bold text-espresso select-none">
+                <input
+                  type="checkbox"
+                  checked={isAvailable}
+                  onChange={(e) => setIsAvailable(e.target.checked)}
+                  className="rounded accent-orange w-4 h-4"
+                />
+                <span>Available</span>
+              </label>
+            )}
 
             <label className="flex items-center gap-2 p-2.5 rounded-xl border border-border bg-sand/20 cursor-pointer text-xs font-bold text-espresso select-none">
               <input
@@ -359,6 +381,45 @@ export function MenuItemForm({
             </Button>
           </div>
         </form>
+
+        {/* All Outlets Update Confirmation Overlay */}
+        {showConfirmAllModal && (
+          <div className="absolute inset-0 z-20 bg-card rounded-[28px] p-6 flex flex-col justify-between animate-in fade-in duration-150">
+            <div>
+              <div className="w-11 h-11 rounded-2xl bg-orange/15 border border-orange/30 flex items-center justify-center text-orange-dark mb-4">
+                <UtensilsCrossed className="w-6 h-6" />
+              </div>
+              <h3 className="font-display font-black text-lg text-espresso tracking-tight">
+                Update Across All Outlets?
+              </h3>
+              <p className="text-sm font-semibold text-espresso/80 mt-2 leading-relaxed">
+                Update <strong>&ldquo;{name}&rdquo;</strong> across all outlets?
+              </p>
+              <p className="text-xs text-espresso/60 mt-1 leading-relaxed">
+                This will update the item name, description, price, category, photo, and type for all outlets. Availability remains managed per outlet.
+              </p>
+            </div>
+
+            <div className="pt-4 border-t border-border flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowConfirmAllModal(false)}
+                disabled={loading}
+                className="px-4 py-2.5 rounded-full border border-border font-bold text-xs text-espresso hover:bg-sand/40"
+              >
+                Cancel
+              </button>
+              <Button
+                type="button"
+                onClick={performSave}
+                isLoading={loading}
+                className="h-11 px-6 text-sm font-bold shadow-orange"
+              >
+                Confirm &amp; Update All Outlets
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
