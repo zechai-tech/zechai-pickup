@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/Button';
 import { VegBadge } from '@/components/ui/VegBadge';
 import { useToast } from '@/components/ui/Toast';
 import { formatPrice, cn } from '@/lib/utils';
+import { useAppSettingsStore } from '@/lib/app-settings';
 import {
   UtensilsCrossed,
   Plus,
@@ -26,6 +27,7 @@ import {
   XCircle,
   Store,
   AlertTriangle,
+  AlertCircle,
   Palette,
   Eye,
   X,
@@ -33,7 +35,36 @@ import {
   ChevronDown,
   Sparkles,
   Package,
+  Sliders,
+  Loader2,
 } from 'lucide-react';
+
+function formatLastUpdated(dateStr?: string | null, by?: string | null) {
+  if (!dateStr && !by) return null;
+  let formattedDate = '';
+  if (dateStr) {
+    try {
+      const d = new Date(dateStr);
+      formattedDate = d.toLocaleString('en-IN', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+      });
+    } catch {
+      formattedDate = dateStr;
+    }
+  }
+  if (by && formattedDate) {
+    return `Last updated by ${by} on ${formattedDate}`;
+  }
+  if (by) {
+    return `Last updated by ${by}`;
+  }
+  return `Last updated on ${formattedDate}`;
+}
 
 type CategoryFilter = 'all' | 'no-category' | string;
 
@@ -80,6 +111,69 @@ export default function AdminMenuPage() {
     affectedCombos: AffectedCombo[];
   } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Global App Settings (Combos visibility & packaging fee)
+  const {
+    settings: appSettings,
+    fetchSettings: fetchAppSettings,
+    updateToggleSetting,
+  } = useAppSettingsStore();
+
+  const combosEnabled = appSettings['combos_enabled']?.value?.enabled !== false;
+  const packagingFeeEnabled = appSettings['packaging_fee_enabled']?.value?.enabled !== false;
+  const combosSetting = appSettings['combos_enabled'];
+  const packagingSetting = appSettings['packaging_fee_enabled'];
+
+  const combosUpdatedText = useMemo(
+    () => formatLastUpdated(combosSetting?.updated_at, combosSetting?.updated_by),
+    [combosSetting]
+  );
+  const packagingUpdatedText = useMemo(
+    () => formatLastUpdated(packagingSetting?.updated_at, packagingSetting?.updated_by),
+    [packagingSetting]
+  );
+
+  const [togglePending, setTogglePending] = useState<{
+    combos?: boolean;
+    packaging?: boolean;
+  }>({});
+
+  useEffect(() => {
+    fetchAppSettings(true);
+  }, [fetchAppSettings]);
+
+  const handleToggleSetting = async (
+    key: 'combos_enabled' | 'packaging_fee_enabled',
+    nextVal: boolean
+  ) => {
+    if (!isAdmin) return;
+    const isCombos = key === 'combos_enabled';
+    setTogglePending((prev) => ({ ...prev, [isCombos ? 'combos' : 'packaging']: true }));
+
+    try {
+      const token = await getToken();
+      const res = await updateToggleSetting(key, nextVal, token);
+      if (!res.success) {
+        showToast(res.error || 'Failed to update setting', 'error');
+      } else {
+        if (isCombos) {
+          showToast(
+            nextVal ? 'Combos are now visible to customers' : 'Combos are now hidden from customers',
+            'success'
+          );
+        } else {
+          showToast(
+            nextVal ? 'Packaging fee enabled (₹10/item)' : 'Packaging fee disabled',
+            'success'
+          );
+        }
+      }
+    } catch (err: any) {
+      showToast(err?.message || 'Error updating setting', 'error');
+    } finally {
+      setTogglePending((prev) => ({ ...prev, [isCombos ? 'combos' : 'packaging']: false }));
+    }
+  };
 
   const isAllOutlets = isAdmin && selectedOutletId === 'all';
   const activeOutletId = isAdmin
@@ -474,6 +568,148 @@ export default function AdminMenuPage() {
           </div>
         </div>
 
+        {/* Global Menu Settings Bar (Admin Only) */}
+        {isAdmin && (
+          <div
+            data-testid="global-menu-settings-card"
+            className="bg-card border border-border/80 rounded-2xl p-4 sm:p-5 shadow-xs space-y-3"
+          >
+            <div className="flex items-center justify-between pb-2.5 border-b border-border/60">
+              <div className="flex items-center gap-2">
+                <Sliders className="w-4 h-4 text-orange" />
+                <h2 className="text-sm font-bold text-espresso tracking-tight">
+                  Global Menu Settings
+                </h2>
+                <span className="text-[10px] font-bold uppercase tracking-wider bg-orange/15 text-orange px-2 py-0.5 rounded-full">
+                  Admin Only
+                </span>
+              </div>
+              <span className="text-[11px] text-espresso/60 hidden sm:inline">
+                Applies across all outlets
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Toggle 1: Combos Visibility */}
+              <div className="flex items-start justify-between gap-4 p-3.5 rounded-xl bg-sand/20 border border-border/60">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-espresso">Show Combos on Menu</span>
+                    <span
+                      className={cn(
+                        'text-[10px] font-bold px-2 py-0.5 rounded-full',
+                        combosEnabled
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                          : 'bg-neutral-100 text-neutral-600 border border-neutral-300'
+                      )}
+                    >
+                      {combosEnabled ? 'Active' : 'Hidden'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-espresso/65 leading-tight">
+                    Enable or hide the entire combos section across the customer app
+                  </p>
+                  {combosUpdatedText && (
+                    <p className="text-[10px] text-espresso/50 pt-0.5">
+                      {combosUpdatedText}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 pt-0.5">
+                  {togglePending.combos && (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-orange" />
+                  )}
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={combosEnabled}
+                    disabled={togglePending.combos}
+                    onClick={() => handleToggleSetting('combos_enabled', !combosEnabled)}
+                    className={cn(
+                      'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-orange focus:ring-offset-2',
+                      combosEnabled ? 'bg-emerald-600' : 'bg-neutral-300',
+                      togglePending.combos && 'opacity-60 cursor-not-allowed'
+                    )}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                        combosEnabled ? 'translate-x-5' : 'translate-x-0'
+                      )}
+                    />
+                  </button>
+                </div>
+              </div>
+
+              {/* Toggle 2: Packaging Fee */}
+              <div className="flex items-start justify-between gap-4 p-3.5 rounded-xl bg-sand/20 border border-border/60">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-espresso">Apply Packaging Fee (₹10/item)</span>
+                    <span
+                      className={cn(
+                        'text-[10px] font-bold px-2 py-0.5 rounded-full',
+                        packagingFeeEnabled
+                          ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                          : 'bg-neutral-100 text-neutral-600 border border-neutral-300'
+                      )}
+                    >
+                      {packagingFeeEnabled ? '₹10/item' : 'Disabled'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-espresso/65 leading-tight">
+                    Charge ₹10 per item in cart and checkout across all outlets
+                  </p>
+                  {packagingUpdatedText && (
+                    <p className="text-[10px] text-espresso/50 pt-0.5">
+                      {packagingUpdatedText}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0 pt-0.5">
+                  {togglePending.packaging && (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-orange" />
+                  )}
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={packagingFeeEnabled}
+                    disabled={togglePending.packaging}
+                    onClick={() => handleToggleSetting('packaging_fee_enabled', !packagingFeeEnabled)}
+                    className={cn(
+                      'relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-orange focus:ring-offset-2',
+                      packagingFeeEnabled ? 'bg-emerald-600' : 'bg-neutral-300',
+                      togglePending.packaging && 'opacity-60 cursor-not-allowed'
+                    )}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                        packagingFeeEnabled ? 'translate-x-5' : 'translate-x-0'
+                      )}
+                    />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Notice banner if packaging fee is disabled (visible to both admins and managers) */}
+        {!packagingFeeEnabled && (
+          <div
+            data-testid="packaging-fee-disabled-banner"
+            className="flex items-center gap-2.5 px-4 py-3 bg-amber-50/70 border border-amber-300/80 rounded-xl text-amber-900 text-xs font-semibold shadow-xs"
+          >
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>Packaging fee is currently disabled (₹0/item)</span>
+          </div>
+        )}
+
         {/* Category Filter Bar ("All", "No category", and fixed category dropdown) */}
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -682,6 +918,21 @@ export default function AdminMenuPage() {
         {/* COMBOS SECTION AT THE TOP OF MENU LIST */}
         {categoryFilter === 'all' && (
           <div className="space-y-3 pb-4 border-b border-border/70">
+            {/* Warning banner when combos are disabled */}
+            {!combosEnabled && (
+              <div
+                data-testid="combos-hidden-banner"
+                className="flex items-center gap-2.5 px-4 py-3 bg-amber-50 border border-amber-300/80 rounded-xl text-amber-900 text-xs font-semibold shadow-xs"
+              >
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>
+                  {isAdmin
+                    ? '⚠️ Combos are currently hidden from customers (turned off globally)'
+                    : '⚠️ Combos are currently hidden from customers by an administrator.'}
+                </span>
+              </div>
+            )}
+
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-xl bg-orange/15 text-orange flex items-center justify-center">

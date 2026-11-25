@@ -308,8 +308,8 @@ export const useZechaStore = create<ZechaState>()(
 );
 
 // Derived helper functions — delegates directly to single shared pricing source of truth
-export function getCartSummary(cart: CartItem[]) {
-  const summary = computeOrderTotal(cart);
+export function getCartSummary(cart: CartItem[], packagingFeeEnabled = true) {
+  const summary = computeOrderTotal(cart, { packagingFeeEnabled });
   return {
     count: summary.count,
     physicalItemCount: summary.physicalItemCount,

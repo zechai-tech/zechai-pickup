@@ -24,6 +24,7 @@ import { VegBadge } from '@/components/ui/VegBadge';
 import { SafeImage } from '@/components/ui/SafeImage';
 import { DEFAULT_MENU_IMAGE } from '@/lib/images';
 import { formatPrice } from '@/lib/utils';
+import { useAppSettingsStore } from '@/lib/app-settings';
 
 function MenuPageContent() {
   const router = useRouter();
@@ -42,6 +43,18 @@ function MenuPageContent() {
   const [items, setItems] = useState<MenuItem[]>([]);
   const [combos, setCombos] = useState<Combo[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const { isCombosEnabled, fetchSettings: fetchAppSettings } = useAppSettingsStore();
+
+  useEffect(() => {
+    fetchAppSettings();
+  }, [fetchAppSettings]);
+
+  useEffect(() => {
+    if (!isCombosEnabled()) {
+      setCombos([]);
+    }
+  }, [isCombosEnabled]);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [previewOutletName, setPreviewOutletName] = useState<string>('');
@@ -105,7 +118,7 @@ function MenuPageContent() {
         setBestsellers(data.bestsellers);
         setBestsellerIds(data.bestseller_ids);
         setItems(data.items);
-        setCombos(data.combos || []);
+        setCombos(isCombosEnabled() ? (data.combos || []) : []);
 
         setSelectedCategory((curr) => {
           if (curr === 'all') return 'all';

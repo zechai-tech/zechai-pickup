@@ -102,73 +102,82 @@ export async function GET(req: NextRequest) {
     const bestsellers = bsRes.rows.map((r: any) => formatCustomerMenuItem(r, bestsellerSet, 'tile'));
     const items = itemsRes.rows.map((r: any) => formatCustomerMenuItem(r, bestsellerSet, 'thumb'));
 
-    // 4. Fetch combos for this outlet (if any)
+    // 4. Fetch combos for this outlet (if combos are globally enabled)
     let combos: any[] = [];
     try {
-      const combosRes = await query(
-        `SELECT c.* FROM public.combos c WHERE c.outlet_id = $1::uuid AND c.deleted_at IS NULL ORDER BY c.sort_order ASC, c.created_at DESC`,
-        [outletId]
+      const combosSettingRes = await query(
+        `SELECT value FROM public.app_settings WHERE key = 'combos_enabled' LIMIT 1`
       );
-      if (combosRes.rows.length > 0) {
-        const comboIds = combosRes.rows.map((c: any) => c.id);
-        const comboItemsRes = await query(
-          `SELECT ci.combo_id, ci.menu_item_id, ci.quantity,
-                  m.name, m.price, m.image_url, m.is_available, m.is_veg, m.category, m.outlet_id
-           FROM public.combo_items ci
-           JOIN public.menu_items m ON ci.menu_item_id = m.id
-           WHERE ci.combo_id = ANY($1)
-             AND m.deleted_at IS NULL
-           ORDER BY ci.created_at ASC`,
-          [comboIds]
+      const isCombosEnabled =
+        combosSettingRes.rows.length === 0 ||
+        combosSettingRes.rows[0]?.value?.enabled !== false;
+
+      if (isCombosEnabled) {
+        const combosRes = await query(
+          `SELECT c.* FROM public.combos c WHERE c.outlet_id = $1::uuid AND c.deleted_at IS NULL ORDER BY c.sort_order ASC, c.created_at DESC`,
+          [outletId]
         );
-
-        const itemsByCombo = new Map<string, any[]>();
-        for (const row of comboItemsRes.rows) {
-          const list = itemsByCombo.get(row.combo_id) || [];
-          list.push({
-            menu_item_id: row.menu_item_id,
-            name: row.name,
-            price: Number(row.price),
-            quantity: Number(row.quantity),
-            image_url: row.image_url,
-            is_available: row.is_available ?? true,
-            is_veg: row.is_veg ?? true,
-            category: row.category,
-            outlet_id: row.outlet_id,
-          });
-          itemsByCombo.set(row.combo_id, list);
-        }
-
-        combos = combosRes.rows.map((c: any) => {
-          const included = itemsByCombo.get(c.id) || [];
-          const isAvailable = included.length > 0 && included.every((i: any) => i.is_available === true);
-          const isVeg = included.every((i: any) => i.is_veg === true);
-          const itemsTotal = included.reduce(
-            (sum: number, i: any) => sum + (Number(i.price) || 0) * (Number(i.quantity) || 1),
-            0
+        if (combosRes.rows.length > 0) {
+          const comboIds = combosRes.rows.map((c: any) => c.id);
+          const comboItemsRes = await query(
+            `SELECT ci.combo_id, ci.menu_item_id, ci.quantity,
+                    m.name, m.price, m.image_url, m.is_available, m.is_veg, m.category, m.outlet_id
+             FROM public.combo_items ci
+             JOIN public.menu_items m ON ci.menu_item_id = m.id
+             WHERE ci.combo_id = ANY($1)
+               AND m.deleted_at IS NULL
+             ORDER BY ci.created_at ASC`,
+            [comboIds]
           );
-          const price = Number(c.price);
-          const savings = Math.max(0, itemsTotal - price);
 
-          return {
-            id: c.id,
-            outlet_id: c.outlet_id,
-            name: c.name,
-            description: c.description || '',
-            price: price,
-            image: resolveImageUrl(c.image_url, 'tile') || DEFAULT_MENU_IMAGE,
-            image_url: resolveImageUrl(c.image_url, 'tile') || DEFAULT_MENU_IMAGE,
-            is_available: isAvailable,
-            is_veg: isVeg,
-            items_total: itemsTotal,
-            savings: savings,
-            items: included,
-            sort_order: Number(c.sort_order || 0),
-          };
-        });
+          const itemsByCombo = new Map<string, any[]>();
+          for (const row of comboItemsRes.rows) {
+            const list = itemsByCombo.get(row.combo_id) || [];
+            list.push({
+              menu_item_id: row.menu_item_id,
+              name: row.name,
+              price: Number(row.price),
+              quantity: Number(row.quantity),
+              image_url: row.image_url,
+              is_available: row.is_available ?? true,
+              is_veg: row.is_veg ?? true,
+              category: row.category,
+              outlet_id: row.outlet_id,
+            });
+            itemsByCombo.set(row.combo_id, list);
+          }
+
+          combos = combosRes.rows.map((c: any) => {
+            const included = itemsByCombo.get(c.id) || [];
+            const isAvailable = included.length > 0 && included.every((i: any) => i.is_available === true);
+            const isVeg = included.every((i: any) => i.is_veg === true);
+            const itemsTotal = included.reduce(
+              (sum: number, i: any) => sum + (Number(i.price) || 0) * (Number(i.quantity) || 1),
+              0
+            );
+            const price = Number(c.price);
+            const savings = Math.max(0, itemsTotal - price);
+
+            return {
+              id: c.id,
+              outlet_id: c.outlet_id,
+              name: c.name,
+              description: c.description || '',
+              price: price,
+              image: resolveImageUrl(c.image_url, 'tile') || DEFAULT_MENU_IMAGE,
+              image_url: resolveImageUrl(c.image_url, 'tile') || DEFAULT_MENU_IMAGE,
+              is_available: isAvailable,
+              is_veg: isVeg,
+              items_total: itemsTotal,
+              savings: savings,
+              items: included,
+              sort_order: Number(c.sort_order || 0),
+            };
+          });
+        }
       }
     } catch (comboErr) {
-      console.warn('Notice: could not load combos (table may not exist yet):', comboErr);
+      console.warn('Notice: could not load combos:', comboErr);
     }
 
     return NextResponse.json(

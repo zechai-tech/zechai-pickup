@@ -63,7 +63,11 @@ export function countPhysicalItems(items: PriceableLineItem[]): number {
  * 4. packagingFee (physical items * ₹10)
  * 5. toPay (itemsTotal + packagingFee)
  */
-export function computeOrderTotal(items: PriceableLineItem[]): OrderPricingSummary {
+export function computeOrderTotal(
+  items: PriceableLineItem[],
+  options?: { packagingFeeEnabled?: boolean }
+): OrderPricingSummary {
+  const packagingFeeEnabled = options?.packagingFeeEnabled ?? true;
   let count = 0;
   let itemsTotal = 0;
   let originalItemTotal = 0;
@@ -92,7 +96,10 @@ export function computeOrderTotal(items: PriceableLineItem[]): OrderPricingSumma
   originalItemTotal = Math.round(originalItemTotal);
   const comboSavings = Math.max(0, originalItemTotal - itemsTotal);
   const physicalItemCount = countPhysicalItems(items);
-  const packagingFee = items.length > 0 ? physicalItemCount * PACKAGING_FEE_PER_ITEM : 0;
+  const packagingFee =
+    items.length > 0 && packagingFeeEnabled
+      ? physicalItemCount * PACKAGING_FEE_PER_ITEM
+      : 0;
   const toPay = itemsTotal + packagingFee;
 
   return {

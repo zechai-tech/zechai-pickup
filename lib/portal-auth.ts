@@ -5,6 +5,7 @@ import { supabaseAdmin } from '@/lib/supabase-admin';
 export interface PortalAuthContext {
   userId: string;
   email: string;
+  name?: string | null;
   role: 'super_admin' | 'admin' | 'manager';
   isAdmin: boolean;
   isManager: boolean;
@@ -53,7 +54,7 @@ export async function validatePortalManagerOrAdmin(
   }
 
   const userRes = await query(
-    `SELECT id, email, role, outlet_id, is_active
+    `SELECT id, name, email, role, outlet_id, is_active
      FROM public.users
      WHERE lower(email) = $1 OR id = $2
      LIMIT 1`,
@@ -125,6 +126,7 @@ export async function validatePortalManagerOrAdmin(
     ok: true,
     ctx: {
       userId: profile.id,
+      name: profile.name || null,
       email: profile.email,
       role: role as 'super_admin' | 'admin' | 'manager',
       isAdmin,
@@ -141,7 +143,7 @@ export async function validatePortalAdmin(req: NextRequest): Promise<PortalAuthR
     return {
       ok: false,
       response: NextResponse.json(
-        { error: 'Forbidden: only admins can manage combos' },
+        { error: 'Forbidden: only admins can perform this action' },
         { status: 403 }
       ),
     };
@@ -185,7 +187,7 @@ export async function validatePortalStaffOrAbove(
   }
 
   const userRes = await query(
-    `SELECT id, email, role, outlet_id, is_active
+    `SELECT id, name, email, role, outlet_id, is_active
      FROM public.users
      WHERE lower(email) = $1 OR id = $2
      LIMIT 1`,

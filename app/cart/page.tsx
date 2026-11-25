@@ -12,6 +12,7 @@ import {
   X,
   Loader2,
   Check,
+  AlertCircle,
 } from 'lucide-react';
 import { useZechaStore, getCartSummary } from '@/lib/store';
 import { supabase } from '@/lib/supabase';
@@ -24,6 +25,7 @@ import { PICKUP_ETA_SHORT } from '@/lib/outlets';
 import { formatPrice } from '@/lib/utils';
 import { getAllowedSwaps, SwappableMenuItem, CartComboItem } from '@/lib/combos';
 import { setClarityOrder } from '@/lib/clarity';
+import { useAppSettingsStore } from '@/lib/app-settings';
 
 export default function CartPage() {
   const router = useRouter();
@@ -60,12 +62,21 @@ export default function CartPage() {
       });
   }, [outlet?.id]);
 
+  const { isCombosEnabled, isPackagingFeeEnabled, fetchSettings: fetchAppSettings } = useAppSettingsStore();
+  const packagingFeeEnabled = isPackagingFeeEnabled();
+  const hasCombosInCart = cart.some((it) => it.isCombo);
+  const combosBlocked = hasCombosInCart && !isCombosEnabled();
+
+  useEffect(() => {
+    fetchAppSettings();
+  }, [fetchAppSettings]);
+
   const {
     count,
     itemsTotal,
     packagingFee,
     toPay,
-  } = getCartSummary(cart);
+  } = getCartSummary(cart, packagingFeeEnabled);
   const { showToast } = useToast();
 
   const [kitchenNote, setKitchenNote] = useState(customer.note || '');
@@ -699,6 +710,14 @@ export default function CartPage() {
           />
         </div>
 
+        {/* Combos disabled warning banner if cart contains combos */}
+        {combosBlocked && (
+          <div className="bg-amber-50 border border-amber-300 text-amber-900 rounded-[18px] p-3.5 text-xs font-semibold flex items-center gap-2.5">
+            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>Combos are currently unavailable. Please remove combos from your cart to proceed.</span>
+          </div>
+        )}
+
         {/* Payment Summary */}
         <div className="bg-[#FFFEF7] rounded-[20px] border border-[#EADFC7] p-4 shadow-2xs space-y-2.5">
           {/* 1. Item total */}
@@ -709,13 +728,15 @@ export default function CartPage() {
             </span>
           </div>
 
-          {/* 2. Packaging charge */}
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-[#75604F] font-medium">Packaging</span>
-            <span className="font-bold text-[#2B1A12] tabular-nums">
-              {formatPrice(packagingFee)}
-            </span>
-          </div>
+          {/* 2. Packaging charge (only shown when packaging fee is enabled/applicable) */}
+          {packagingFee > 0 && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-[#75604F] font-medium">Packaging</span>
+              <span className="font-bold text-[#2B1A12] tabular-nums">
+                {formatPrice(packagingFee)}
+              </span>
+            </div>
+          )}
 
           {/* 3. To pay (final amount in bold) */}
           <div className="border-t border-[#EADFC7]/70 pt-2.5 flex items-center justify-between">
@@ -733,9 +754,9 @@ export default function CartPage() {
       <div className="fixed bottom-0 left-0 right-0 max-w-[430px] mx-auto p-4 bg-[#FDFBEA]/95 backdrop-blur-md border-t border-[#EADFC7]/80 z-30">
         <button
           type="button"
-          disabled={submitting || isPhoneModalOpen}
+          disabled={submitting || isPhoneModalOpen || combosBlocked}
           onClick={() => {
-            if (!submitting && !isPhoneModalOpen) {
+            if (!submitting && !isPhoneModalOpen && !combosBlocked) {
               setIsPhoneModalOpen(true);
             }
           }}

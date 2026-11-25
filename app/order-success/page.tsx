@@ -379,10 +379,11 @@ function OrderSuccessContent() {
         <span class="muted">Item Total</span>
         <span>₹${pricing ? pricing.itemsTotal : Math.round(orderData.total)}</span>
       </div>
+      ${pricing && pricing.packagingFee > 0 ? `
       <div style="display:flex;justify-content:space-between;margin-bottom:4px;">
         <span class="muted">Packaging</span>
-        <span>₹${pricing ? pricing.packagingFee : 0}</span>
-      </div>
+        <span>₹${pricing.packagingFee}</span>
+      </div>` : ''}
       <div class="total" style="display:flex;justify-content:space-between;font-size:16px;font-weight:800;padding-top:8px;border-top:1px dashed #eadfc7;">
         <span>Total Paid</span>
         <span>${escapeHtml(displayTotal)}</span>
@@ -495,10 +496,12 @@ function OrderSuccessContent() {
               <span className="font-bold text-[#2B1A12] tabular-nums">{formatPrice(pricing.itemsTotal)}</span>
             </div>
 
-            <div className="flex items-center justify-between text-[#75604F]">
-              <span>Packaging</span>
-              <span className="font-bold text-[#2B1A12] tabular-nums">{formatPrice(pricing.packagingFee)}</span>
-            </div>
+            {pricing.packagingFee > 0 && (
+              <div className="flex items-center justify-between text-[#75604F]">
+                <span>Packaging</span>
+                <span className="font-bold text-[#2B1A12] tabular-nums">{formatPrice(pricing.packagingFee)}</span>
+              </div>
+            )}
 
             <div className="border-t border-[#EADFC7]/70 pt-2 flex items-center justify-between font-extrabold text-[#2B1A12] text-sm">
               <span>Total paid</span>

@@ -206,6 +206,23 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Check if combos are globally enabled
+    if (uniqueComboIds.length > 0) {
+      const combosSettingRes = await query(
+        `SELECT value FROM public.app_settings WHERE key = 'combos_enabled' LIMIT 1`
+      );
+      const isCombosEnabled =
+        combosSettingRes.rows.length === 0 ||
+        combosSettingRes.rows[0]?.value?.enabled !== false;
+
+      if (!isCombosEnabled) {
+        return NextResponse.json(
+          { error: 'Combos are currently unavailable for ordering' },
+          { status: 400 }
+        );
+      }
+    }
+
     // Recompute order total on server from DB prices (never trust browser prices)
     const verifiedOrderItems: any[] = [];
 
@@ -377,7 +394,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const pricing = computeOrderTotal(verifiedOrderItems);
+    // Check if packaging fee is globally enabled
+    const packagingSettingRes = await query(
+      `SELECT value FROM public.app_settings WHERE key = 'packaging_fee_enabled' LIMIT 1`
+    );
+    const isPackagingFeeEnabled =
+      packagingSettingRes.rows.length === 0 ||
+      packagingSettingRes.rows[0]?.value?.enabled !== false;
+
+    const pricing = computeOrderTotal(verifiedOrderItems, {
+      packagingFeeEnabled: isPackagingFeeEnabled,
+    });
     const grandTotal = pricing.toPay;
 
     if (grandTotal <= 0) {
