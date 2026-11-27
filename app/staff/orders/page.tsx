@@ -30,6 +30,7 @@ export default function StaffOrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'all' | 'pending' | 'preparing' | 'ready' | 'completed'>('all');
+  const [orderTypeFilter, setOrderTypeFilter] = useState<'all' | 'pickup' | 'dine_in'>('all');
   const [newOrderId, setNewOrderId] = useState<string | null>(null);
 
   const outletId = currentUser?.outlet_id || '';
@@ -137,8 +138,12 @@ export default function StaffOrdersPage() {
 
   if (!currentUser) return null;
 
-  // Filter tabs
+  // Filter tabs and Order Type
   const filteredOrders = orders.filter((o) => {
+    const type = o.order_type || 'pickup';
+    if (orderTypeFilter === 'pickup' && type !== 'pickup') return false;
+    if (orderTypeFilter === 'dine_in' && type !== 'dine_in') return false;
+
     if (activeTab === 'pending') return o.status === 'pending';
     if (activeTab === 'preparing') return o.status === 'accepted' || o.status === 'preparing';
     if (activeTab === 'ready') return o.status === 'ready';
@@ -146,12 +151,19 @@ export default function StaffOrdersPage() {
     return true;
   });
 
+  const scopedOrders = orders.filter((o) => {
+    const type = o.order_type || 'pickup';
+    if (orderTypeFilter === 'pickup' && type !== 'pickup') return false;
+    if (orderTypeFilter === 'dine_in' && type !== 'dine_in') return false;
+    return true;
+  });
+
   const counts = {
-    all: orders.length,
-    pending: orders.filter((o) => o.status === 'pending').length,
-    preparing: orders.filter((o) => o.status === 'accepted' || o.status === 'preparing').length,
-    ready: orders.filter((o) => o.status === 'ready').length,
-    completed: orders.filter((o) => ['picked_up', 'cancelled'].includes(o.status)).length,
+    all: scopedOrders.length,
+    pending: scopedOrders.filter((o) => o.status === 'pending').length,
+    preparing: scopedOrders.filter((o) => o.status === 'accepted' || o.status === 'preparing').length,
+    ready: scopedOrders.filter((o) => o.status === 'ready').length,
+    completed: scopedOrders.filter((o) => ['picked_up', 'cancelled'].includes(o.status)).length,
   };
 
   return (
@@ -253,8 +265,50 @@ export default function StaffOrdersPage() {
             </p>
           </div>
 
-          {/* Filter Tabs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+          {/* Filters: Order Type & Queue Stage */}
+          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+            {/* Order Type Filter */}
+            <div className="flex items-center gap-1 p-1 rounded-2xl bg-card border border-border shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setOrderTypeFilter('all')}
+                className={cn(
+                  'px-3 py-1.5 rounded-xl text-xs font-bold transition-all',
+                  orderTypeFilter === 'all'
+                    ? 'bg-espresso text-cream shadow-xs'
+                    : 'text-espresso/70 hover:text-espresso hover:bg-sand/40'
+                )}
+              >
+                All Orders
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrderTypeFilter('pickup')}
+                className={cn(
+                  'px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1',
+                  orderTypeFilter === 'pickup'
+                    ? 'bg-espresso text-cream shadow-xs'
+                    : 'text-espresso/70 hover:text-espresso hover:bg-sand/40'
+                )}
+              >
+                <span>🛍 Pickup</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setOrderTypeFilter('dine_in')}
+                className={cn(
+                  'px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1',
+                  orderTypeFilter === 'dine_in'
+                    ? 'bg-espresso text-cream shadow-xs'
+                    : 'text-espresso/70 hover:text-espresso hover:bg-sand/40'
+                )}
+              >
+                <span>🍽 Dine In</span>
+              </button>
+            </div>
+
+            {/* Filter Tabs */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
             {[
               { id: 'all' as const, label: 'All', count: counts.all, alert: false },
               { id: 'pending' as const, label: 'Pending', count: counts.pending, alert: counts.pending > 0 },
@@ -290,6 +344,7 @@ export default function StaffOrdersPage() {
                 </button>
               );
             })}
+          </div>
           </div>
         </div>
 
@@ -338,20 +393,32 @@ export default function StaffOrdersPage() {
                         </span>
                       </div>
 
-                      {/* Status Badge */}
-                      <span
-                        className={cn(
-                          'px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider',
-                          order.status === 'pending' && 'bg-[#E8B125] text-espresso',
-                          order.status === 'accepted' && 'bg-[#CE5535] text-white',
-                          order.status === 'preparing' && 'bg-[#FBEDE3] text-[#CE5535] border border-[#CE5535]/30',
-                          order.status === 'ready' && 'bg-[#2F7A3E] text-white',
-                          order.status === 'picked_up' && 'bg-[#75604F] text-cream',
-                          order.status === 'cancelled' && 'bg-[#BA1A1A] text-white'
+                      {/* Status & Order Type Badges */}
+                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        {order.order_type === 'dine_in' ? (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            🍽 Dine In
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-300">
+                            🛍 Pickup
+                          </span>
                         )}
-                      >
-                        {order.status.replace('_', ' ')}
-                      </span>
+
+                        <span
+                          className={cn(
+                            'px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider',
+                            order.status === 'pending' && 'bg-[#E8B125] text-espresso',
+                            order.status === 'accepted' && 'bg-[#CE5535] text-white',
+                            order.status === 'preparing' && 'bg-[#FBEDE3] text-[#CE5535] border border-[#CE5535]/30',
+                            order.status === 'ready' && 'bg-[#2F7A3E] text-white',
+                            order.status === 'picked_up' && 'bg-[#75604F] text-cream',
+                            order.status === 'cancelled' && 'bg-[#BA1A1A] text-white'
+                          )}
+                        >
+                          {order.status.replace('_', ' ')}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Customer Info */}

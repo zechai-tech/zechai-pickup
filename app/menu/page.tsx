@@ -23,7 +23,7 @@ import { useToast } from '@/components/ui/Toast';
 import { VegBadge } from '@/components/ui/VegBadge';
 import { SafeImage } from '@/components/ui/SafeImage';
 import { DEFAULT_MENU_IMAGE } from '@/lib/images';
-import { formatPrice } from '@/lib/utils';
+import { formatPrice, cn } from '@/lib/utils';
 import { useAppSettingsStore } from '@/lib/app-settings';
 
 function MenuPageContent() {
@@ -33,7 +33,17 @@ function MenuPageContent() {
   const previewThemeParam = searchParams.get('preview_theme');
   const isPreviewMode = searchParams.get('preview') === '1';
 
-  const { outlet, setOutlet, cart, addItem, addCombo, updateCartQty, clearCart } = useZechaStore();
+  const {
+    outlet,
+    setOutlet,
+    orderType,
+    setOrderType,
+    cart,
+    addItem,
+    addCombo,
+    updateCartQty,
+    clearCart,
+  } = useZechaStore();
   const { showToast } = useToast();
 
   const [menuTheme, setMenuTheme] = useState<MenuTheme>('classic');
@@ -703,7 +713,55 @@ function MenuPageContent() {
       className="min-h-screen bg-white flex flex-col page-transition relative pb-28 select-none"
     >
       {/* Sticky Header (white background in both themes) */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md px-4 pt-3 pb-2 border-b border-[#EADFC7]/60">
+      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md px-4 pt-2.5 pb-2 border-b border-[#EADFC7]/60">
+        {/* Order Mode Toggle (Pickup vs Dine In) */}
+        <div className="w-full max-w-[320px] mx-auto mb-2.5">
+          <div
+            role="tablist"
+            aria-label="Order mode"
+            className="grid grid-cols-2 p-1 rounded-full bg-[#F4E7CC]/40 border border-[#EADFC7] shadow-2xs relative"
+          >
+            {/* Pickup Option */}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={orderType === 'pickup'}
+              onClick={() => setOrderType('pickup')}
+              className={cn(
+                'py-1.5 px-3 rounded-full text-xs font-black tracking-wide flex items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer select-none',
+                orderType === 'pickup'
+                  ? 'bg-[#CE5535] text-[#FDFBEA] shadow-xs'
+                  : 'bg-transparent text-[#75604F] hover:text-[#2B1A12] border border-transparent'
+              )}
+            >
+              <span>🛍 Pickup</span>
+            </button>
+
+            {/* Dine In Option */}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={orderType === 'dine_in'}
+              onClick={() => setOrderType('dine_in')}
+              className={cn(
+                'py-1.5 px-3 rounded-full text-xs font-black tracking-wide flex items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer select-none',
+                orderType === 'dine_in'
+                  ? 'bg-[#CE5535] text-[#FDFBEA] shadow-xs'
+                  : 'bg-transparent text-[#75604F] hover:text-[#2B1A12] border border-transparent'
+              )}
+            >
+              <span>🍽 Dine In</span>
+            </button>
+          </div>
+
+          {/* Dine In subtle notice */}
+          {orderType === 'dine_in' && (
+            <p className="text-[11px] text-[#75604F] font-semibold text-center mt-1 animate-in fade-in duration-150">
+              Tables available on a first-come basis
+            </p>
+          )}
+        </div>
+
         <div className="flex items-center justify-between relative" ref={dropdownRef}>
           {/* Back button */}
           <Link
@@ -714,7 +772,7 @@ function MenuPageContent() {
             <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
           </Link>
 
-          {/* Center: PICKUP FROM outlet switcher */}
+          {/* Center: PICKUP FROM / DINE IN AT outlet switcher */}
           <button
             type="button"
             onClick={handleToggleOutletDropdown}
@@ -723,7 +781,7 @@ function MenuPageContent() {
             aria-label="Switch outlet"
           >
             <span className="text-[11px] font-black tracking-widest uppercase text-[#CE5535]">
-              PICKUP FROM
+              {orderType === 'dine_in' ? 'DINE IN AT' : 'PICKUP FROM'}
             </span>
             <div className="flex items-center gap-1 text-[15px] font-extrabold text-[#2B1A12] group-hover:text-[#CE5535] transition-colors leading-tight">
               <span className="truncate">

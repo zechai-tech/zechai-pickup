@@ -9,6 +9,9 @@ interface ZechaState {
   // Outlet
   outlet: Outlet | null;
 
+  // Order Type
+  orderType: 'pickup' | 'dine_in';
+
   // Cart
   cart: CartItem[];
 
@@ -23,6 +26,7 @@ interface ZechaState {
 
   // Actions
   setOutlet: (outlet: Outlet | null) => void;
+  setOrderType: (type: 'pickup' | 'dine_in') => void;
   addToCart: (item: CartItem) => void;
   addItem: (item: { id: string; name: string; price: number; image?: string; isVeg?: boolean }) => void;
   addCombo: (combo: {
@@ -71,6 +75,7 @@ export const useZechaStore = create<ZechaState>()(
   persist(
     (set, get) => ({
       outlet: null,
+      orderType: 'pickup',
       cart: [],
       customer: {
         name: '',
@@ -81,6 +86,7 @@ export const useZechaStore = create<ZechaState>()(
       demoSpeed: 1,
 
       setOutlet: (outlet: Outlet | null) => set({ outlet }),
+      setOrderType: (type: 'pickup' | 'dine_in') => set({ orderType: type }),
 
       addItem: (item) => {
         const { cart } = get();
@@ -236,7 +242,7 @@ export const useZechaStore = create<ZechaState>()(
         set({ cart: cart.filter((i) => i.lineId !== lineId) });
       },
 
-      clearCart: () => set({ cart: [] }),
+      clearCart: () => set({ cart: [], orderType: 'pickup' }),
 
       setCustomer: (details: Partial<CustomerDetails>) => {
         set((state) => ({
@@ -271,13 +277,14 @@ export const useZechaStore = create<ZechaState>()(
 
       setDemoSpeed: (speed: 1 | 4) => set({ demoSpeed: speed }),
 
-      clearOrder: () => set({ activeOrder: null, cart: [] }),
+      clearOrder: () => set({ activeOrder: null, cart: [], orderType: 'pickup' }),
 
       resetAll: () =>
         set({
           outlet: null,
           cart: [],
           activeOrder: null,
+          orderType: 'pickup',
         }),
     }),
     {

@@ -11,6 +11,7 @@ import { supabase } from '@/lib/supabase';
 import { playNewOrderSound } from '@/components/admin/NotificationSound';
 import { useToast } from '@/components/ui/Toast';
 import { normalizeOrderStatus, CanonicalStatus } from '@/lib/order-flow';
+import { cn } from '@/lib/utils';
 import {
   Store,
   RefreshCw,
@@ -66,6 +67,9 @@ export default function AdminOrdersPage() {
   const [dateFilter, setDateFilter] = useState<DateFilter>('today');
   const [customDateFrom, setCustomDateFrom] = useState('');
   const [customDateTo, setCustomDateTo] = useState('');
+
+  // Order Type Filter ('all' | 'pickup' | 'dine_in')
+  const [orderTypeFilter, setOrderTypeFilter] = useState<'all' | 'pickup' | 'dine_in'>('all');
 
   const activeOutletId = isAdmin ? selectedOutletId : currentUser?.outlet_id || '';
 
@@ -399,40 +403,52 @@ export default function AdminOrdersPage() {
     };
   }, [activeOutletId, fetchOrders, showToast]);
 
-  // Compute Live Counts (NEVER show pending_payment in operational tabs)
+  // Compute Live Counts (NEVER show pending_payment in operational tabs, respect orderTypeFilter)
   const counts = useMemo(() => {
-    const pending = orders.filter(
+    const scopedOrders = orders.filter((o) => {
+      const type = o.order_type || 'pickup';
+      if (orderTypeFilter === 'pickup' && type !== 'pickup') return false;
+      if (orderTypeFilter === 'dine_in' && type !== 'dine_in') return false;
+      return true;
+    });
+
+    const pending = scopedOrders.filter(
       (o) => o.payment_status === 'success' && normalizeOrderStatus(o.status) === 'pending'
     ).length;
-    const making = orders.filter(
+    const making = scopedOrders.filter(
       (o) => o.payment_status === 'success' && normalizeOrderStatus(o.status) === 'preparing'
     ).length;
-    const packaging = orders.filter(
+    const packaging = scopedOrders.filter(
       (o) => o.payment_status === 'success' && normalizeOrderStatus(o.status) === 'packaging'
     ).length;
-    const ready = orders.filter(
+    const ready = scopedOrders.filter(
       (o) => o.payment_status === 'success' && normalizeOrderStatus(o.status) === 'ready'
     ).length;
-    const completed = orders.filter(
+    const completed = scopedOrders.filter(
       (o) => o.payment_status === 'success' && normalizeOrderStatus(o.status) === 'received'
     ).length;
-    const cancelled = orders.filter(
+    const cancelled = scopedOrders.filter(
       (o) =>
         normalizeOrderStatus(o.status) === 'cancelled' ||
         normalizeOrderStatus(o.status) === 'payment_cancelled'
     ).length;
 
-    const all = orders.filter((o) => {
+    const all = scopedOrders.filter((o) => {
       const canon = normalizeOrderStatus(o.status);
       return canon !== 'pending_payment';
     }).length;
 
     return { pending, making, packaging, ready, completed, cancelled, all };
-  }, [orders]);
+  }, [orders, orderTypeFilter]);
 
   // Tab Filtering
   const filteredOrders = useMemo(() => {
     return orders.filter((o) => {
+      // Order Type Filter
+      const type = o.order_type || 'pickup';
+      if (orderTypeFilter === 'pickup' && type !== 'pickup') return false;
+      if (orderTypeFilter === 'dine_in' && type !== 'dine_in') return false;
+
       const canon = normalizeOrderStatus(o.status);
 
       if (activeTab === 'pending') {
@@ -502,6 +518,7 @@ export default function AdminOrdersPage() {
   }, [
     orders,
     activeTab,
+    orderTypeFilter,
     includeCancelled,
     searchQuery,
     dateFilter,
@@ -585,6 +602,48 @@ export default function AdminOrdersPage() {
 
         {/* Push Notification Alerts Banner */}
         <OrderAlertsBanner />
+
+        {/* Order Type Filter (All Orders / Pickup Only / Dine In Only) */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 p-1 rounded-2xl bg-card border border-border shadow-2xs">
+            <button
+              type="button"
+              onClick={() => setOrderTypeFilter('all')}
+              className={cn(
+                'px-3 py-1.5 rounded-xl text-xs font-bold transition-all',
+                orderTypeFilter === 'all'
+                  ? 'bg-espresso text-cream shadow-xs'
+                  : 'text-espresso/70 hover:text-espresso hover:bg-sand/40'
+              )}
+            >
+              All Orders
+            </button>
+            <button
+              type="button"
+              onClick={() => setOrderTypeFilter('pickup')}
+              className={cn(
+                'px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1',
+                orderTypeFilter === 'pickup'
+                  ? 'bg-espresso text-cream shadow-xs'
+                  : 'text-espresso/70 hover:text-espresso hover:bg-sand/40'
+              )}
+            >
+              <span>🛍 Pickup Only</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setOrderTypeFilter('dine_in')}
+              className={cn(
+                'px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1',
+                orderTypeFilter === 'dine_in'
+                  ? 'bg-espresso text-cream shadow-xs'
+                  : 'text-espresso/70 hover:text-espresso hover:bg-sand/40'
+              )}
+            >
+              <span>🍽 Dine In Only</span>
+            </button>
+          </div>
+        </div>
 
         {/* Live Filter Tabs */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">

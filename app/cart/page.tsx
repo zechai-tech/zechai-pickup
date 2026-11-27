@@ -31,6 +31,7 @@ export default function CartPage() {
   const router = useRouter();
   const {
     outlet,
+    orderType,
     cart,
     customer,
     updateCartQty,
@@ -217,6 +218,7 @@ export default function CartPage() {
           outlet_id: selectedOutletId,
           customer_phone: phoneToUse,
           kitchen_note: kitchenNote.trim() || null,
+          order_type: orderType || 'pickup',
           items: cart.map((item) => ({
             combo_id: item.isCombo ? item.itemId : undefined,
             menu_item_id: item.isCombo ? undefined : item.itemId,
@@ -528,6 +530,21 @@ export default function CartPage() {
             {count} {count === 1 ? 'item' : 'items'}
           </span>
         </header>
+
+        {/* Selected Order Type Badge (Display only) */}
+        <div className="flex items-center justify-between">
+          <span
+            data-testid="cart-order-type-badge"
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F4E7CC]/60 border border-[#EADFC7] text-xs font-bold text-[#2B1A12] shadow-2xs"
+          >
+            {orderType === 'dine_in' ? '🍽 Dine In Order' : '🛍 Pickup Order'}
+          </span>
+          {outlet?.name && (
+            <span className="text-xs font-semibold text-[#75604F] truncate max-w-[200px]">
+              {outlet.name}
+            </span>
+          )}
+        </div>
 
         {/* Item Cards: Each item is its OWN card (14px padding, 20px radius, 12px gap between cards) */}
         <div data-clarity-unmask="true" className="space-y-3">

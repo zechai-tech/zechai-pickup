@@ -2,6 +2,8 @@ export type OutletStatus = 'open' | 'closed';
 
 export type MenuTheme = 'classic' | 'grid';
 
+export type OrderType = 'pickup' | 'dine_in';
+
 export interface Outlet {
   id: string;
   name: string;
@@ -156,6 +158,7 @@ export interface Order {
   gst: number;
   grandTotal: number;
   customer: CustomerDetails;
+  order_type?: OrderType;
   push_notified_at?: string | null;
   statusHistory: {
     placedAt: number;

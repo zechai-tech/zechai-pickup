@@ -43,6 +43,7 @@ export default function AdminDashboardPage() {
   // Table filters
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [paymentFilter, setPaymentFilter] = useState<string>('all');
+  const [orderTypeFilter, setOrderTypeFilter] = useState<string>('all');
   const [tableSearch, setTableSearch] = useState<string>('');
 
   const loadData = useCallback(async () => {
@@ -156,6 +157,10 @@ export default function AdminDashboardPage() {
         if (o.payment_status === 'success') return false;
       }
 
+      // Order type filter
+      if (orderTypeFilter === 'pickup' && (o.order_type || 'pickup') !== 'pickup') return false;
+      if (orderTypeFilter === 'dine_in' && o.order_type !== 'dine_in') return false;
+
       // Search filter (pickup code or phone)
       if (tableSearch.trim()) {
         const q = tableSearch.toLowerCase().trim();
@@ -167,7 +172,7 @@ export default function AdminDashboardPage() {
 
       return true;
     });
-  }, [filteredOrders, statusFilter, paymentFilter, tableSearch]);
+  }, [filteredOrders, statusFilter, paymentFilter, orderTypeFilter, tableSearch]);
 
   const handleCopyPhone = (phone: string) => {
     navigator.clipboard.writeText(phone);
@@ -441,6 +446,20 @@ export default function AdminDashboardPage() {
                 <option value="unpaid">Not Paid</option>
               </select>
             </div>
+
+            {/* Order Type Filter */}
+            <div className="flex items-center gap-1.5 bg-sand/20 px-3 py-1.5 rounded-xl border border-border">
+              <span className="text-[11px] font-bold text-espresso/50 uppercase">Type:</span>
+              <select
+                value={orderTypeFilter}
+                onChange={(e) => setOrderTypeFilter(e.target.value)}
+                className="bg-transparent text-xs font-bold text-espresso focus:outline-none cursor-pointer"
+              >
+                <option value="all">All Types</option>
+                <option value="pickup">Pickup Only</option>
+                <option value="dine_in">Dine In Only</option>
+              </select>
+            </div>
           </div>
 
           {/* Table */}
@@ -473,9 +492,20 @@ export default function AdminDashboardPage() {
 
                     return (
                       <tr key={order.id} className="hover:bg-sand/20 transition-colors">
-                        {/* Pickup Code */}
+                        {/* Pickup Code & Order Type Badge */}
                         <td className="py-3.5 px-4 font-display font-black text-sm text-espresso select-all">
-                          #{order.pickup_code}
+                          <div className="flex flex-col items-start gap-1">
+                            <span>#{order.pickup_code}</span>
+                            {order.order_type === 'dine_in' ? (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300">
+                                🍽 Dine In
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-slate-100 text-slate-700 border border-slate-300">
+                                🛍 Pickup
+                              </span>
+                            )}
+                          </div>
                         </td>
 
                         {/* Customer Phone & Name */}

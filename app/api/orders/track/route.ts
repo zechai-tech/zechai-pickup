@@ -62,8 +62,7 @@ export async function GET(req: NextRequest) {
     const cleanOrderId = orderId.trim();
 
     let sql = `
-      SELECT o.id, o.status, o.pickup_code, o.items, o.total, o.cancel_reason, o.created_at,
-             o.paid_at, o.making_at, o.packaging_at, o.ready_at, o.received_at,
+      SELECT o.*,
              COALESCE(ot.name, NULLIF(o.outlet_name, ''), 'Deleted outlet') as outlet_name,
              ot.phone as outlet_phone, ot.address as outlet_address
       FROM public.orders o

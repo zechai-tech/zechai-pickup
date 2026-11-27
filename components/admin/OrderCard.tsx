@@ -105,6 +105,22 @@ export function OrderCard({
         <div className="flex items-center justify-between gap-2 pb-3 border-b border-border/60">
           <div className="flex items-center gap-1.5 flex-wrap">
             <StatusBadge status={order.status} size="sm" />
+            {/* Order Type Badge (PICKUP vs DINE IN) */}
+            {order.order_type === 'dine_in' ? (
+              <span
+                data-testid="order-type-badge-dine-in"
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-black uppercase tracking-wider"
+              >
+                🍽 Dine In
+              </span>
+            ) : (
+              <span
+                data-testid="order-type-badge-pickup"
+                className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-300 text-[10px] font-black uppercase tracking-wider"
+              >
+                🛍 Pickup
+              </span>
+            )}
             {isUrgentPending && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-brandRed text-white text-[10px] font-black uppercase tracking-wider animate-pulse">
                 <AlertCircle className="w-3 h-3" />

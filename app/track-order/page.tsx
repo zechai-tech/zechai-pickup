@@ -43,6 +43,7 @@ interface OrderData {
   outlet_name?: string;
   outlet_phone?: string | null;
   outlet_address?: string | null;
+  order_type?: string | null;
 }
 
 function TrackOrderContent() {
@@ -498,9 +499,16 @@ function TrackOrderContent() {
           <div className="px-5 -mt-8 relative z-20" data-testid="track-pickup-card" data-clarity-unmask="true">
             <div className="bg-[#2B1A12] rounded-[22px] p-4 px-5 text-[#FDFBEA] shadow-[0_12px_28px_rgba(43,26,18,0.25)] flex items-center justify-between border border-[#2B1A12]" data-clarity-unmask="true">
               <div>
-                <span className="text-[11px] font-bold text-[#FDFBEA]/70 uppercase tracking-wider block">
-                  Pickup code
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-bold text-[#FDFBEA]/70 uppercase tracking-wider block">
+                    Pickup code
+                  </span>
+                  {order.order_type === 'dine_in' && (
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                      🍽 Dine In
+                    </span>
+                  )}
+                </div>
                 <span data-clarity-unmask="true" className="font-display text-[30px] font-black text-[#FDFBEA] tracking-widest block leading-tight mt-0.5">
                   {order.pickup_code || '7309'}
                 </span>

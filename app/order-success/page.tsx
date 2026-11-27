@@ -45,6 +45,7 @@ interface SuccessOrderData {
   paid_at?: string | null;
   payment_method?: string | null;
   created_at?: string | null;
+  order_type?: string | null;
 }
 
 function escapeHtml(str: string): string {
@@ -129,6 +130,7 @@ function OrderSuccessContent() {
             paid_at: effectivePaidAt,
             payment_method: order?.payment_method || 'UPI',
             created_at: order?.created_at || effectivePaidAt,
+            order_type: order?.order_type || data?.order_type || 'pickup',
           });
 
           // Microsoft Clarity tag
@@ -360,9 +362,12 @@ function OrderSuccessContent() {
       <span>Order: <strong>${escapeHtml(shortOrderNum)}</strong></span>
       <span>Time: <strong>${escapeHtml(paidTime)} IST</strong></span>
     </div>
+    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;">
+      <span>Order Type: <strong>${orderData.order_type === 'dine_in' ? 'Dine In' : 'Pickup'}</strong></span>
+      <span>Method: <strong>${escapeHtml((orderData.payment_method || 'UPI').toUpperCase())}</strong></span>
+    </div>
     <div style="display:flex;justify-content:space-between;font-size:12px;">
       <span>Pickup Code: <strong>${escapeHtml(displayCode)}</strong></span>
-      <span>Method: <strong>${escapeHtml((orderData.payment_method || 'UPI').toUpperCase())}</strong></span>
     </div>
     <table>
       <thead>
@@ -451,11 +456,17 @@ function OrderSuccessContent() {
               <span className="font-display text-[17px] font-black text-[#2B1A12]">
                 {shortOrderNum}
               </span>
+              <span className="text-[11px] font-semibold text-[#75604F] block mt-0.5">
+                Order Type: <strong className="text-[#2B1A12] font-extrabold">{orderData?.order_type === 'dine_in' ? 'Dine In' : 'Pickup'}</strong>
+              </span>
             </div>
             <div className="text-right">
               <span className="text-[11px] font-bold text-[#75604F] block">Ready by</span>
               <span className="font-display text-[17px] font-black text-[#2B1A12]">
                 ~{readyByTime}
+              </span>
+              <span className="inline-flex items-center gap-1 mt-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-[#F4E7CC] text-[#2B1A12]">
+                {orderData?.order_type === 'dine_in' ? '🍽 Dine In' : '🛍 Pickup'}
               </span>
             </div>
           </div>

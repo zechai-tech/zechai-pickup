@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Reject unknown top-level fields
-    const allowedKeys = ['outlet_id', 'customer_phone', 'kitchen_note', 'items'];
+    const allowedKeys = ['outlet_id', 'customer_phone', 'kitchen_note', 'items', 'order_type'];
     const bodyKeys = Object.keys(body);
     const unknownKeys = bodyKeys.filter((k) => !allowedKeys.includes(k));
     if (unknownKeys.length > 0) {
@@ -46,6 +46,17 @@ export async function POST(req: NextRequest) {
     }
 
     const { outlet_id, customer_phone, kitchen_note, items } = body;
+
+    // Validate order_type (must be 'pickup' or 'dine_in', default 'pickup' if missing)
+    const rawOrderType =
+      body.order_type !== undefined && body.order_type !== null ? body.order_type : 'pickup';
+    if (rawOrderType !== 'pickup' && rawOrderType !== 'dine_in') {
+      return NextResponse.json(
+        { error: 'order_type must be either "pickup" or "dine_in"' },
+        { status: 400 }
+      );
+    }
+    const order_type: 'pickup' | 'dine_in' = rawOrderType;
 
     // Validate outlet_id
     if (!outlet_id || typeof outlet_id !== 'string' || !outlet_id.trim()) {
@@ -482,7 +493,7 @@ export async function POST(req: NextRequest) {
       pickupCode = Math.floor(1000 + Math.random() * 9000).toString();
     }
 
-    // Insert order with server-forced status, payment_status, and separate subtotal/fee fields
+    // Insert order with server-forced status, payment_status, separate subtotal/fee fields, and order_type
     let createdOrder: any = null;
     try {
       const insertRes = await query(
@@ -500,9 +511,10 @@ export async function POST(req: NextRequest) {
           payment_status,
           pickup_code,
           kitchen_note,
+          order_type,
           created_at,
           updated_at
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending_payment', 'unpaid', $10, $11, now(), now())
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending_payment', 'unpaid', $10, $11, $12, now(), now())
         RETURNING id, total`,
         [
           outlet_id,
@@ -516,43 +528,84 @@ export async function POST(req: NextRequest) {
           pricing.packagingFee,
           pickupCode,
           cleanNote,
+          order_type,
         ]
       );
       createdOrder = insertRes.rows[0];
     } catch (dbErr: any) {
-      // If columns (subtotal, combo_savings, packaging_fee) do not exist yet in DB, fallback to classic columns
+      // If order_type or pricing columns do not exist yet in DB, fallback gracefully
       if (
         dbErr?.message?.includes('column') &&
-        (dbErr?.message?.includes('subtotal') || dbErr?.message?.includes('packaging_fee') || dbErr?.message?.includes('combo_savings'))
+        (dbErr?.message?.includes('order_type') ||
+          dbErr?.message?.includes('subtotal') ||
+          dbErr?.message?.includes('packaging_fee') ||
+          dbErr?.message?.includes('combo_savings'))
       ) {
-        const fallbackRes = await query(
-          `INSERT INTO public.orders (
-            outlet_id,
-            outlet_name,
-            customer_name,
-            customer_phone,
-            items,
-            total,
-            status,
-            payment_status,
-            pickup_code,
-            kitchen_note,
-            created_at,
-            updated_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, 'pending_payment', 'unpaid', $7, $8, now(), now())
-          RETURNING id, total`,
-          [
-            outlet_id,
-            outletName,
-            'Customer',
-            cleanPhone,
-            JSON.stringify(verifiedOrderItems),
-            grandTotal,
-            pickupCode,
-            cleanNote,
-          ]
-        );
-        createdOrder = fallbackRes.rows[0];
+        try {
+          const fallbackWithFee = await query(
+            `INSERT INTO public.orders (
+              outlet_id,
+              outlet_name,
+              customer_name,
+              customer_phone,
+              items,
+              total,
+              subtotal,
+              combo_savings,
+              packaging_fee,
+              status,
+              payment_status,
+              pickup_code,
+              kitchen_note,
+              created_at,
+              updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending_payment', 'unpaid', $10, $11, now(), now())
+            RETURNING id, total`,
+            [
+              outlet_id,
+              outletName,
+              'Customer',
+              cleanPhone,
+              JSON.stringify(verifiedOrderItems),
+              grandTotal,
+              pricing.itemsTotal,
+              pricing.comboSavings,
+              pricing.packagingFee,
+              pickupCode,
+              cleanNote,
+            ]
+          );
+          createdOrder = fallbackWithFee.rows[0];
+        } catch (innerErr: any) {
+          const fallbackRes = await query(
+            `INSERT INTO public.orders (
+              outlet_id,
+              outlet_name,
+              customer_name,
+              customer_phone,
+              items,
+              total,
+              status,
+              payment_status,
+              pickup_code,
+              kitchen_note,
+              created_at,
+              updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, 'pending_payment', 'unpaid', $7, $8, now(), now())
+            RETURNING id, total`,
+            [
+              outlet_id,
+              outletName,
+              'Customer',
+              cleanPhone,
+              JSON.stringify(verifiedOrderItems),
+              grandTotal,
+              pickupCode,
+              cleanNote,
+            ]
+          );
+          createdOrder = fallbackRes.rows[0];
+        }
       } else {
         throw dbErr;
       }
