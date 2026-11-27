@@ -713,106 +713,136 @@ function MenuPageContent() {
       className="min-h-screen bg-white flex flex-col page-transition relative pb-28 select-none"
     >
       {/* Sticky Header (white background in both themes) */}
-      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md px-4 pt-2.5 pb-2 border-b border-[#EADFC7]/60">
-        {/* Order Mode Toggle (Pickup vs Dine In) */}
-        <div className="w-full max-w-[320px] mx-auto mb-2.5">
+      <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-[#EADFC7]/60">
+        {/* Order Mode Card Selector (Swiggy-style Food/Instamart top selector) */}
+        <div className="w-full bg-[#F6EFE5] border-b border-[#EADFC7]/70 px-3 py-2 sm:px-4 sm:py-2.5">
           <div
             role="tablist"
             aria-label="Order mode"
-            className="grid grid-cols-2 p-1 rounded-full bg-[#F4E7CC]/40 border border-[#EADFC7] shadow-2xs relative"
+            className="w-full max-w-[420px] mx-auto grid grid-cols-2 gap-2 sm:gap-2.5"
           >
-            {/* Pickup Option */}
+            {/* Pickup Card */}
             <button
               type="button"
               role="tab"
               aria-selected={orderType === 'pickup'}
               onClick={() => setOrderType('pickup')}
               className={cn(
-                'py-1.5 px-3 rounded-full text-xs font-black tracking-wide flex items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer select-none',
+                'w-full py-2.5 sm:py-3 px-3 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all duration-200 cursor-pointer select-none active:scale-[0.98]',
                 orderType === 'pickup'
-                  ? 'bg-[#CE5535] text-[#FDFBEA] shadow-xs'
-                  : 'bg-transparent text-[#75604F] hover:text-[#2B1A12] border border-transparent'
+                  ? 'bg-white text-[#2B1A12] shadow-sm border border-[#E4D8BF]'
+                  : 'bg-transparent text-[#827163] hover:text-[#2B1A12] border border-transparent'
               )}
             >
-              <span>🛍 Pickup</span>
+              <span
+                className={cn(
+                  'text-2xl sm:text-[26px] leading-none transition-all duration-200',
+                  orderType === 'pickup' ? 'opacity-100 scale-105' : 'opacity-55'
+                )}
+              >
+                🛍️
+              </span>
+              <span
+                className={cn(
+                  'text-xs sm:text-[13px] tracking-tight transition-colors duration-200',
+                  orderType === 'pickup' ? 'font-black text-[#2B1A12]' : 'font-bold text-[#827163]'
+                )}
+              >
+                Pickup
+              </span>
             </button>
 
-            {/* Dine In Option */}
+            {/* Dine In Card */}
             <button
               type="button"
               role="tab"
               aria-selected={orderType === 'dine_in'}
               onClick={() => setOrderType('dine_in')}
               className={cn(
-                'py-1.5 px-3 rounded-full text-xs font-black tracking-wide flex items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer select-none',
+                'w-full py-2.5 sm:py-3 px-3 rounded-2xl flex flex-col items-center justify-center gap-1 transition-all duration-200 cursor-pointer select-none active:scale-[0.98]',
                 orderType === 'dine_in'
-                  ? 'bg-[#CE5535] text-[#FDFBEA] shadow-xs'
-                  : 'bg-transparent text-[#75604F] hover:text-[#2B1A12] border border-transparent'
+                  ? 'bg-white text-[#2B1A12] shadow-sm border border-[#E4D8BF]'
+                  : 'bg-transparent text-[#827163] hover:text-[#2B1A12] border border-transparent'
               )}
             >
-              <span>🍽 Dine In</span>
+              <span
+                className={cn(
+                  'text-2xl sm:text-[26px] leading-none transition-all duration-200',
+                  orderType === 'dine_in' ? 'opacity-100 scale-105' : 'opacity-55'
+                )}
+              >
+                🍽️
+              </span>
+              <span
+                className={cn(
+                  'text-xs sm:text-[13px] tracking-tight transition-colors duration-200',
+                  orderType === 'dine_in' ? 'font-black text-[#2B1A12]' : 'font-bold text-[#827163]'
+                )}
+              >
+                Dine In
+              </span>
             </button>
           </div>
-
-          {/* Dine In subtle notice */}
-          {orderType === 'dine_in' && (
-            <p className="text-[11px] text-[#75604F] font-semibold text-center mt-1 animate-in fade-in duration-150">
-              Tables available on a first-come basis
-            </p>
-          )}
         </div>
 
-        <div className="flex items-center justify-between relative" ref={dropdownRef}>
-          {/* Back button */}
-          <Link
-            href="/outlets"
-            className="w-11 h-11 rounded-full bg-[#FFFEF7] border border-[#EADFC7] flex items-center justify-center text-[#2B1A12] hover:bg-[#F4E7CC]/50 transition-colors shadow-2xs"
-            aria-label="Back to outlets"
-          >
-            <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
-          </Link>
+        {/* Outlet Switcher, Search Bar, and Category Chips */}
+        <div className="px-4 pt-2.5 pb-2">
+          <div className="flex items-center justify-between relative" ref={dropdownRef}>
+            {/* Back button */}
+            <Link
+              href="/outlets"
+              className="w-11 h-11 rounded-full bg-[#FFFEF7] border border-[#EADFC7] flex items-center justify-center text-[#2B1A12] hover:bg-[#F4E7CC]/50 transition-colors shadow-2xs"
+              aria-label="Back to outlets"
+            >
+              <ChevronLeft className="w-5 h-5 stroke-[2.5]" />
+            </Link>
 
-          {/* Center: PICKUP FROM / DINE IN AT outlet switcher */}
-          <button
-            type="button"
-            onClick={handleToggleOutletDropdown}
-            className="flex flex-col items-center group text-center cursor-pointer max-w-[210px] py-1 px-2 rounded-xl hover:bg-[#F4E7CC]/40 transition-colors"
-            aria-expanded={isOutletMenuOpen}
-            aria-label="Switch outlet"
-          >
-            <span className="text-[11px] font-black tracking-widest uppercase text-[#CE5535]">
-              {orderType === 'dine_in' ? 'DINE IN AT' : 'PICKUP FROM'}
-            </span>
-            <div className="flex items-center gap-1 text-[15px] font-extrabold text-[#2B1A12] group-hover:text-[#CE5535] transition-colors leading-tight">
-              <span className="truncate">
-                {previewOutletName || outlet?.name || 'Choose Outlet'}
+            {/* Center: PICKUP FROM / DINE IN AT outlet switcher */}
+            <button
+              type="button"
+              onClick={handleToggleOutletDropdown}
+              className="flex flex-col items-center group text-center cursor-pointer max-w-[210px] py-1 px-2 rounded-xl hover:bg-[#F4E7CC]/40 transition-colors"
+              aria-expanded={isOutletMenuOpen}
+              aria-label="Switch outlet"
+            >
+              <span className="text-[11px] font-black tracking-widest uppercase text-[#CE5535]">
+                {orderType === 'dine_in' ? 'DINE IN AT' : 'PICKUP FROM'}
               </span>
-              {!isPreviewMode && (
-                <ChevronDown
-                  className={`w-4 h-4 stroke-[2.8] text-[#2B1A12] shrink-0 transition-transform duration-150 ${
-                    isOutletMenuOpen ? 'rotate-180' : ''
-                  }`}
-                />
+              <div className="flex items-center gap-1 text-[15px] font-extrabold text-[#2B1A12] group-hover:text-[#CE5535] transition-colors leading-tight">
+                <span className="truncate">
+                  {previewOutletName || outlet?.name || 'Choose Outlet'}
+                </span>
+                {!isPreviewMode && (
+                  <ChevronDown
+                    className={`w-4 h-4 stroke-[2.8] text-[#2B1A12] shrink-0 transition-transform duration-150 ${
+                      isOutletMenuOpen ? 'rotate-180' : ''
+                    }`}
+                  />
+                )}
+              </div>
+              {orderType === 'dine_in' && (
+                <span className="text-[10px] sm:text-[11px] text-[#75604F] font-semibold tracking-tight mt-0.5 block leading-tight">
+                  Tables available on a first-come basis
+                </span>
               )}
+            </button>
+
+            {/* Right Logo (64px) */}
+            <div className="w-[64px] h-[30px] relative">
+              <SafeImage
+                src="/assets/logo-orange.v1.webp"
+                alt="Zécha!"
+                width={64}
+                height={30}
+                sizes="64px"
+                transparent
+                className="object-contain object-right w-full h-full"
+              />
             </div>
-          </button>
 
-          {/* Right Logo (64px) */}
-          <div className="w-[64px] h-[30px] relative">
-            <SafeImage
-              src="/assets/logo-orange.v1.webp"
-              alt="Zécha!"
-              width={64}
-              height={30}
-              sizes="64px"
-              transparent
-              className="object-contain object-right w-full h-full"
-            />
-          </div>
-
-          {/* Outlet Switcher Popover Dropdown */}
-          {isOutletMenuOpen && (
-            <div className="absolute top-13 left-1/2 -translate-x-1/2 w-[calc(100%-8px)] max-w-[340px] bg-[#FFFEF7] rounded-2xl border border-[#EADFC7] shadow-xl p-2 z-50 space-y-1">
+            {/* Outlet Switcher Popover Dropdown */}
+            {isOutletMenuOpen && (
+              <div className="absolute top-full mt-1.5 left-1/2 -translate-x-1/2 w-[calc(100%-8px)] max-w-[340px] bg-[#FFFEF7] rounded-2xl border border-[#EADFC7] shadow-xl p-2 z-50 space-y-1">
               <p className="px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-[#75604F]">
                 Switch Outlet
               </p>
@@ -933,6 +963,7 @@ function MenuPageContent() {
             })}
           </div>
         )}
+        </div>
       </header>
 
       {/* Main Content Area */}
