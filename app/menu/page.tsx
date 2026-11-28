@@ -653,8 +653,8 @@ function MenuPageContent() {
           )}
         </Link>
 
-        {/* Right column: 124px photo with overlapping white ADD/stepper button */}
-        <div className="relative w-[124px] h-[116px] shrink-0 mb-3">
+        {/* Right column: 124px photo with ADD/stepper button below */}
+        <div className="flex flex-col items-center w-[124px] shrink-0">
           <Link
             href={`/menu/${item.id}`}
             className="block w-full h-[96px] rounded-[14px] overflow-hidden relative"
@@ -671,16 +671,14 @@ function MenuPageContent() {
             />
           </Link>
 
-          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 z-20">
+          <div className="mt-2.5">
             {qty === 0 ? (
-              <div className="flex flex-col items-center">
-                <button
-                  onClick={() => handleAddItem(item)}
-                  className="w-[96px] h-[34px] rounded-[10px] bg-white border border-[#EADFC7] text-[#CE5535] font-black text-xs tracking-wider shadow-md hover:bg-[#FFFEF7] active:scale-95 transition-transform duration-150 flex items-center justify-center uppercase"
-                >
-                  ADD
-                </button>
-              </div>
+              <button
+                onClick={() => handleAddItem(item)}
+                className="w-[96px] h-[34px] rounded-[10px] bg-white border border-[#EADFC7] text-[#CE5535] font-black text-xs tracking-wider shadow-md hover:bg-[#FFFEF7] active:scale-95 transition-transform duration-150 flex items-center justify-center uppercase"
+              >
+                ADD
+              </button>
             ) : (
               <div className="w-[96px] h-[34px] rounded-[10px] bg-white border border-[#CE5535] text-[#2B1A12] font-black text-xs shadow-md flex items-center justify-between px-2">
                 <button
@@ -853,8 +851,8 @@ function MenuPageContent() {
           )}
         </div>
 
-        {/* Right column: 124px photo with overlapping ADD/stepper button */}
-        <div className="relative w-[124px] h-[116px] shrink-0 mb-3">
+        {/* Right column: 124px photo with ADD/stepper button below */}
+        <div className="flex flex-col items-center w-[124px] shrink-0">
           <div className="block w-full h-[96px] rounded-[14px] overflow-hidden relative border border-[#EADFC7]/60">
             <SafeImage
               src={combo.image || combo.image_url || DEFAULT_MENU_IMAGE}
@@ -866,7 +864,7 @@ function MenuPageContent() {
             />
           </div>
 
-          <div className="absolute bottom-0 left-1/2 -translate-x-1/2 z-20">
+          <div className="mt-2.5">
             {!combo.is_available ? (
               <span className="w-[96px] h-[34px] rounded-[10px] bg-[#F4E7CC]/80 border border-[#EADFC7] text-[#75604F] font-bold text-[11px] uppercase tracking-wider flex items-center justify-center">
                 Sold out
