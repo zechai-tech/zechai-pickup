@@ -26,138 +26,283 @@ import { DEFAULT_MENU_IMAGE } from '@/lib/images';
 import { formatPrice, cn } from '@/lib/utils';
 import { useAppSettingsStore } from '@/lib/app-settings';
 
-function PickupIllustration({ className }: { className?: string }) {
+function PickupIllustration({
+  width = 72,
+  height = 72,
+  className,
+}: {
+  width?: number;
+  height?: number;
+  className?: string;
+}) {
   return (
     <svg
-      viewBox="0 0 56 56"
+      viewBox="0 0 80 80"
+      width={width}
+      height={height}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={className}
       aria-hidden="true"
     >
       <defs>
-        <linearGradient id="pickupBagGrad" x1="15" y1="18" x2="40" y2="48" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#E2A670" />
-          <stop offset="100%" stopColor="#C47D42" />
-        </linearGradient>
-        <linearGradient id="pickupBagSide" x1="15" y1="20" x2="22" y2="48" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#C47D42" />
-          <stop offset="100%" stopColor="#A8612A" />
-        </linearGradient>
-        <linearGradient id="pickupBadge" x1="22" y1="28" x2="34" y2="40" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#FF7A45" />
-          <stop offset="100%" stopColor="#E85D2A" />
-        </linearGradient>
-        <linearGradient id="pickupSteam1" x1="22" y1="13" x2="22" y2="4" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#E85D2A" stopOpacity="0.8" />
-          <stop offset="100%" stopColor="#FFB37C" stopOpacity="0" />
-        </linearGradient>
-        <linearGradient id="pickupSteam2" x1="29" y1="15" x2="29" y2="3" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#E85D2A" stopOpacity="0.75" />
-          <stop offset="100%" stopColor="#FFB37C" stopOpacity="0" />
+        <linearGradient id="pickupBagGrad" x1="20" y1="24" x2="60" y2="68" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#A0522D" />
+          <stop offset="100%" stopColor="#8B4513" />
         </linearGradient>
       </defs>
 
-      {/* Ground drop shadow */}
-      <ellipse cx="28" cy="49" rx="15" ry="3" fill="#2B1A12" fillOpacity="0.12" />
+      {/* Subtle drop shadow at base */}
+      <ellipse cx="40" cy="71" rx="22" ry="4" fill="rgba(0,0,0,0.12)" />
 
-      {/* Fresh food steam aroma */}
-      <path d="M22 13C20.5 10 24.5 7 22.5 4" stroke="url(#pickupSteam1)" strokeWidth="2" strokeLinecap="round" />
-      <path d="M29 15C27 11 31.5 8 29.5 3" stroke="url(#pickupSteam2)" strokeWidth="2.2" strokeLinecap="round" />
-      <path d="M35 14C33.5 11 36.5 8 35 5" stroke="url(#pickupSteam1)" strokeWidth="1.8" strokeLinecap="round" />
+      {/* Steam wisps rising with cubic bezier curves */}
+      <path
+        d="M32 20C30 15 36 11 33 6C31 3 34 1 32 0"
+        stroke="#D4C5B0"
+        strokeWidth="2"
+        strokeLinecap="round"
+        fill="none"
+        opacity="0.7"
+      />
+      <path
+        d="M41 22C43 17 38 13 41 8C43 5 40 2 42 0"
+        stroke="#D4C5B0"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        fill="none"
+        opacity="0.7"
+      />
+      <path
+        d="M49 21C47 16 53 12 50 7C48 4 51 2 49 1"
+        stroke="#D4C5B0"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        fill="none"
+        opacity="0.7"
+      />
 
-      {/* Takeaway cup peeking out */}
-      <rect x="30" y="10" width="9" height="11" rx="2" fill="#E85D2A" />
-      <path d="M29 10H40V12H29V10Z" fill="#FFF8F0" />
-      <path d="M36 6L34 10" stroke="#2DD4BF" strokeWidth="2.2" strokeLinecap="round" />
+      {/* Back bag handle */}
+      <path
+        d="M34 24C34 18 37 13 41 13C45 13 48 18 48 24"
+        stroke="#6B3410"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        fill="none"
+        opacity="0.5"
+      />
 
-      {/* Bag Main Body */}
-      <path d="M15 19H41L38.5 46.5C38.5 47.6 37.6 48.5 36.5 48.5H19.5C18.4 48.5 17.5 47.6 17.5 46.5L15 19Z" fill="url(#pickupBagGrad)" />
+      {/* Front bag handle */}
+      <path
+        d="M31 24C31 16 35 11 39 11C43 11 47 16 47 24"
+        stroke="#6B3410"
+        strokeWidth="2.5"
+        strokeLinecap="round"
+        fill="none"
+      />
 
-      {/* Left fold shadow */}
-      <path d="M15 19L17.5 46.5C17.6 47.6 18.4 48.5 19.5 48.5H21.5L19.5 19H15Z" fill="url(#pickupBagSide)" opacity="0.4" />
+      {/* Paper bag body: tapered rounded rectangle */}
+      <path
+        d="M20 24H60L57.5 64C57.5 66.5 55.5 68 53 68H27C24.5 68 22.5 66.5 22.5 64L20 24Z"
+        fill="url(#pickupBagGrad)"
+      />
 
-      {/* Top folded rim with decorative stitching */}
-      <path d="M13.5 18C13.5 16.9 14.4 16 15.5 16H40.5C41.6 16 42.5 16.9 42.5 18V21C42.5 21.6 42.1 22 41.5 22H14.5C13.9 22 13.5 21.6 13.5 21V18Z" fill="#EBB482" />
-      <path d="M14 20.5H42" stroke="#B77740" strokeWidth="1" strokeDasharray="2 1.5" />
+      {/* Side 3D facet fold */}
+      <path
+        d="M20 24L22.5 64C22.5 66.5 24.5 68 27 68H30L26 24H20Z"
+        fill="#6B3410"
+        opacity="0.35"
+      />
 
-      {/* Soft curved Kraft handles */}
-      <path d="M22 16V12C22 9.2 24.2 7 27 7H29C31.8 7 34 9.2 34 12V16" stroke="#8B4513" strokeWidth="2.5" strokeLinecap="round" />
+      {/* Top collar / folded rim */}
+      <path
+        d="M18 23C18 21.5 19.5 20.5 21 20.5H59C60.5 20.5 62 21.5 62 23V27C62 27.8 61.2 28.5 60.5 28.5H19.5C18.8 28.5 18 27.8 18 27V23Z"
+        fill="#A0522D"
+      />
+      <path
+        d="M19 26.5H61"
+        stroke="#6B3410"
+        strokeWidth="1"
+        strokeDasharray="3 2"
+      />
 
-      {/* Front Brand Emblem badge */}
-      <circle cx="28" cy="33.5" r="7.5" fill="url(#pickupBadge)" />
-      <circle cx="28" cy="33.5" r="6.2" stroke="#FFF8F0" strokeWidth="0.8" strokeOpacity="0.75" strokeDasharray="2 1.5" />
-      <path d="M25.2 33.6L27.2 35.6L31 31.4" stroke="#FFF8F0" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      {/* Bag texture lines across body */}
+      <path
+        d="M23 42L40 45L57 42"
+        stroke="#6B3410"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeOpacity="0.5"
+      />
+      <path
+        d="M24 57L40 60L56 57"
+        stroke="#6B3410"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeOpacity="0.5"
+      />
 
-      {/* Horizontal base crease */}
-      <path d="M18 41.5L28 44L38 41.5" stroke="#A8612A" strokeWidth="1.2" strokeLinecap="round" strokeOpacity="0.45" />
+      {/* Zechai-orange sticker/seal */}
+      <circle cx="40" cy="46" r="10" fill="#E85D2A" />
+      <circle
+        cx="40"
+        cy="46"
+        r="8.2"
+        stroke="#FFF8F0"
+        strokeWidth="1"
+        strokeOpacity="0.8"
+        strokeDasharray="2.5 1.5"
+        fill="none"
+      />
+      <path
+        d="M36.5 43H43.5L37 49H44"
+        stroke="#FFF8F0"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        fill="none"
+      />
     </svg>
   );
 }
 
-function DineInIllustration({ className }: { className?: string }) {
+function DineInIllustration({
+  width = 72,
+  height = 72,
+  className,
+}: {
+  width?: number;
+  height?: number;
+  className?: string;
+}) {
   return (
     <svg
-      viewBox="0 0 56 56"
+      viewBox="0 0 80 80"
+      width={width}
+      height={height}
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={className}
       aria-hidden="true"
     >
       <defs>
-        <linearGradient id="dineDomeGrad" x1="18" y1="14" x2="38" y2="34" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#FFA066" />
-          <stop offset="50%" stopColor="#E85D2A" />
-          <stop offset="100%" stopColor="#BA3F15" />
-        </linearGradient>
-        <linearGradient id="dinePlateGrad" x1="10" y1="38" x2="46" y2="48" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#FFFDF9" />
-          <stop offset="100%" stopColor="#F3E5D3" />
-        </linearGradient>
-        <linearGradient id="dineSteamGrad" x1="28" y1="14" x2="28" y2="3" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#E85D2A" stopOpacity="0.8" />
-          <stop offset="100%" stopColor="#FFB37C" stopOpacity="0" />
+        <linearGradient id="clocheGrad" x1="26" y1="20" x2="54" y2="48" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#D8D8D8" />
+          <stop offset="40%" stopColor="#C0C0C0" />
+          <stop offset="100%" stopColor="#A0A0A0" />
         </linearGradient>
       </defs>
 
-      {/* Ground drop shadow */}
-      <ellipse cx="28" cy="49" rx="18" ry="3.5" fill="#2B1A12" fillOpacity="0.12" />
+      {/* Subtle drop shadow at base */}
+      <ellipse cx="40" cy="71" rx="26" ry="4.5" fill="rgba(0,0,0,0.12)" />
 
-      {/* Steam / Aroma rising from feast */}
-      <path d="M23 11C22 8 25 5 24 2" stroke="url(#dineSteamGrad)" strokeWidth="2" strokeLinecap="round" />
-      <path d="M30 12C29 9 32 6 31 3" stroke="url(#dineSteamGrad)" strokeWidth="2" strokeLinecap="round" />
-      {/* Sparkles */}
-      <path d="M38 7L39 9L41 10L39 11L38 13L37 11L35 10L37 9L38 7Z" fill="#FFB37C" />
+      {/* Steam wisps from under lifted dome with cubic bezier curves */}
+      <path
+        d="M33 34C31 28 37 23 34 16C32 12 36 8 33 4"
+        stroke="#D4C5B0"
+        strokeWidth="2"
+        strokeLinecap="round"
+        fill="none"
+        opacity="0.7"
+      />
+      <path
+        d="M43 36C45 29 40 24 43 17C45 13 41 9 44 5"
+        stroke="#D4C5B0"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        fill="none"
+        opacity="0.7"
+      />
+      <path
+        d="M52 38C50 31 55 26 53 19C51 15 54 11 52 7"
+        stroke="#D4C5B0"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        fill="none"
+        opacity="0.7"
+      />
 
-      {/* Fork on Left with rich wooden handle */}
-      <g transform="translate(6, 21)">
-        <rect x="2" y="14" width="2" height="14" rx="1" fill="#8B4513" />
-        <path d="M1 4V10C1 11.5 2.3 12.8 4 12.8V14H2V12.8C1 12.8 0 11.8 0 10V4H1Z" fill="#B77740" />
-        <path d="M0 4V9H1V4H0ZM2 4V9H3V4H2ZM4 4V9H5V4H4ZM5 4V9H6V4H5Z" fill="#B77740" />
-      </g>
+      {/* Sparkle/shine marks in orange */}
+      <path
+        d="M58 13L59 15.5L61.5 16.5L59 17.5L58 20L57 17.5L54.5 16.5L57 15.5Z"
+        fill="#E85D2A"
+        opacity="0.6"
+      />
+      <path
+        d="M22 19L22.8 21.2L25 22L22.8 22.8L22 25L21.2 22.8L19 22L21.2 21.2Z"
+        fill="#E85D2A"
+        opacity="0.6"
+      />
+      <path
+        d="M63 27L63.6 28.6L65.2 29.2L63.6 29.8L63 31.4L62.4 29.8L60.8 29.2L62.4 28.6Z"
+        fill="#E85D2A"
+        opacity="0.6"
+      />
 
-      {/* Knife on Right with rich wooden handle */}
-      <g transform="translate(44, 21)">
-        <rect x="2" y="14" width="2" height="14" rx="1" fill="#8B4513" />
-        <path d="M2 4C2 4 5 7 5 12V14H2V4Z" fill="#B77740" />
-      </g>
+      {/* Fork on the left */}
+      <path
+        d="M12 44V64C12 65.5 13.5 66.5 15 66.5C16.5 66.5 18 65.5 18 64V44C18 41 20 38.5 20.5 35V27H19V33.5H16.5V27H15V33.5H13.5V27H12V33.5H9.5V27H8V35C8.5 38.5 10.5 41 12 44Z"
+        fill="#8B6914"
+      />
 
-      {/* Base Serving Platter / Porcelain Plate */}
-      <ellipse cx="28" cy="45" rx="18" ry="5" fill="#EADFC7" />
-      <ellipse cx="28" cy="44.2" rx="16.5" ry="4.2" fill="url(#dinePlateGrad)" />
-      <ellipse cx="28" cy="44" rx="12" ry="2.6" fill="#FFFDF9" stroke="#EADFC7" strokeWidth="0.8" />
+      {/* Knife on the right */}
+      <path
+        d="M63 44V64C63 65.5 64.5 66.5 66 66.5C67.5 66.5 69 65.5 69 64V44C69 41 71.5 37 71.5 33C71.5 28 67 27 66 27V42H64.5C63.5 42 63 43 63 44Z"
+        fill="#8B6914"
+      />
 
-      {/* Lifted / Tilted Cloche Dome */}
-      <g transform="rotate(-9 28 33)">
-        {/* Dome body */}
-        <path d="M16 34C16 23 21.4 16 28 16C34.6 16 40 23 40 34H16Z" fill="url(#dineDomeGrad)" />
-        {/* Dome specular highlight curve */}
-        <path d="M20 32C20 24.5 23.5 19 28 18.5C25 19.5 22 24 22 32H20Z" fill="#FFF8F0" fillOpacity="0.45" />
-        {/* Cloche Rim Base */}
-        <ellipse cx="28" cy="34" rx="12.5" ry="2.5" fill="#BA3F15" />
-        <ellipse cx="28" cy="33.5" rx="12.5" ry="2.2" fill="#E85D2A" />
-        {/* Dome Handle Knob */}
-        <circle cx="28" cy="14.5" r="3" fill="#FFD23F" stroke="#8B4513" strokeWidth="1" />
+      {/* Outer plate */}
+      <ellipse
+        cx="40"
+        cy="63"
+        rx="26"
+        ry="7"
+        fill="#FFF5E6"
+        stroke="#C4A882"
+        strokeWidth="2"
+      />
+
+      {/* Second 3D inner ellipse */}
+      <ellipse
+        cx="40"
+        cy="62"
+        rx="21"
+        ry="5.2"
+        fill="#FFFFFF"
+        stroke="#C4A882"
+        strokeWidth="1.2"
+        strokeOpacity="0.7"
+      />
+      <ellipse
+        cx="40"
+        cy="61.5"
+        rx="16"
+        ry="3.5"
+        fill="#FFF5E6"
+        stroke="#D4C5B0"
+        strokeWidth="0.8"
+      />
+
+      {/* Tilted cloche dome suggesting being lifted */}
+      <g transform="rotate(-8 40 44)">
+        {/* Dome arc body */}
+        <path
+          d="M22 47C22 31 30 22 40 22C50 22 58 31 58 47H22Z"
+          fill="url(#clocheGrad)"
+          stroke="#8C8C8C"
+          strokeWidth="1.2"
+        />
+        {/* Specular highlight */}
+        <path
+          d="M28 44C28 33 33 26 40 25C35 27 31 33 31 44H28Z"
+          fill="#FFFFFF"
+          opacity="0.5"
+        />
+        {/* Cloche rim */}
+        <ellipse cx="40" cy="47" rx="18.5" ry="3" fill="#A0A0A0" stroke="#7A7A7A" strokeWidth="1" />
+        <ellipse cx="40" cy="46.5" rx="18" ry="2.6" fill="#C8C8C8" />
+        {/* Top knob handle */}
+        <ellipse cx="40" cy="20.5" rx="3.5" ry="3.5" fill="#696969" stroke="#4A4A4A" strokeWidth="1" />
+        <ellipse cx="39" cy="19.5" rx="1.2" ry="1" fill="#FFFFFF" opacity="0.6" />
       </g>
     </svg>
   );
@@ -851,13 +996,9 @@ function MenuPageContent() {
     >
       {/* Sticky Header (white background in both themes) */}
       <header className="sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-[#EADFC7]/60">
-        {/* Order Mode Visual Selector (Swiggy-style Food/Instamart top selector) */}
-        <div className="w-full bg-[#FFF8F0] p-3.5 sm:p-4 border-b border-[#EADFC7]/60">
-          <div
-            role="tablist"
-            aria-label="Order mode"
-            className="w-full max-w-[420px] mx-auto grid grid-cols-2 gap-3"
-          >
+        {/* Order Mode Selector (Swiggy-style Food/Instamart top selector) */}
+        <div className="w-full px-4 pt-3 pb-2 sticky top-0 z-30 bg-[#FFF8F0]">
+          <div className="w-full max-w-md mx-auto flex gap-3" role="tablist" aria-label="Order mode">
             {/* Pickup Card */}
             <button
               type="button"
@@ -865,37 +1006,32 @@ function MenuPageContent() {
               aria-selected={orderType === 'pickup'}
               onClick={() => setOrderType('pickup')}
               className={cn(
-                'w-full pt-3.5 pb-2.5 px-3 rounded-2xl flex flex-col items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer select-none active:scale-[0.98]',
                 orderType === 'pickup'
-                  ? 'bg-white shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
-                  : 'bg-transparent shadow-none hover:bg-white/40'
+                  ? 'flex-1 flex flex-col items-center py-4 px-3 rounded-2xl bg-white shadow-[0_2px_12px_rgba(0,0,0,0.1)] border border-orange-100 cursor-pointer transition-all duration-200'
+                  : 'flex-1 flex flex-col items-center py-4 px-3 rounded-2xl bg-transparent cursor-pointer transition-all duration-200'
               )}
             >
-              <div
+              <PickupIllustration
+                width={72}
+                height={72}
                 className={cn(
-                  'transition-all duration-200',
-                  orderType === 'pickup' ? 'opacity-100 scale-105' : 'opacity-60 scale-100'
+                  'w-[72px] h-[72px] transition-opacity duration-200',
+                  orderType === 'pickup' ? 'opacity-100' : 'opacity-50'
                 )}
-              >
-                <PickupIllustration className="w-[52px] h-[52px] sm:w-[58px] sm:h-[58px]" />
-              </div>
+              />
               <span
                 className={cn(
-                  'text-sm sm:text-[15px] tracking-tight transition-colors duration-200',
-                  orderType === 'pickup' ? 'font-semibold text-[#2B1A12]' : 'font-normal text-gray-500'
+                  'text-[15px] mt-1 transition-colors duration-200',
+                  orderType === 'pickup' ? 'font-semibold text-gray-900' : 'font-normal text-gray-400'
                 )}
               >
                 Pickup
               </span>
-              {/* Orange accent bar under selected */}
-              <div
-                className={cn(
-                  'w-10 sm:w-12 h-1 rounded-full transition-all duration-200 mt-0.5',
-                  orderType === 'pickup'
-                    ? 'bg-[#E85D2A] opacity-100 scale-100'
-                    : 'bg-transparent opacity-0 scale-75'
-                )}
-              />
+              {orderType === 'pickup' ? (
+                <div className="w-10 h-[3px] rounded-full bg-[#E85D2A] mt-2" />
+              ) : (
+                <div className="w-10 h-[3px] mt-2 opacity-0" />
+              )}
             </button>
 
             {/* Dine In Card */}
@@ -905,37 +1041,32 @@ function MenuPageContent() {
               aria-selected={orderType === 'dine_in'}
               onClick={() => setOrderType('dine_in')}
               className={cn(
-                'w-full pt-3.5 pb-2.5 px-3 rounded-2xl flex flex-col items-center justify-center gap-1.5 transition-all duration-200 cursor-pointer select-none active:scale-[0.98]',
                 orderType === 'dine_in'
-                  ? 'bg-white shadow-[0_2px_8px_rgba(0,0,0,0.08)]'
-                  : 'bg-transparent shadow-none hover:bg-white/40'
+                  ? 'flex-1 flex flex-col items-center py-4 px-3 rounded-2xl bg-white shadow-[0_2px_12px_rgba(0,0,0,0.1)] border border-orange-100 cursor-pointer transition-all duration-200'
+                  : 'flex-1 flex flex-col items-center py-4 px-3 rounded-2xl bg-transparent cursor-pointer transition-all duration-200'
               )}
             >
-              <div
+              <DineInIllustration
+                width={72}
+                height={72}
                 className={cn(
-                  'transition-all duration-200',
-                  orderType === 'dine_in' ? 'opacity-100 scale-105' : 'opacity-60 scale-100'
+                  'w-[72px] h-[72px] transition-opacity duration-200',
+                  orderType === 'dine_in' ? 'opacity-100' : 'opacity-50'
                 )}
-              >
-                <DineInIllustration className="w-[52px] h-[52px] sm:w-[58px] sm:h-[58px]" />
-              </div>
+              />
               <span
                 className={cn(
-                  'text-sm sm:text-[15px] tracking-tight transition-colors duration-200',
-                  orderType === 'dine_in' ? 'font-semibold text-[#2B1A12]' : 'font-normal text-gray-500'
+                  'text-[15px] mt-1 transition-colors duration-200',
+                  orderType === 'dine_in' ? 'font-semibold text-gray-900' : 'font-normal text-gray-400'
                 )}
               >
                 Dine In
               </span>
-              {/* Orange accent bar under selected */}
-              <div
-                className={cn(
-                  'w-10 sm:w-12 h-1 rounded-full transition-all duration-200 mt-0.5',
-                  orderType === 'dine_in'
-                    ? 'bg-[#E85D2A] opacity-100 scale-100'
-                    : 'bg-transparent opacity-0 scale-75'
-                )}
-              />
+              {orderType === 'dine_in' ? (
+                <div className="w-10 h-[3px] rounded-full bg-[#E85D2A] mt-2" />
+              ) : (
+                <div className="w-10 h-[3px] mt-2 opacity-0" />
+              )}
             </button>
           </div>
         </div>
@@ -960,23 +1091,23 @@ function MenuPageContent() {
               aria-expanded={isOutletMenuOpen}
               aria-label="Switch outlet"
             >
-              <span className="text-[11px] font-black tracking-widest uppercase text-[#E85D2A]">
+              <span className="text-[11px] font-semibold tracking-wider uppercase text-[#E85D2A]">
                 {orderType === 'dine_in' ? 'DINE IN AT' : 'PICKUP FROM'}
               </span>
-              <div className="flex items-center gap-1 text-[15px] font-extrabold text-[#2B1A12] group-hover:text-[#E85D2A] transition-colors leading-tight">
+              <div className="flex items-center gap-1 text-[15px] font-semibold text-gray-900 group-hover:text-[#E85D2A] transition-colors leading-tight">
                 <span className="truncate">
                   {previewOutletName || outlet?.name || 'Choose Outlet'}
                 </span>
                 {!isPreviewMode && (
                   <ChevronDown
-                    className={`w-4 h-4 stroke-[2.8] text-[#2B1A12] shrink-0 transition-transform duration-150 ${
+                    className={`w-4 h-4 stroke-[2.8] text-gray-900 shrink-0 transition-transform duration-150 ${
                       isOutletMenuOpen ? 'rotate-180' : ''
                     }`}
                   />
                 )}
               </div>
               {orderType === 'dine_in' && (
-                <span className="text-xs text-gray-500 font-medium tracking-tight mt-0.5 block leading-tight">
+                <span className="text-[11px] text-gray-400 font-normal tracking-tight mt-0.5 block leading-tight">
                   Tables available on a first-come basis
                 </span>
               )}
