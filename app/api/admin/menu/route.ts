@@ -230,7 +230,7 @@ export async function PUT(req: NextRequest) {
       `SELECT m.*, o.name AS outlet_name
        FROM public.menu_items m
        LEFT JOIN public.outlets o ON m.outlet_id = o.id
-       WHERE m.id =  AND m.deleted_at IS NULL
+       WHERE m.id = $1 AND m.deleted_at IS NULL
        LIMIT 1`,
       [id]
     );
@@ -301,7 +301,7 @@ export async function PUT(req: NextRequest) {
       const allOutletsRes = await query(`SELECT id FROM public.outlets`);
       for (const o of allOutletsRes.rows) {
         const hasCopy = await query(
-          `SELECT id FROM public.menu_items WHERE outlet_id =  AND master_item_id =  AND deleted_at IS NULL LIMIT 1`,
+          `SELECT id FROM public.menu_items WHERE outlet_id = $1 AND master_item_id = $2 AND deleted_at IS NULL LIMIT 1`,
           [o.id, currentItem.master_item_id]
         );
         if (hasCopy.rows.length === 0) {
@@ -309,7 +309,7 @@ export async function PUT(req: NextRequest) {
             `INSERT INTO public.menu_items (
                outlet_id, master_item_id, name, description, price, category, image_url,
                is_available, is_bestseller, is_veg, sort_order
-             ) VALUES (, , , , , , , true, false, , )`,
+             ) VALUES ($1, $2, $3, $4, $5, $6, $7, true, false, $8, $9)`,
             [
               o.id,
               currentItem.master_item_id,
